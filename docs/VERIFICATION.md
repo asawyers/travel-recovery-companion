@@ -1,6 +1,6 @@
 # Verification status
 
-This is a coding-challenge prototype under active implementation. The Vercel frontend and its local-planner flow are verified publicly; the hosted backend and live-provider integrations remain pending.
+This is a coding-challenge prototype under active implementation. The Vercel frontend and its local-planner flow are verified publicly; the hosted backend is deployed and directly verified; browser connection and live-provider integrations remain pending.
 
 ## Verified locally
 
@@ -17,11 +17,11 @@ The explicit fictional fixtures reproduce $72/12:50 train, $47/12:10 bus, $145/1
 
 ## Pending
 
-- Subsequent GitHub-triggered Vercel production/preview deployment verification. The current public frontend smoke checks passed.
-- Dedicated hosted Supabase Edge project and functions-only GitHub Actions delivery (no application schema or migration step).
+- Manually confirm the dashboard Production/Preview labels for the verified main/branch Git-triggered deployments. The public frontend smoke checks passed.
+- Rebuild Vercel with its saved production endpoint setting, then run configured hosted browser acceptance.
 - Optional FlightAware, Google Routes, LiteAPI/Nuitee and model integrations; credentials and actual usage limits have not been configured or authorized merely by planning them.
 
-Existing hosted setup blockers remain recorded in the local session handoff. Frontend deployment is verified below; no hosted backend success is claimed here. Local Docker has six healthy Supabase services (API 54321, DB 54322, Mailpit 54324); the public recovery function is implemented and locally verified; hosted deployment is pending. Local Auth is unused by this app.
+Existing hosted setup blockers remain recorded in the local session handoff. Frontend and direct backend deployment checks are verified below; configured browser-to-backend acceptance is pending. Local Docker has six healthy Supabase services (API 54321, DB 54322, Mailpit 54324); the public recovery function is locally and directly hosted verified; browser connection is pending. Local Auth is unused by this app.
 
 ## Reproduce the current local app
 
@@ -43,7 +43,7 @@ The author removed authentication and email delivery from this challenge. Browse
 
 Revision `fc5e7491da149c1bfad0b68d5acaf46d2b94a0b4` removes sign-in UI and adds one device-local snapshot with historical restore, explicit delete and guarded refresh. Independent spec and quality reviews passed. All 74 unit tests, TypeScript/build, five existing guest Chrome scenarios and seven save/history/storage-error Chrome scenarios passed. The initial 11-scenario browser run was followed by the two updated malformed/version-2 recovery cases; the spec reviewer then reran all seven save scenarios. A controller check at 320px confirmed unchanged snapshot/metadata after reload, zero sign-in buttons, no horizontal overflow and no console errors.
 
-## Public stateless HTTP gate verified
+## Historical public stateless HTTP gate
 
 Revision `42eb7be5032cf225a63bfa5eaf50d8f7b8ff31cb`: independent spec and quality reviews passed. Captured checks: 95 unit tests (21 handler cases), TypeScript/build, Deno entrypoint check and five real loopback HTTP integration tests. Independent daytime and overnight HTTP responses deeply matched the same pure planner; no credentials, app users or database rows were used.
 
@@ -56,7 +56,7 @@ Revision `42eb7be5032cf225a63bfa5eaf50d8f7b8ff31cb`: independent spec and qualit
 | Strict normalized facts and expiry | Runtime schema cases retain original timestamps, five-minute/earliest-quote expiry and public-manual-v1 revision |
 | Actual local execution | Five loopback node:test cases and Deno check passed independently against the running function |
 
-The local Supabase Kong gateway rewrites `Access-Control-Allow-Origin` to `*`, including error responses. Exact-origin handler unit checks pass, and actual unlisted-origin requests still return 403. This platform behavior is documented rather than changed. CORS is not caller authentication; the endpoint is intentionally public. All provider/model adapters remain disabled/unavailable, and injected tests are not live-provider acceptance.
+Historical behavior at `42eb7be` (superseded by the public CORS amendment below): the local Supabase Kong gateway rewrites `Access-Control-Allow-Origin` to `*`, including error responses. Exact-origin handler unit checks pass, and actual unlisted-origin requests still return 403. This platform behavior is documented rather than changed. CORS is not caller authentication; the endpoint is intentionally public. All provider/model adapters remain disabled/unavailable, and injected tests are not live-provider acceptance.
 
 ## Browser/backend integration checks
 
@@ -76,7 +76,7 @@ Source was published to `asawyers/travel-recovery-companion` on `main` and `feat
 
 Pre-publication checks covered explicit staged paths, 117 historical Git blobs, secret patterns, and exclusion of local environment files, Superpowers documents and private transferred references. No matching secrets or private reference paths were found in that scan. Original references remain on disk.
 
-Hosted backend setup remains incomplete: dedicated Supabase project creation/read/cost access was denied. No deployed public Edge endpoint is claimed. Vercel frontend and stable HTTPS device-save evidence are recorded below; subsequent main/branch Git-trigger verification is pending. Optional provider/model adapters remain disabled while access and authorized usage limits are unavailable.
+The user created a dedicated project. The management connector remains unavailable for it, while a separately authorized project-scoped GitHub deployment credential successfully deployed the recovery function. Vercel and direct backend evidence are recorded below; configured browser acceptance is pending. Optional provider/model adapters remain disabled while access and authorized usage limits are unavailable.
 
 ## Public Vercel frontend verified
 
@@ -84,4 +84,24 @@ The author created the Vercel project. `https://travel-recovery-companion.vercel
 
 Against that stable HTTPS frontend, all 14 Brave guest/device-save tests passed in 11.8seconds: explicit fictional and traveler-entered comparisons, constraints and selection, 320/390px layouts, controlled errors, historical save/reload/delete, malformed/versioned storage preservation, quota failures and manual refresh/priority refinement. Test storage used isolated profiles, without modifying the author’s personal saved plans.
 
-This is frontend acceptance with the local planner, not hosted Edge or live-provider acceptance. Browser administration in the author’s Brave window requires its Apple Events JavaScript setting; tab metadata is readable, page automation is currently disabled. Feature-branch push `384bbca02b7eedc4d1f12d6c68dbb0f73d2ab333` subsequently generated a new successful Vercel deployment automatically: [deployment details](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/5g6C41No8r14evVB27ctYe3jzjyL). Main was still at `e563c76` when that branch status was observed. The dashboard environment label remains to be checked manually; the next main push will separately verify automatic main delivery.
+This is frontend acceptance with the local planner, not hosted Edge or live-provider acceptance. Feature-branch push `384bbca02b7eedc4d1f12d6c68dbb0f73d2ab333` subsequently generated a new successful Vercel deployment automatically: [deployment details](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/5g6C41No8r14evVB27ctYe3jzjyL). Main was still at `e563c76` when that branch status was observed. Subsequent main push `2eb20c1a30efa7b0c13771635d4ebe16f7cd5466` also triggered a successful [Vercel deployment](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/DQZF57AoQJKm6dzWijtAB2Xhp5VJ). Exact dashboard Production/Preview labels remain to be checked manually.
+
+## Historical checkpoint: initial hosted backend deployment
+
+The user created project `isclmlhsktuocgdoizmc` and entered a project-scoped deployment token directly into GitHub’s production environment. No token value was read into chat or committed. Repository deployment gate is enabled. Main [run39665108179](https://github.com/asawyers/travel-recovery-companion/actions/runs/39665108179), rerun at source `2eb20c1a30efa7b0c13771635d4ebe16f7cd5466`, passed install/tests/build and the recovery function deployment (job119456275061). No database, migration, application-user or provider/model setup was performed.
+
+Actual HTTPS endpoint: `https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery`. Credential-free daytime and overnight POSTs returned200 with three and two plans respectively, runtime-validated responses and exact pure-planner plan parity. Manual real-mode test input returned200, downgraded browser-live claims and removed provider URLs. Unlisted origin OPTIONS403, GET405 and malformedJSON400 passed. Revision is `public-manual-v1`.
+
+At source2eb20c1, production-origin OPTIONS returned403. The user subsequently removed the origin-allowlist requirement for this challenge: wildcard credential-free CORS was awaiting publication at that checkpoint. The frontend remains on its working local planner until the revised backend and configured production browser checks pass. No live inventory acceptance is claimed.
+
+
+## Historical checkpoint: local CORS simplification
+
+The author removed the origin-registration requirement for this stateless coding challenge. Source `828ba97be49db908d32b775b01f4650acd0329da` removes the origin allowlist, environment setting and obsolete server environment example. Browser responses use `Access-Control-Allow-Origin: *` without credential support. Local verification passed 111 unit tests, typecheck/build, Deno check and five actual loopback HTTP cases, including arbitrary/null/absent origins and unchanged validation/method/body-limit behavior. Hosted publication and configured Brave acceptance were pending at that checkpoint; hosted CORS results follow below.
+
+
+## Hosted public CORS verified
+
+Source `828ba97be49db908d32b775b01f4650acd0329da` was published to main and the implementation branch. Main [run39669510342](https://github.com/asawyers/travel-recovery-companion/actions/runs/39669510342) passed checks and functions-only deployment (job119463508662). Independent spec and quality reviews approved the amendment. Actual hosted HTTPS checks passed: production/arbitrary/literal-null OPTIONS204; daytime POST200 with three plans; overnight POST200 with two plans; both runtime-schema validated and exactly matching the pure planner; GET405, malformedJSON400 and oversized413. All responses include wildcard CORS and omit credential support. No origin-registration setting is needed.
+
+The user reported saving Production `VITE_RECOVERY_API_URL`. Git-triggered Vercel deployments report success, but the stable HTTPS frontend still served `/assets/index-BrOvtPI5.js` without the backend address at this checkpoint. Production environment targeting and main deployment labels are being checked manually. Configured full-stack browser acceptance is not yet claimed.
