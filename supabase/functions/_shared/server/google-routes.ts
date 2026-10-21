@@ -38,7 +38,8 @@ const route = z.object({
   travelAdvisory: z.object({ transitFare: z.unknown().optional() }).optional(),
   legs: z.array(z.object({ startLocation: location, endLocation: location, steps: z.array(step).min(1).max(96) })).length(1),
 })
-const response = z.object({ routes: z.array(z.unknown()).max(4).optional() })
+// Live TRANSIT responses can contain six routes; retain a bounded envelope and the eight-candidate output cap.
+const response = z.object({ routes: z.array(z.unknown()).max(16).optional() })
 const driveRoute = z.object({ duration: z.string().max(40), warnings: z.array(z.string()).max(64).optional(), legs: z.array(z.object({ startLocation: location, endLocation: location })).length(1) })
 type Location = z.infer<typeof location>
 const clean = (value: string) => value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/https?:\/\/\S+/gi, '[link omitted]').trim().slice(0, 500)
@@ -196,7 +197,7 @@ export function createGoogleRoutesAdapter(options: ProviderAdapterOptions): Rout
     if (inTransitWindow(busAt)) addRoutes(await query(transitBody(AIRPORT, busAt, 'bus'), TRANSIT_MASK), 'bus', 0)
     if (readyMs < nowMs) warnings.push('Past DRIVE departure times are unsupported; North Station access was not invented.')
     else if (!context.signal.aborted) {
-      const accessBody = await query({ origin: { address: AIRPORT }, destination: { address: NORTH_STATION }, travelMode: 'DRIVE', departureTime: new Date(readyMs).toISOString().replace('.000Z', 'Z'), routingPreference: 'TRAFFIC_UNAWARE', languageCode: 'en-US', regionCode: 'us' }, DRIVE_MASK)
+      const accessBody = await query({ origin: { address: AIRPORT }, destination: { address: NORTH_STATION }, travelMode: 'DRIVE', routingPreference: 'TRAFFIC_UNAWARE', languageCode: 'en-US', regionCode: 'us' }, DRIVE_MASK)
       const accessResponse = response.safeParse(accessBody)
       const accessRoute = driveRoute.safeParse(accessResponse.success ? accessResponse.data.routes?.[0] : undefined)
       if (accessRoute.success) {

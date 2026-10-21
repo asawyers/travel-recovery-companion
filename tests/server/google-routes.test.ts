@@ -75,6 +75,24 @@ describe('Google Routes server adapter', () => {
     expect(planRecovery(request(), result.data.candidates, { now: NOW }).plans).toHaveLength(2)
   })
 
+  it('accepts six bounded transit alternatives returned by Google', async () => {
+    const bus = transit()
+    bus.routes = Array.from({ length: 6 }, () => structuredClone(bus.routes[0]))
+    const result = await adapter(fetcher([bus, {}]))(request(), { signal: signal() })
+    expect(result.status).toBe('ok')
+    if (result.status === 'ok') expect(result.data.candidates).toHaveLength(6)
+  })
+
+  it('omits the departure timestamp from the time-independent drive estimate only', async () => {
+    const fetch = fetcher()
+    await adapter(fetch)(request(), { signal: signal() })
+    const bodies = fetch.mock.calls.map(([, init]) => JSON.parse(String(init?.body)))
+    expect(bodies[1]).toMatchObject({ travelMode: 'DRIVE', routingPreference: 'TRAFFIC_UNAWARE' })
+    expect(bodies[1]).not.toHaveProperty('departureTime')
+    expect(bodies[0]).toHaveProperty('departureTime')
+    expect(bodies[2]).toHaveProperty('departureTime')
+  })
+
   it.each([{ enabled: false }, { apiKey: undefined }, { apiKey: ' ' }])('makes no call when disabled or unconfigured: %j', async extra => {
     const fetch = fetcher()
     expect((await adapter(fetch, extra)(request(), { signal: signal() })).status).toBe('unavailable')
@@ -202,10 +220,10 @@ describe('Google Routes server adapter', () => {
   })
 
   it('identifies a malformed bus response shape without exposing provider content', async () => {
-    const fetch = fetcher([{ routes: Array.from({ length: 5 }, () => ({ secret: 'SECRET upstream value' })) }, {}])
+    const fetch = fetcher([{ routes: Array.from({ length: 17 }, () => ({ secret: 'SECRET upstream value' })) }, {}])
     const result = await adapter(fetch)(request(), { signal: signal() })
     expect(result.status).toBe('unavailable')
-    expect(JSON.stringify(result)).toContain('Google Routes bus response was malformed (routes=array, count=5)')
+    expect(JSON.stringify(result)).toContain('Google Routes bus response was malformed (routes=array, count=17)')
     expect(JSON.stringify(result)).not.toContain('SECRET')
   })
 
