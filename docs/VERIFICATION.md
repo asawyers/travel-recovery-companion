@@ -1,6 +1,6 @@
 # Verification status
 
-This is a coding-challenge prototype under active implementation. No hosted application or live-provider integration has been verified yet.
+This is a coding-challenge prototype under active implementation. The Vercel frontend and its local-planner flow are verified publicly; the hosted backend and live-provider integrations remain pending.
 
 ## Verified locally
 
@@ -17,11 +17,11 @@ The explicit fictional fixtures reproduce $72/12:50 train, $47/12:10 bus, $145/1
 
 ## Pending
 
-- Native GitHub-connected Vercel production/preview deployment and actual deployed-URL smoke checks.
+- Subsequent GitHub-triggered Vercel production/preview deployment verification. The current public frontend smoke checks passed.
 - Dedicated hosted Supabase Edge project and functions-only GitHub Actions delivery (no application schema or migration step).
 - Optional FlightAware, Google Routes, LiteAPI/Nuitee and model integrations; credentials and actual usage limits have not been configured or authorized merely by planning them.
 
-Existing hosted setup blockers remain recorded in the local session handoff. No hosted project or deployment success is claimed here. Local Docker has six healthy Supabase services (API 54321, DB 54322, Mailpit 54324); the public recovery function is implemented and locally verified; hosted deployment is pending. Local Auth is unused by this app.
+Existing hosted setup blockers remain recorded in the local session handoff. Frontend deployment is verified below; no hosted backend success is claimed here. Local Docker has six healthy Supabase services (API 54321, DB 54322, Mailpit 54324); the public recovery function is implemented and locally verified; hosted deployment is pending. Local Auth is unused by this app.
 
 ## Reproduce the current local app
 
@@ -76,4 +76,12 @@ Source was published to `asawyers/travel-recovery-companion` on `main` and `feat
 
 Pre-publication checks covered explicit staged paths, 117 historical Git blobs, secret patterns, and exclusion of local environment files, Superpowers documents and private transferred references. No matching secrets or private reference paths were found in that scan. Original references remain on disk.
 
-Hosting remains incomplete: Vercel requires interactive dashboard sign-in; dedicated hosted Supabase project creation/read/cost access was denied. No Vercel production/preview deployment SHA, deployed public Edge endpoint or stable HTTPS device-save acceptance is claimed. Optional provider/model adapters remain disabled while access and authorized usage limits are unavailable.
+Hosted backend setup remains incomplete: dedicated Supabase project creation/read/cost access was denied. No deployed public Edge endpoint is claimed. Vercel frontend and stable HTTPS device-save evidence are recorded below; subsequent main/branch Git-trigger verification is pending. Optional provider/model adapters remain disabled while access and authorized usage limits are unavailable.
+
+## Public Vercel frontend verified
+
+The author created the Vercel project. `https://travel-recovery-companion.vercel.app/` returned HTTP200 with the expected app title. GitHub’s Vercel commit status reports success at `e563c76a4ff333925ee12269e16384378776736c`; the matching project overview was located in the author’s existing Brave window.
+
+Against that stable HTTPS frontend, all 14 Brave guest/device-save tests passed in 11.8seconds: explicit fictional and traveler-entered comparisons, constraints and selection, 320/390px layouts, controlled errors, historical save/reload/delete, malformed/versioned storage preservation, quota failures and manual refresh/priority refinement. Test storage used isolated profiles, without modifying the author’s personal saved plans.
+
+This is frontend acceptance with the local planner, not hosted Edge or live-provider acceptance. Browser administration in the author’s Brave window requires its Apple Events JavaScript setting; tab metadata is readable, page automation is currently disabled. Feature-branch push `384bbca02b7eedc4d1f12d6c68dbb0f73d2ab333` subsequently generated a new successful Vercel deployment automatically: [deployment details](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/5g6C41No8r14evVB27ctYe3jzjyL). Main was still at `e563c76` when that branch status was observed. The dashboard environment label remains to be checked manually; the next main push will separately verify automatic main delivery.
