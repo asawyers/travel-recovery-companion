@@ -7,6 +7,7 @@ import {
 import type { TripRequest } from "@domain/schemas";
 import { toInstantMillis } from "@domain/time";
 import type { RecoveryState } from "./state";
+import { containsGoogleRoutes, GOOGLE_SAVE_MESSAGE } from "./providerRetention";
 
 export const SAVED_PLAN_KEY = "travel-recovery:selected:v1";
 const MAX_SNAPSHOT_LENGTH = 2_000_000;
@@ -19,6 +20,8 @@ export const SavedSelectionSchema = z
     selectedAt: RecoveryResultSchema.shape.generatedAt,
   })
   .superRefine((value, ctx) => {
+    if (containsGoogleRoutes(value))
+      ctx.addIssue({ code: "custom", message: GOOGLE_SAVE_MESSAGE });
     const evidence = [
       ...value.plan.legs.flatMap((leg) => leg.evidence),
       ...(value.plan.hotel?.evidence ?? []),
@@ -76,7 +79,12 @@ export function writeSavedSelection(
   storage: SelectionStorage,
   value: SavedSelection,
 ): StorageResult<SavedSelection> {
-  const parsed = SavedSelectionSchema.safeParse(value);
+  if (containsGoogleRoutes(value.plan))
+    return { ok: false, message: GOOGLE_SAVE_MESSAGE };
+  const parsed = SavedSelectionSchema.safeParse({
+    ...value,
+    request: retainedRequest(value.request),
+  });
   if (!parsed.success)
     return {
       ok: false,
@@ -141,9 +149,11 @@ export function selectionSnapshot(
         "Choose a current itinerary after comparing your latest trip details before saving.",
     };
   }
+  if (containsGoogleRoutes(plan))
+    return { ok: false, message: GOOGLE_SAVE_MESSAGE };
   const parsed = SavedSelectionSchema.safeParse({
     schemaVersion: 1,
-    request: state.result.request,
+    request: retainedRequest(state.result.request),
     plan,
     generatedAt: state.result.generatedAt,
     selectedAt,
@@ -178,6 +188,16 @@ export function selectionSnapshot(
     };
   }
   return { ok: true, value: parsed.data };
+}
+function retainedRequest(request: TripRequest): TripRequest {
+  const parsed = TripRequestSchema.safeParse(request);
+  if (!parsed.success) return request;
+  return {
+    ...parsed.data,
+    confirmedOptions: parsed.data.confirmedOptions.filter(
+      (option) => !containsGoogleRoutes(option),
+    ),
+  };
 }
 /** A new comparison must not turn an old provider check into a fresh claim. */
 export function refreshRequest(saved: SavedSelection): TripRequest {

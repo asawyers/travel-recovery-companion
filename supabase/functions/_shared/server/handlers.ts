@@ -2,13 +2,13 @@ import { ADAPTER_REVISION, MAX_FACT_AGE_MS, RecoveryInputSchema, RecoveryRespons
 import type { RecoveryResponse } from '../domain/api.ts'
 import { normalizeCandidates } from '../domain/candidates.ts'
 import { planRecovery } from '../domain/planner.ts'
-import { SourceEvidenceSchema, TripRequestSchema } from '../domain/schemas.ts'
-import type { ConfirmedOption, SourceEvidence, TripRequest } from '../domain/schemas.ts'
+import { FlightStatusReportSchema, PlanningTripRequestSchema, SourceEvidenceSchema, TripRequestSchema } from '../domain/schemas.ts'
+import type { ConfirmedOption, FlightStatusReport, SourceEvidence, TripRequest } from '../domain/schemas.ts'
 import { toInstantMillis, toTripLocalTime } from '../domain/time.ts'
 import { HttpError, corsHeaders, jsonResponse, readJson } from './http.ts'
 import type { ProviderFacts, ProviderRegistry } from './providers.ts'
 
-const PROVIDER_TIMEOUT_MS = 3_000
+const PROVIDER_TIMEOUT_MS = 15_000
 const PROVENANCE_WARNING = 'Traveler-supplied facts are not verified by a server provider; confirm availability before booking.'
 const boundedNotes = (values: string[]) => [...new Set(values.filter(value => typeof value === 'string' && value.trim()).map(value => value.slice(0, 500)))].slice(0, 32)
 
@@ -80,17 +80,24 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
       let evidence = arrivalEvidence(request, checkedAt)
       const warnings: string[] = []
       let extraCandidates: unknown[] = []
-      if (parsed.data.investigate) {
+      let flightStatus: FlightStatusReport | undefined
+      if (parsed.data.investigate && request.mode === 'synthetic') warnings.push('Optional live investigation is unavailable for synthetic trips; fictional supplied facts were compared.')
+      if (parsed.data.investigate && request.mode === 'real') {
         try {
           const extra = await investigate(deps.providers, request)
           if (!Array.isArray(extra.candidates) || extra.candidates.length > 12 || !Array.isArray(extra.warnings)) throw new Error('Invalid adapter output')
           const adapted = normalizeCandidates(request, extra.candidates)
           extraCandidates = adapted.candidates.map(candidate => mapEvidence(candidate, item => safeProviderEvidence(item, request.mode)))
           warnings.push(...adapted.warnings)
-          if (extra.arrival) {
+          if (extra.flightStatus !== undefined) {
+            const report = FlightStatusReportSchema.safeParse(extra.flightStatus)
+            if (report.success) flightStatus = report.data
+            else warnings.push('Optional flight status investigation is unavailable; the report failed validation.')
+          }
+          if (extra.arrival && request.arrivalBasis !== 'traveler_confirmed') {
             try {
               if (!extra.arrivalEvidence?.length || extra.arrivalEvidence.length > 16) throw new Error('Missing arrival provenance')
-              const enriched = TripRequestSchema.parse({ ...request, ...extra.arrival })
+              const enriched = PlanningTripRequestSchema.parse({ ...request, ...extra.arrival })
               const enrichedEvidence = extra.arrivalEvidence.map(item => SourceEvidenceSchema.parse(item))
               const consistent = enrichedEvidence.every(item => request.mode === 'synthetic'
                 ? item.type === 'synthetic' && item.environment === 'synthetic'
@@ -104,14 +111,24 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
         } catch { warnings.push('Optional provider investigation is unavailable; supplied manual facts were retained. No live availability was checked.') }
       }
       // Keep supported manual inputs even when adapters exceed the combined capacity.
+      const manualIds = new Set(request.confirmedOptions.map(candidate => candidate.id))
+      extraCandidates = extraCandidates.filter(candidate => {
+        if (candidate !== null && typeof candidate === 'object' && 'id' in candidate && typeof candidate.id === 'string' && manualIds.has(candidate.id.trim())) {
+          warnings.push(`Optional provider duplicate ID ${candidate.id.slice(0, 100)} was omitted; the supplied manual option was retained.`)
+          return false
+        }
+        return true
+      })
       const normalized = normalizeCandidates(request, [...request.confirmedOptions, ...extraCandidates].slice(0, 12))
       const candidates: ConfirmedOption[] = normalized.candidates
-      request = TripRequestSchema.parse({ ...request, confirmedOptions: candidates })
+      request = PlanningTripRequestSchema.parse({ ...request, confirmedOptions: candidates })
       const result = planRecovery(request, candidates, { now: checkedAt })
+      if (flightStatus) result.flightStatus = flightStatus
       result.warnings = boundedNotes([...result.warnings, ...normalized.warnings, ...warnings])
       const expiresAt = [new Date(toInstantMillis(checkedAt) + MAX_FACT_AGE_MS).toISOString(),
         ...originalExpiries([candidates, evidence])].sort((a, b) => toInstantMillis(a) - toInstantMillis(b))[0]
       const body: RecoveryResponse = RecoveryResponseSchema.parse({ result, facts: {
+        ...(flightStatus ? { flightStatus } : {}),
         candidates, arrival: { arrivalAt: request.arrivalAt, arrivalBasis: request.arrivalBasis }, arrivalEvidence: evidence,
         checkedAt, expiresAt, adapterRevision: ADAPTER_REVISION,
       } })

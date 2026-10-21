@@ -19,7 +19,13 @@ import {
   emptyDraft,
 } from "@/features/recovery/formModel";
 import type { Draft, FormErrors } from "@/features/recovery/formModel";
-function App() {
+import { FlightStatusPanel } from "@/features/recovery/FlightStatusPanel";
+import {
+  containsGoogleRoutes,
+  GOOGLE_SAVE_MESSAGE,
+} from "@/features/recovery/providerRetention";
+import { LegalPage, LegalFooter } from "@/features/recovery/LegalPage";
+function RecoveryApp() {
   const [draft, setDraft] = useState(emptyDraft);
   const [mode, setMode] = useState<TripRequest["mode"]>("real");
   const [exampleOptions, setExampleOptions] = useState<ConfirmedOption[]>([]);
@@ -236,6 +242,7 @@ function App() {
                 </AlertDescription>
               </Alert>
             )}
+            <FlightStatusPanel report={state.result?.flightStatus} />
             <OptionList
               result={state.result}
               selectedId={state.selectedPlanId}
@@ -255,12 +262,24 @@ function App() {
             />
             <Button
               disabled={
-                !selectionSnapshot(state, now(), new Date().toISOString()).ok
+                !selectionSnapshot(state, now(), new Date().toISOString()).ok &&
+                !(
+                  !state.stale &&
+                  state.result?.plans.some(
+                    (p) =>
+                      p.id === state.selectedPlanId && containsGoogleRoutes(p),
+                  )
+                )
               }
               onClick={() => recovery.save(now())}
             >
               Save on this device
             </Button>
+            {state.result?.plans.some(
+              (p) => p.id === state.selectedPlanId && containsGoogleRoutes(p),
+            ) && (
+              <p className="text-sm text-amber-900">{GOOGLE_SAVE_MESSAGE}</p>
+            )}
             {recovery.storageMessage && (
               <p role="status" className="text-sm text-green-800">
                 {recovery.storageMessage}
@@ -268,7 +287,11 @@ function App() {
             )}
             {recovery.storageError && (
               <Alert role="alert">
-                <AlertTitle>Device storage unavailable</AlertTitle>
+                <AlertTitle>
+                  {recovery.storageError.includes("Google Maps")
+                    ? "Device saving restricted"
+                    : "Device storage unavailable"}
+                </AlertTitle>
                 <AlertDescription>{recovery.storageError}</AlertDescription>
                 {!recovery.saved && (
                   <Button
@@ -299,7 +322,14 @@ function App() {
           </div>
         </div>
       </main>
+      <LegalFooter />
     </>
   );
+}
+function App() {
+  const path = window.location.pathname.replace(/\/$/, "");
+  if (path === "/terms" || path === "/privacy")
+    return <LegalPage page={path === "/terms" ? "terms" : "privacy"} />;
+  return <RecoveryApp />;
 }
 export default App;

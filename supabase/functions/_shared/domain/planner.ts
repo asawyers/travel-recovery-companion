@@ -1,4 +1,4 @@
-import { RecoveryPlanSchema, RecoveryResultSchema, TripRequestSchema } from './schemas.ts'
+import { RecoveryPlanSchema, RecoveryResultSchema, PlanningTripRequestSchema } from './schemas.ts'
 import type { ConfirmedOption, CostLine, JourneyLeg, RecoveryPlan, RecoveryResult, SourceEvidence, TransferInput, TransitOption, TripRequest } from './schemas.ts'
 import { normalizeCandidates } from './candidates.ts'
 import { addMinutes, minutesBetween, sumCosts, toInstantMillis, toTripLocalTime } from './time.ts'
@@ -62,6 +62,7 @@ function transferCount(legs: JourneyLeg[]): number {
 function buildPlan(request: TripRequest, candidate: ConfirmedOption, now: string): RecoveryPlan {
   const warnings: string[] = []
   const violations: string[] = []
+  if (toInstantMillis(request.arrivalAt) >= toInstantMillis(request.deadlineAt)) violations.push('The destination deadline is already reached at airport arrival.')
   let confirmation = candidate.confirmations.length > 0
   const firstAccess = candidate.kind === 'overnight' ? candidate.hotelAccess : candidate.access
   requireFact(firstAccess.from === 'BOS' || firstAccess.from === 'BOS terminal exit', 'Airport access does not connect to the BOS terminal exit.')
@@ -149,7 +150,7 @@ function rank(priority: TripRequest['priority'], a: RecoveryPlan, b: RecoveryPla
 
 /** Pure, portable arithmetic. All time comes from the request and injected clock. */
 export function planRecovery(input: TripRequest, inputs: readonly unknown[], context: { now: string }): RecoveryResult {
-  const request = TripRequestSchema.parse(input)
+  const request = PlanningTripRequestSchema.parse(input)
   toInstantMillis(context.now)
   const { candidates, warnings } = normalizeCandidates(request, inputs)
   const plans: RecoveryPlan[] = []; const rejected: RecoveryPlan[] = []

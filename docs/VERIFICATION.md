@@ -1,6 +1,6 @@
 # Verification status
 
-The account-free challenge app is deployed at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app) and connected to its public Supabase recovery function. Production and Preview Git deployments are confirmed. The independent technical gate passed, including all 25 configured hosted Brave cases; optional live travel and model integrations remain unavailable.
+The account-free challenge app is deployed at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app) and connected to its public Supabase recovery function. Production and Preview Git deployments are confirmed. The deployed core previously passed 25 hosted Brave cases. The new FlightAware/Google Routes build passes its local gate below; publication and live provider acceptance remain separate. No provider accounts/keys/cost limits exist yet, and no live provider calls were made.
 
 ## Revisions
 
@@ -62,3 +62,24 @@ Superpowers plans, the private handoff, transferred assessment/spec/provenance a
 
 
 The technical gate also checked keyboard selection, 320/390 px layouts without horizontal overflow, and fixed provider hrefs with safe new-tab attributes. It did not verify live inventory or the author’s personal understanding. The production build retains a nonblocking main-chunk warning above 500 kB; npm reported an unapproved optional `fsevents` install script. Neither prevented the captured install/build/browser checks.
+
+
+## Task 10 provider build: local acceptance
+
+The working revision adds server-only FlightAware and Google Routes adapters, bounded HTTP/registry orchestration, strict normalized flight reports, flight input/arrival selection, evidence-aware labels, Google attribution, transient Google data handling and public terms/privacy pages. `RECOVERY_PROVIDER_USAGE_APPROVED` defaults off; no cloud secret or account configuration was performed. Facts revision is now `public-providers-v2`.
+
+After independent spec findings were corrected, fresh checks passed:
+
+| Command/check | Result |
+| --- | --- |
+| `npm run test` | 212 tests across 15 files passed |
+| `npm run build` | TypeScript and Vite passed; existing chunk warning remains |
+| Deno entrypoint check | Passed |
+| Real loopback HTTP integration | Five cases passed against the restarted provider-v2 handler |
+| Local configured Brave suite | All 32 cases passed in 29.8 seconds |
+
+Seven new browser cases cover provider UI and public policy pages; six use explicitly provider-shaped test responses. They cover flight report times/outcomes, separate report and arrival provenance, Google attribution, no Google content in device snapshots, priority-only report reuse, changed flight input causing a new request, and public policy pages. They are not real FlightAware/Google API evidence. Existing manual/fictional HTTP comparison, constraints, stale handling and save/history/delete continue to pass. The handler was exercised on 127.0.0.1:37424 with disabled providers; the frontend used 127.0.0.1:5175.
+
+Spec review corrected late/equal verified arrivals reverting to an earlier fallback, manual/provider ID collisions, missing walking links becoming zero-minute transfers, unrelated arrival evidence on the flight report and attribution details. Regression tests failed before each fix and passed afterward. Trusted planning requests can represent an unreachable deadline while public input remains strict; the planner returns no selectable plan and preserves the deadline. The initial 196-test/31-browser run preceded those corrections; the final counts above supersede it.
+
+Both independent spec scopes and final quality review approved the corrected implementation and setup documentation. Publication is pending at this checkpoint. Optional real flight/route acceptance stays blocked on authorized accounts/keys and actual limits; no fixture result closes that gate. The requested next step after the build is the [provider setup guide](PROVIDER_SETUP.md).

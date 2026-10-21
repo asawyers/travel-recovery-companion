@@ -249,3 +249,60 @@ describe("device saved selection", () => {
     ).toBeNull();
   });
 });
+
+it("blocks a Google-derived selected plan before overwriting the previous device snapshot", () => {
+  const storage = memory();
+  writeSavedSelection(storage, snapshot);
+  const previous = storage.getItem(SAVED_PLAN_KEY);
+  const google = structuredClone(snapshot);
+  google.plan.legs[0].evidence[0].provider = "Google Maps Routes API";
+  expect(writeSavedSelection(storage, google)).toMatchObject({
+    ok: false,
+    message: expect.stringMatching(/Google Maps.*cannot.*saved/i),
+  });
+  expect(storage.getItem(SAVED_PLAN_KEY)).toBe(previous);
+  expect(SavedSelectionSchema.safeParse(google).success).toBe(false);
+  storage.setItem(SAVED_PLAN_KEY, JSON.stringify(google));
+  expect(readSavedSelection(storage).ok).toBe(false);
+});
+it("filters Google alternatives from a manual selection's saved request without losing manual facts", () => {
+  const s = selectedState();
+  const request = structuredClone(s.result!.request);
+  const google = structuredClone(request.confirmedOptions[0]);
+  google.id = "google-alternative-fixture";
+  if (google.kind !== "overnight")
+    throw new Error("Expected overnight fixture");
+  google.hotel.evidence[0].provider = "Google Maps Routes API";
+  request.confirmedOptions.push(google);
+  const selected = selectionSnapshot(
+    { ...s, result: { ...s.result!, request } },
+    f.now,
+    selectedAt,
+  );
+  expect(selected.ok).toBe(true);
+  if (!selected.ok) throw new Error(selected.message);
+  expect(selected.value.request.confirmedOptions).toHaveLength(
+    request.confirmedOptions.length - 1,
+  );
+  expect(JSON.stringify(selected.value)).not.toContain(
+    "Google Maps Routes API",
+  );
+  expect(JSON.stringify(selected.value)).not.toContain(
+    "google-alternative-fixture",
+  );
+  expect(selected.value.plan).toEqual(plan);
+  expect(request.confirmedOptions).toHaveLength(
+    snapshot.request.confirmedOptions.length + 1,
+  );
+  const direct = { ...snapshot, request };
+  expect(writeSavedSelection(memory(), direct).ok).toBe(true);
+  expect(SavedSelectionSchema.safeParse(direct).success).toBe(false);
+});
+
+it("returns the invalid-selection message for malformed direct writes without touching device storage", () => {
+  const storage = memory();
+  expect(
+    writeSavedSelection(storage, { ...snapshot, request: null as never }),
+  ).toMatchObject({ ok: false, message: expect.stringMatching(/invalid/i) });
+  expect(storage.values.size).toBe(0);
+});

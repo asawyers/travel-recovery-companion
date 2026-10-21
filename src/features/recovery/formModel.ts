@@ -19,6 +19,9 @@ import {
 export type Draft = ReturnType<typeof emptyDraft>;
 export const emptyDraft = () => ({
   arrivalAt: "",
+  arrivalChoice: "manual" as "manual" | "flight-status",
+  flightIdent: "",
+  flightDepartureDate: "",
   originalDepartureAt: "",
   deadlineAt: "",
   budget: "",
@@ -122,6 +125,12 @@ export function draftFromRequest(r: TripRequest): Draft {
   const draft: Draft = {
     ...emptyDraft(),
     arrivalAt: localInput(r.arrivalAt),
+    arrivalChoice:
+      r.flight && r.arrivalBasis !== "traveler_confirmed"
+        ? "flight-status"
+        : "manual",
+    flightIdent: r.flight?.ident ?? "",
+    flightDepartureDate: r.flight?.departureDate ?? "",
     originalDepartureAt: localInput(r.originalDepartureAt),
     deadlineAt: localInput(r.deadlineAt),
     budget: r.budgetCents === null ? "" : String(r.budgetCents / 100),
@@ -235,6 +244,33 @@ export function buildRequest(
       return undefined;
     }
   }
+  let flight: TripRequest["flight"] = null;
+  if (
+    d.flightIdent.trim() ||
+    d.flightDepartureDate ||
+    d.arrivalChoice === "flight-status"
+  ) {
+    if (!d.flightIdent.trim())
+      errors.flightIdent = "Enter the flight identifier.";
+    if (!d.flightDepartureDate)
+      errors.flightDepartureDate = "Enter the departure date at San Diego.";
+    const parsed = TripRequestSchema.shape.flight.safeParse({
+      ident: d.flightIdent.trim(),
+      departureDate: d.flightDepartureDate,
+    });
+    if (parsed.success) flight = parsed.data;
+    else
+      for (const issue of parsed.error.issues)
+        errors[
+          issue.path[0] === "ident" ? "flightIdent" : "flightDepartureDate"
+        ] = "Enter a valid flight identifier and departure date.";
+  }
+  const unchangedArrival =
+    originalDraft &&
+    d.arrivalAt === originalDraft.arrivalAt &&
+    d.arrivalChoice === originalDraft.arrivalChoice &&
+    d.flightIdent === originalDraft.flightIdent &&
+    d.flightDepartureDate === originalDraft.flightDepartureDate;
   const arrivalAt = date("arrivalAt", d.arrivalAt);
   const originalDepartureAt = date(
     "originalDepartureAt",
@@ -464,10 +500,12 @@ export function buildRequest(
     timeZone: "America/New_York",
     arrivalAt,
     arrivalBasis:
-      original && d.arrivalAt === originalDraft?.arrivalAt
+      original && unchangedArrival
         ? original.arrivalBasis
-        : "traveler_confirmed",
-    flight: original?.flight ?? null,
+        : d.arrivalChoice === "flight-status"
+          ? "estimated_gate"
+          : "traveler_confirmed",
+    flight,
     originalDepartureAt,
     originalAccessMinutes,
     originalBoardingMinutes,

@@ -2,6 +2,7 @@ import type { RecoveryResult } from "@domain/schemas";
 import { toInstantMillis } from "@domain/time";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ProviderAttribution, planSourceLabels } from "./ProviderAttribution";
 export const money = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
     cents / 100,
@@ -158,14 +159,12 @@ export function OptionList({
                     </div>
                   </dl>
                   <p className="mt-3 text-xs text-muted-foreground">
-                    {result.request.mode === "synthetic"
-                      ? "Synthetic / fictional sources"
-                      : "Traveler-entered sources"}{" "}
-                    ·{" "}
+                    {planSourceLabels(p)} ·{" "}
                     {p.feasibility === "requires_confirmation"
                       ? "Requires confirmation"
                       : "Schedule feasible, seat unconfirmed"}
                   </p>
+                  <ProviderAttribution plan={p} />
                   {!p.priceComplete && (
                     <p className="mt-2 text-sm text-amber-800">
                       Price incomplete. The known total is a lower bound.

@@ -187,3 +187,26 @@ describe('rental pickup after midnight', () => {
     expect(rejected.warnings.join()).toMatch(/pickup.*service date/i)
   })
 })
+
+describe('trusted arrival after the hard deadline', () => {
+  it.each(['2026-11-18T14:00:00-05:00', '2026-11-18T15:00:00-05:00'])('returns no selectable plans for arrival %s without moving the deadline', arrivalAt => {
+    const fixture = daytimeFixture()
+    const request = { ...fixture.request, arrivalAt, arrivalBasis: 'actual_gate' as const }
+    const result = planRecovery(request, request.confirmedOptions, { now: '2026-10-21T12:00:00Z' })
+    expect(result.request.arrivalAt).toBe(arrivalAt)
+    expect(result.request.deadlineAt).toBe(fixture.request.deadlineAt)
+    expect(result.plans).toEqual([])
+    expect(result.warnings.join(' ')).toMatch(/No feasible/i)
+  })
+})
+
+it('rejects even a zero-duration car candidate when gate arrival has already reached the destination deadline', () => {
+  const fixture = daytimeFixture()
+  const car = fixture.request.confirmedOptions.find(candidate => candidate.kind === 'car')
+  if (!car || car.kind !== 'car') throw new Error('Fixture car missing')
+  const zeroDurationCar = { ...car, access: { ...car.access, minutes: 0 }, pickupMinutes: 0, driveMinutes: 0, returnMinutes: 0, finalTransfer: { ...car.finalTransfer, minutes: 0 } }
+  const request = { ...fixture.request, arrivalAt: fixture.request.deadlineAt, airportExitMinutes: 0, confirmedOptions: [zeroDurationCar] }
+  const result = planRecovery(request, request.confirmedOptions, { now: '2026-10-21T12:00:00Z' })
+  expect(result.plans).toEqual([])
+  expect(result.rejected[0]?.violations.join(' ')).toMatch(/deadline/i)
+})

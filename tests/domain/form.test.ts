@@ -203,3 +203,54 @@ it("restores manual rental controls while retaining original options for factual
     "manual-transit",
   ]);
 });
+
+it("keeps an explicit manual gate override and accepts an optional flight lookup", () => {
+  const d = {
+    ...manual(),
+    flightIdent: "ASA123",
+    flightDepartureDate: "2026-11-18",
+  };
+  expect(buildRequest(d, "real", [], now).request).toMatchObject({
+    arrivalBasis: "traveler_confirmed",
+    flight: { ident: "ASA123", departureDate: "2026-11-18" },
+  });
+});
+it("uses entered gate time as estimated fallback only when flight status is chosen", () => {
+  const d = {
+    ...manual(),
+    arrivalChoice: "flight-status" as const,
+    flightIdent: "ASA123",
+    flightDepartureDate: "2026-11-18",
+  };
+  expect(buildRequest(d, "real", [], now).request?.arrivalBasis).toBe(
+    "estimated_gate",
+  );
+  expect(
+    buildRequest({ ...d, flightDepartureDate: "" }, "real", [], now).errors
+      .flightDepartureDate,
+  ).toBeTruthy();
+});
+it("restores flight controls, preserves untouched original timestamps and replaces edited lookup fields", () => {
+  const original = buildRequest(manual(), "real", [], now).request!;
+  original.arrivalBasis = "actual_gate";
+  original.flight = { ident: "ASA123", departureDate: "2026-11-18" };
+  const d = draftFromRequest(original);
+  expect(d).toMatchObject({
+    arrivalChoice: "flight-status",
+    flightIdent: "ASA123",
+    flightDepartureDate: "2026-11-18",
+  });
+  const changed = buildRequest(
+    { ...d, flightIdent: "ASA456" },
+    "real",
+    [],
+    now,
+    original,
+  ).request!;
+  expect(changed.flight?.ident).toBe("ASA456");
+  expect(changed.arrivalBasis).toBe("estimated_gate");
+  expect(
+    buildRequest({ ...d, arrivalChoice: "manual" }, "real", [], now, original)
+      .request?.arrivalBasis,
+  ).toBe("traveler_confirmed");
+});

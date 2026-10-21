@@ -6,9 +6,9 @@ The motivation is the author's San Diego → Portland journey: a delay on the Sa
 
 ## Current state
 
-[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend is connected to the deployed backend, and all 25 hosted Brave acceptance cases pass.
+[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend is connected to the deployed backend, and the deployed core has passed hosted Brave acceptance. The provider-adapter build is verified locally and is awaiting publication.
 
-The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion are verified on the deployed app. Public server comparison and current-tab priority reuse are implemented. The backend is deployed through GitHub Actions and the production frontend is connected. Optional live integrations remain pending.
+The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion are verified on the deployed app. Public server comparison and current-tab priority reuse are implemented. The backend is deployed through GitHub Actions and the production frontend is connected. FlightAware and Google Routes adapters are implemented but disabled pending account/key/usage-limit setup. Optional hotels and the model agent remain pending.
 
 There is no sign-in or email workflow. Saving keeps one chosen itinerary on this device's browser profile, with original evidence timestamps and an explicit delete action. It does not sync across devices or purchase tickets/reservations. A restored itinerary is historical until explicitly refreshed.
 
@@ -29,15 +29,23 @@ npm run build
 npm run test:e2e -- tests/e2e/guest.spec.ts
 ```
 
-The account-free core passes 111 unit tests, five real HTTP integration tests, 25 hosted configured-backend Brave cases, 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
+The account-free core passes 212 unit tests, five real HTTP integration tests, 32 local configured-backend Brave cases, 25 earlier hosted core cases and 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
 
 ## Stack and backend direction
 
 React/Vite/TypeScript, shadcn/ui and Tailwind share a pure validated planner with an intentionally public stateless Supabase Edge Function. No frontend Supabase SDK, product Auth or application database is needed. Optional `VITE_RECOVERY_API_URL` configures the full public recovery endpoint; without it the local planner remains usable. Provider/model credentials belong only on the server, never in `VITE_` variables.
 
-The local backend validates bounded requests, sanitizes traveler-provided evidence and returns normalized facts. It passes five real HTTP integration cases without credentials. Browser comparisons use that public endpoint when configured. Priority-only refinements reuse eligible facts in the current tab without another HTTP/provider/model call. Other edits or expiry require reassessment. Native Vercel Git integration is the deployment target, with lean functions-only backend CI.
+The backend validates bounded requests, sanitizes traveler-provided evidence and returns normalized facts. It passes five real HTTP integration cases without credentials. Browser comparisons use that public endpoint when configured. Priority-only refinements reuse eligible facts in the current tab without another HTTP/provider/model call. Other edits or expiry require reassessment. Native Vercel Git integration is the deployment target, with lean functions-only backend CI.
 
 Live/schedule/traveler-confirmed/estimated/synthetic facts remain distinct. Unknown charges remain unknown. Optional provider/model access requires actual configured usage limits; no paid calls, purchases or reservations are implied. This is a challenge prototype. Two hours is an effort estimate, not a hard timer.
+
+## Flight and route providers
+
+Optional flight input covers a San Diego → Boston flight number and San Diego departure date. Keep the entered gate time as a confirmed override, or choose a flight-status lookup with that time as fallback. Reports keep scheduled, estimated and actual gate times separate from runway touchdown. A verified arrival at/after the destination deadline produces no feasible plan; the deadline is never moved to make it fit.
+
+Google Routes can supply supported Concord bus and Amtrak/Downeaster rail schedules, including estimated North Station access and final walking. Unsupported multi-vehicle journeys are omitted. Missing fares stay unknown. These schedules/estimates do not establish seats or vehicle inventory. Google-sourced plans remain transient: they can be compared and opened, while device-save is refused with an explanation. Manual saves filter Google alternatives from the stored request.
+
+Live calls default off. Backend-only `FLIGHTAWARE_API_KEY` / `GOOGLE_ROUTES_API_KEY` plus `RECOVERY_PROVIDER_USAGE_APPROVED=true` are required; that switch is not an enforced spending cap. One investigation is bounded to one FlightAware and at most three Google requests. No credentials, provider accounts, paid calls or actual provider coverage were established by fixture tests. Follow the [post-build setup walkthrough](docs/PROVIDER_SETUP.md) before activation. Public [terms](https://travel-recovery-companion.vercel.app/terms) and [privacy](https://travel-recovery-companion.vercel.app/privacy) pages accompany provider content.
 
 ## How a comparison works
 
@@ -57,7 +65,7 @@ cp .env.integration.example .env.integration.local
 supabase functions serve recovery
 ```
 
-In another terminal, run `npm run test:integration`. The recovery endpoint is `http://127.0.0.1:54321/functions/v1/recovery`. It is intentionally public; no user token or Supabase client key is needed, and it creates no application database rows. Provider/model adapters remain unavailable.
+In another terminal, run `npm run test:integration`. The recovery endpoint is `http://127.0.0.1:54321/functions/v1/recovery`. It is intentionally public; no user token or Supabase client key is needed, and it creates no application database rows. Provider/model calls remain disabled until configured; the FlightAware and Google Routes code is fixture-tested.
 
 The browser endpoint setting is optional: set `VITE_RECOVERY_API_URL=http://127.0.0.1:54321/functions/v1/recovery` in ignored `.env.local`, then restart Vite. Leaving the setting empty uses the local planner; frontend-only previews need no backend credentials. Never put provider credentials in frontend environment variables.
 
@@ -77,6 +85,6 @@ The GitHub workflow checks Node 24 install, unit tests and build on pushes/PRs. 
 - Confirm manual and explicit fictional comparison, constraints, selection, device save, reload and delete at the deployed URL.
 - Record frontend/backend revisions, actual checks, unfinished features and deployment blockers in [verification status](docs/VERIFICATION.md).
 - Explain local run commands and source labels; the author must understand the code even when AI is used.
-- Authentication is intentionally omitted by the author’s scope decision. Live inventory and the optional agent remain unavailable until authorized access and usage limits exist.
+- Authentication is intentionally omitted by the author’s scope decision. Live provider acceptance and the optional agent remain unavailable until authorized access and usage limits exist.
 
 Hosted recovery endpoint: `https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery`. Direct unauthenticated daytime, overnight and manual-input requests passed runtime validation; daytime and overnight plans matched the pure planner. The production frontend includes this address, and its configured hosted browser acceptance passed.

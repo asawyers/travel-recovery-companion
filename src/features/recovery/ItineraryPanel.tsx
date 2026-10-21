@@ -10,6 +10,7 @@ import {
   isAllowedHandoffUrl,
   resolveHandoff,
 } from "@domain/handoffs";
+import { ProviderAttribution } from "./ProviderAttribution";
 import { money, time } from "./OptionList";
 export function ItineraryPanel({
   plan,
@@ -60,6 +61,7 @@ export function ItineraryPanel({
                 : "Selected for review · Not booked or saved"}
           </p>
           <h3 className="mt-3 font-semibold">{plan.title}</h3>
+          <ProviderAttribution plan={plan} />
           <p className="mt-2 text-sm tabular-nums">
             {plan.durationMinutes} minutes from gate arrival ·{" "}
             {money(plan.knownCostCents)}{" "}

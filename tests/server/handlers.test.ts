@@ -156,8 +156,12 @@ describe('public stateless recovery handler', () => {
       await vi.advanceTimersByTimeAsync(10_001)
       expect((await pending).status).toBe(408)
       const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: () => new Promise(() => {}) } })
-      const providerPending = run(post({ ...input(), investigate: true }))
-      await vi.advanceTimersByTimeAsync(10_001)
+      const providerPending = run(post({ request: real(input().request), investigate: true }))
+      let completed = false
+      void providerPending.then(() => { completed = true })
+      await vi.advanceTimersByTimeAsync(14_999)
+      expect(completed).toBe(false)
+      await vi.advanceTimersByTimeAsync(2)
       expect((await providerPending).status).toBe(200)
     } finally { vi.useRealTimers() }
   })
@@ -207,5 +211,88 @@ describe('public stateless recovery handler', () => {
     const body = await (await handler()(post(input()))).json()
     expect(RecoveryResponseSchema.safeParse({ ...body, facts: { ...body.facts, expiresAt: '2026-10-22T00:00:00Z' } }).success).toBe(false)
     expect(RecoveryInputSchema.safeParse({ ...input(), cache: {} }).success).toBe(false)
+  })
+})
+
+
+describe('provider integration boundaries', () => {
+  const report = { ident: 'JBU123', faFlightId: 'JBU123-1', scheduledIn: '2026-10-21T12:00:00Z', estimatedIn: null, actualIn: null, actualOn: null, outcome: 'gate_available' as const }
+  it('copies validated flight status into result and facts', async () => {
+    const request = real(daytimeFixture().request)
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: async () => ({ candidates: [], flightStatus: report, warnings: [] }) } })
+    const body = RecoveryResponseSchema.parse(await (await run(post({ request, investigate: true }))).json())
+    expect(body.result.flightStatus).toEqual(report); expect(body.facts.flightStatus).toEqual(report)
+  })
+  it('retains explicit traveler arrival even for an injected provider override', async () => {
+    const request = { ...real(daytimeFixture().request), arrivalBasis: 'traveler_confirmed' as const }
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: async () => ({ candidates: [], flightStatus: report, arrival: { arrivalAt: request.arrivalAt, arrivalBasis: 'actual_gate' }, arrivalEvidence: [request.confirmedOptions[0].evidence[0]], warnings: [] }) } })
+    const body = RecoveryResponseSchema.parse(await (await run(post({ request, investigate: true }))).json())
+    expect(body.facts.arrival.arrivalBasis).toBe('traveler_confirmed'); expect(body.result.flightStatus).toEqual(report)
+  })
+  it('never invokes a provider registry for synthetic trips', async () => {
+    const gatherPermittedFacts = vi.fn(async () => ({ candidates: [], warnings: [] }))
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts } })
+    expect((await run(post({ ...input(), investigate: true }))).status).toBe(200)
+    expect(gatherPermittedFacts).not.toHaveBeenCalled()
+  })
+  it('discards malformed optional flight reports while preserving manual candidates', async () => {
+    const request = real(daytimeFixture().request)
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: async () => ({ candidates: [], flightStatus: { ...report, actualOn: 'invalid' }, warnings: [] }) } })
+    const body = RecoveryResponseSchema.parse(await (await run(post({ request, investigate: true }))).json())
+    expect(body.facts.candidates).toHaveLength(3); expect(body.result.flightStatus).toBeUndefined()
+    expect(body.result.warnings.join(' ')).toMatch(/flight status.*unavailable/i)
+  })
+})
+
+describe('Edge entrypoint provider activation', () => {
+  it('requires explicit usage approval plus each provider key before enabling an adapter', async () => {
+    const flightFactory = vi.fn(() => async () => ({ status: 'unavailable', reason: 'Test disabled', retryable: false }))
+    const routesFactory = vi.fn(() => async () => ({ status: 'unavailable', reason: 'Test disabled', retryable: false }))
+    vi.doMock('../../supabase/functions/_shared/server/flightaware.ts', () => ({ createFlightAwareAdapter: flightFactory }))
+    vi.doMock('../../supabase/functions/_shared/server/google-routes.ts', () => ({ createGoogleRoutesAdapter: routesFactory }))
+    try {
+      for (const [approved, flightKey, routesKey, enabledFlight, enabledRoutes] of [
+        [undefined, 'fake-flight', 'fake-routes', false, false], ['false', 'fake-flight', 'fake-routes', false, false],
+        ['true', undefined, undefined, false, false], ['true', 'fake-flight', undefined, true, false], ['true', 'fake-flight', 'fake-routes', true, true],
+      ] as const) {
+        vi.resetModules()
+        const values = { RECOVERY_PROVIDER_USAGE_APPROVED: approved, FLIGHTAWARE_API_KEY: flightKey, GOOGLE_ROUTES_API_KEY: routesKey }
+        vi.stubGlobal('Deno', { env: { get: (name: keyof typeof values) => values[name] }, serve: vi.fn() })
+        await import('../../supabase/functions/recovery/index.ts')
+        expect(flightFactory.mock.lastCall?.[0]).toMatchObject({ enabled: enabledFlight })
+        expect(routesFactory.mock.lastCall?.[0]).toMatchObject({ enabled: enabledRoutes })
+      }
+    } finally {
+      vi.unstubAllGlobals()
+      vi.doUnmock('../../supabase/functions/_shared/server/flightaware.ts')
+      vi.doUnmock('../../supabase/functions/_shared/server/google-routes.ts')
+      vi.resetModules()
+    }
+  })
+})
+
+describe('trusted late arrivals and optional candidate collisions', () => {
+  it.each(['2026-11-18T14:00:00-05:00', '2026-11-18T15:00:00-05:00'])('plans honestly from arrival %s after the deadline becomes unreachable', async arrivalAt => {
+    const request = real(daytimeFixture().request)
+    const evidence = request.confirmedOptions[0].evidence[0]
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: async () => ({ candidates: [], arrival: { arrivalAt, arrivalBasis: 'actual_gate' }, arrivalEvidence: [evidence], warnings: [] }) } })
+    const response = await run(post({ request, investigate: true }))
+    expect(response.status).toBe(200)
+    const body = RecoveryResponseSchema.parse(await response.json())
+    expect(body.facts.arrival).toEqual({ arrivalAt, arrivalBasis: 'actual_gate' })
+    expect(body.result.request.deadlineAt).toBe(request.deadlineAt)
+    expect(body.facts.candidates).toHaveLength(3)
+    expect(body.result.plans).toEqual([])
+    expect(body.result.warnings.join(' ')).toMatch(/No feasible/i)
+  })
+  it('retains the manual option when an optional provider candidate has the same ID', async () => {
+    const request = real(daytimeFixture().request)
+    const manual = request.confirmedOptions[0]
+    const duplicate = { ...manual, title: 'Optional duplicate' }
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: async () => ({ candidates: [duplicate], warnings: [] }) } })
+    const body = RecoveryResponseSchema.parse(await (await run(post({ request, investigate: true }))).json())
+    expect(body.facts.candidates).toHaveLength(3)
+    expect(body.facts.candidates.find(candidate => candidate.id === manual.id)?.title).toBe(manual.title)
+    expect(body.result.warnings.join(' ')).toMatch(/provider.*duplicate|optional.*duplicate/i)
   })
 })

@@ -1,4 +1,4 @@
-import { ConfirmedOptionSchema, TripRequestSchema } from './schemas.ts'
+import { ConfirmedOptionSchema, PlanningTripRequestSchema } from './schemas.ts'
 import type { ConfirmedOption, TripRequest } from './schemas.ts'
 
 /** Invalid external facts must not remove unrelated, supported alternatives. */
@@ -20,7 +20,7 @@ export function normalizeCandidates(request: TripRequest, inputs: readonly unkno
       continue
     }
     // Reuse the canonical recursive mode check without trusting external provenance as authentication.
-    if (!TripRequestSchema.safeParse({ ...request, confirmedOptions: [parsed.data] }).success) {
+    if (!PlanningTripRequestSchema.safeParse({ ...request, confirmedOptions: [parsed.data] }).success) {
       warnings.push(`Evidence environment for ${label} does not match request mode; candidate omitted.`)
       continue
     }

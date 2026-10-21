@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CarOptionSchema, CostLineSchema, HotelOptionSchema, RecoveryPlanSchema, RecoveryResultSchema, SourceEvidenceSchema, TripRequestSchema } from '@domain/schemas'
+import { CarOptionSchema, CostLineSchema, HotelOptionSchema, RecoveryPlanSchema, RecoveryResultSchema, PlanningTripRequestSchema, SourceEvidenceSchema, TripRequestSchema } from '@domain/schemas'
 
 const at = '2026-11-18T08:00:00-05:00'
 const evidence = () => ({ type: 'synthetic', provider: 'Fictional schedule', sourceUrl: null, checkedAt: at, serviceDate: '2026-11-18', providerUpdatedAt: null, expiresAt: null, environment: 'synthetic', warnings: ['Fictional example'] })
@@ -165,5 +165,16 @@ describe('explicit car and hotel pricing', () => {
     expect(RecoveryPlanSchema.safeParse({ ...plan(), hotel: { ...hotel(), costs: [] } }).success).toBe(false)
     const wait = { id: 'wait', kind: 'wait', from: 'North Station', to: 'North Station', startAt: at, endAt: at, vehicleId: null, costs: [], evidence: [evidence()], assumptions: [], handoffId: null }
     expect(RecoveryPlanSchema.safeParse({ ...plan(), hotel: null, legs: [wait] }).success).toBe(true)
+  })
+})
+
+
+describe('trusted planning request boundary', () => {
+  it.each(['2026-11-18T14:00:00-05:00', '2026-11-18T15:00:00-05:00'])('preserves strict input chronology but accepts trusted late arrival %s for planning', arrivalAt => {
+    const late = { ...request(), arrivalAt, arrivalBasis: 'actual_gate' }
+    expect(TripRequestSchema.safeParse(late).success).toBe(false)
+    expect(PlanningTripRequestSchema.safeParse(late).success).toBe(true)
+    expect(PlanningTripRequestSchema.safeParse({ ...late, unexpected: true }).success).toBe(false)
+    expect(PlanningTripRequestSchema.safeParse({ ...late, mode: 'real' }).success).toBe(false)
   })
 })
