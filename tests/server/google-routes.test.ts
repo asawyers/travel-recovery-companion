@@ -194,6 +194,21 @@ describe('Google Routes server adapter', () => {
     expect(fetch).toHaveBeenCalledTimes(2)
   })
 
+  it('propagates only the fixed upstream validation diagnostic', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ error: { status: 'INVALID_ARGUMENT', message: 'SECRET departure_time must not be set with TRAFFIC_UNAWARE' } }, { status: 400 }))
+    const result = await adapter(fetch)(request(), { signal: signal() })
+    expect(JSON.stringify(result)).toContain('HTTP 400; departure_time_with_traffic_unaware')
+    expect(JSON.stringify(result)).not.toContain('SECRET')
+  })
+
+  it('identifies a malformed bus response shape without exposing provider content', async () => {
+    const fetch = fetcher([{ routes: Array.from({ length: 5 }, () => ({ secret: 'SECRET upstream value' })) }, {}])
+    const result = await adapter(fetch)(request(), { signal: signal() })
+    expect(result.status).toBe('unavailable')
+    expect(JSON.stringify(result)).toContain('Google Routes bus response was malformed (routes=array, count=5)')
+    expect(JSON.stringify(result)).not.toContain('SECRET')
+  })
+
   it('returns safe manual fallback on malformed upstream responses', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response('{not json'))
     const result = await adapter(fetch)(request(), { signal: signal() })

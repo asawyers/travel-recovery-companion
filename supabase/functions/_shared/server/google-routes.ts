@@ -43,6 +43,13 @@ const driveRoute = z.object({ duration: z.string().max(40), warnings: z.array(z.
 type Location = z.infer<typeof location>
 const clean = (value: string) => value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/https?:\/\/\S+/gi, '[link omitted]').trim().slice(0, 500)
 const notes = (values: string[]) => [...new Set(values.map(clean).filter(Boolean))].slice(0, 32)
+/** Only fixed shape names and counts enter diagnostics, never upstream values. */
+function responseShape(body: unknown): string {
+  const shape = (value: unknown) => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return `root=${shape(body)}`
+  const routes = (body as Record<string, unknown>).routes
+  return `routes=${shape(routes)}${Array.isArray(routes) ? `, count=${routes.length}` : ''}`
+}
 function seconds(value: string | undefined): number | null {
   if (!value || !/^\d+(?:\.\d{1,9})?s$/.test(value)) return null
   const number = Number(value.slice(0, -1))
@@ -165,7 +172,7 @@ export function createGoogleRoutesAdapter(options: ProviderAdapterOptions): Rout
       }
       const result = await pending
       if (!result.ok) {
-        const reason = result.status === undefined ? result.kind : `HTTP ${result.status}`
+        const reason = `${result.status === undefined ? result.kind : `HTTP ${result.status}`}${result.diagnostic ? `; ${result.diagnostic}` : ''}`
         warnings.push(result.kind === 'rate_limited' ? 'Google Routes rate limit reached; this optional route lookup is unavailable.' : `Google Routes lookup failed (${reason}); retain manual facts.`)
         return null
       }
@@ -179,7 +186,7 @@ export function createGoogleRoutesAdapter(options: ProviderAdapterOptions): Rout
     const addRoutes = (body: unknown, kind: 'bus' | 'train', driveMinutes: number, driveEnd?: Location) => {
       if (body === null) return // A failed lookup already has a safe diagnostic; it is not a malformed response.
       const parsedResponse = response.safeParse(body)
-      if (!parsedResponse.success) { warnings.push('Google Routes response was malformed; manual route facts were retained.'); return }
+      if (!parsedResponse.success) { warnings.push(`Google Routes ${kind} response was malformed (${responseShape(body)}); manual route facts were retained.`); return }
       for (const [index, value] of (parsedResponse.data.routes ?? []).entries()) {
         const option = normalizeRoute(value, kind, request, checkedAt, readyAt, driveMinutes, index, driveEnd)
         if (option) candidates.push(option); else warnings.push(COVERAGE_WARNING)
