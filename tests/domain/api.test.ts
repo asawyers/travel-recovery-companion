@@ -23,7 +23,6 @@ it("accepts only absolute public HTTP endpoints without credentials or fragments
 it("posts the exact public envelope without credentials and validates the real handler response", async () => {
   const handler = createRecoveryHandler({
     now: () => "2026-10-21T12:00:00Z",
-    allowedOrigins: [],
     providers: {
       gatherPermittedFacts: async () => ({ candidates: [], warnings: [] }),
     },
