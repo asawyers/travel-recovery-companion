@@ -1,4 +1,10 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { overnightFixture } from '@domain/fixtures'
+import { planRecovery } from '@domain/planner'
+import { TripRequestSchema } from '@domain/schemas'
+import { ItineraryPanel } from '../../src/features/recovery/ItineraryPanel'
 import * as handoffs from '@domain/handoffs'
 
 describe('verified handoff destinations', () => {
@@ -56,17 +62,24 @@ describe('verified handoff destinations', () => {
     expect(handoffs.isAllowedHandoffUrl('maps-directions', `${map}&origin=${'x'.repeat(2100)}`)).toBe(false)
   })
 
-  it('keeps privacy red herrings out of generated destinations', () => {
-    const privateContext = { email: 'traveler@example.com', nationality: 'Example', narrative: 'medical details' }
-    const hrefs = [
-      handoffs.resolveHandoff('amtrak')?.href,
-      handoffs.resolveHandoff('concord')?.href,
-      handoffs.resolveHandoff('kayak-bos')?.href,
-      handoffs.resolveHandoff('hotel-search')?.href,
-      handoffs.directions('BOS', 'Portland, Maine', 'driving').toString(),
-    ].join('\n')
-    expect(hrefs).not.toContain(privateContext.email)
-    expect(hrefs).not.toContain(privateContext.nationality)
-    expect(hrefs).not.toContain(privateContext.narrative)
+  it('omits accepted nationality and rejects private extras in rendered handoff links', () => {
+    const fixture = overnightFixture()
+    expect(fixture.request.stay?.guestNationality).toBe('US')
+    expect(TripRequestSchema.safeParse({
+      ...fixture.request,
+      email: 'traveler@example.com',
+      narrative: 'medical details',
+    }).success).toBe(false)
+
+    const result = planRecovery(fixture.request, fixture.candidates, { now: fixture.now })
+    const plan = result.plans.find((item) => item.id === 'hotel-bus')
+    expect(plan).toBeDefined()
+    const html = renderToStaticMarkup(createElement(ItineraryPanel, { plan, result }))
+    const hrefs = [...html.matchAll(/<a\b[^>]*href="([^"]+)"/g)].map((match) => match[1])
+
+    expect(hrefs.length).toBeGreaterThan(0)
+    expect(hrefs.join('\n')).not.toContain(fixture.request.stay?.guestNationality)
+    expect(hrefs).toContain('https://www.google.com/travel/hotels')
+    expect(hrefs).toContain('https://concordcoachlines.com/book-your-trip/')
   })
 })
