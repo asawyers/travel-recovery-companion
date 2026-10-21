@@ -6,7 +6,9 @@ The motivation is the author's San Diego → Portland journey: a delay on the Sa
 
 ## Current state
 
-The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion work locally. Public server comparison and current-tab priority reuse are implemented locally; optional live integrations and hosted deployment remain pending.
+[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend currently uses the local planner; the hosted backend is pending.
+
+The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion work locally. Public server comparison and current-tab priority reuse are implemented locally; optional live integrations and hosted backend deployment remain pending.
 
 There is no sign-in or email workflow. Saving keeps one chosen itinerary on this device's browser profile, with original evidence timestamps and an explicit delete action. It does not sync across devices or purchase tickets/reservations. A restored itinerary is historical until explicitly refreshed.
 
@@ -54,7 +56,7 @@ The browser endpoint setting is optional: set `VITE_RECOVERY_API_URL=http://127.
 
 ## Deployment status and setup
 
-[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. GitHub checks passed; backend deployment remains deliberately disabled. Hosted frontend/backend URLs and Git-triggered deployment evidence are pending. A local build is not a deployed application.
+[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. GitHub checks passed; backend deployment remains deliberately disabled. The [Vercel frontend](https://travel-recovery-companion.vercel.app) is publicly accessible. All 14 local-planner Brave browser checks passed against that HTTPS URL. Hosted backend setup and new production/preview Git-trigger verification remain pending.
 
 Connect only this repository to a new personal Vercel project using [Vercel’s native GitHub integration](https://vercel.com/docs/git/vercel-for-github). Use the Vite preset, repository root, Node 24, `npm ci`, `npm run build`, `dist` and production branch `main`. Main pushes should produce production deployments; branch/PR pushes should produce previews and GitHub deployment status. Verify both deployed commit SHAs. No Vercel token or custom deploy Action is needed.
 
