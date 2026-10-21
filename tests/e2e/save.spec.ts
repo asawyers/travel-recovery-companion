@@ -1,4 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
+import { overnightFixture } from "../../supabase/functions/_shared/domain/fixtures";
+import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
+import {
+  ADAPTER_REVISION,
+  RecoveryResponseSchema,
+} from "../../supabase/functions/_shared/domain/api";
 const key = "travel-recovery:selected:v1";
 async function chooseHotel(page: Page) {
   await page
@@ -261,4 +267,101 @@ test("expired history and unknown costs remain readable on a narrow device witho
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(320);
+});
+
+// This response fixture represents a validated API-created hotel absent from user input;
+// it is not evidence that a production provider is enabled.
+test("API-created hotel absent from original input saves and restores every detail without refetch", async ({
+  page,
+}) => {
+  const f = overnightFixture();
+  const checkedAt = new Date().toISOString();
+  const convert = (value: any): any =>
+    Array.isArray(value)
+      ? value.map(convert)
+      : value && typeof value === "object"
+        ? Object.fromEntries(
+            Object.entries(value).map(([name, item]) => [
+              name,
+              name === "type" && item === "synthetic"
+                ? "live"
+                : name === "environment" && item === "synthetic"
+                  ? "production"
+                  : convert(item),
+            ]),
+          )
+        : value;
+  const candidates = convert(f.candidates);
+  candidates.find(
+    (candidate: any) => candidate.kind === "overnight",
+  ).hotel.cancellation = {
+    text: "Refundable until the stated deadline",
+    deadlineAt: "2026-11-18T18:00:00-05:00",
+    penalty: "One room night after deadline",
+  };
+  const request = {
+    ...f.request,
+    mode: "real" as const,
+    confirmedOptions: candidates,
+  };
+  const result = planRecovery(request, candidates, { now: checkedAt });
+  const body = RecoveryResponseSchema.parse({
+    result,
+    facts: {
+      candidates,
+      arrival: {
+        arrivalAt: request.arrivalAt,
+        arrivalBasis: request.arrivalBasis,
+      },
+      arrivalEvidence: result.plans.find((p) => p.hotel)!.hotel!.evidence,
+      checkedAt,
+      expiresAt: new Date(Date.now() + 240_000).toISOString(),
+      adapterRevision: ADAPTER_REVISION,
+    },
+  });
+  let posts = 0;
+  let submitted: any;
+  await page.route("**/functions/v1/recovery", async (route) => {
+    posts++;
+    submitted = route.request().postDataJSON();
+    await route.fulfill({ json: body });
+  });
+  await page.goto("/");
+  await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
+  await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
+  await page.getByLabel("Final destination deadline").fill("2026-11-19T14:00");
+  await page
+    .getByRole("button", { name: "Compare recovery options", exact: true })
+    .click();
+  await page
+    .getByRole("button", {
+      name: "Choose Fictional overnight hotel and morning bus",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Save on this device", exact: true })
+    .click();
+  expect(submitted.request.confirmedOptions).toEqual([]);
+  const stored = await page.evaluate(
+    (k) => JSON.parse(localStorage.getItem(k)!),
+    key,
+  );
+  expect(stored.plan.hotel).toEqual(
+    body.result.plans.find((p) => p.hotel)!.hotel,
+  );
+  await page.reload();
+  await expect(page.getByTestId("saved-plan")).toContainText(
+    stored.plan.hotel.room,
+  );
+  await expect(page.getByTestId("saved-plan")).toContainText(
+    stored.plan.hotel.cancellation.text,
+  );
+  expect(
+    await page.evaluate(
+      (k) => JSON.parse(localStorage.getItem(k)!).plan.hotel,
+      key,
+    ),
+  ).toEqual(stored.plan.hotel);
+  expect(posts).toBe(1);
 });

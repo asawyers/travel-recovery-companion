@@ -24,6 +24,7 @@ function App() {
   const [mode, setMode] = useState<TripRequest["mode"]>("real");
   const [exampleOptions, setExampleOptions] = useState<ConfirmedOption[]>([]);
   const [exampleNow, setExampleNow] = useState<string | null>(null);
+  const [investigate, setInvestigate] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [warnings, setWarnings] = useState<string[]>([]);
   const recovery = useRecovery();
@@ -31,8 +32,19 @@ function App() {
   const busy = state.status === "planning" || state.status === "validating";
   const now = () => exampleNow ?? new Date().toISOString();
   function edit(next: Draft) {
-    recovery.edit();
-    setDraft(next);
+    const { priority: _before, ...before } = draft;
+    const { priority: _after, ...after } = next;
+    const priorityOnly = JSON.stringify(before) === JSON.stringify(after);
+    recovery.edit(priorityOnly);
+    const confirmed = { ...next };
+    if (next.transit !== draft.transit)
+      confirmed.transit = {
+        ...next.transit,
+        checkedAt: new Date().toISOString(),
+      };
+    if (next.car !== draft.car)
+      confirmed.car = { ...next.car, checkedAt: new Date().toISOString() };
+    setDraft(confirmed);
     setErrors({});
     setWarnings([]);
   }
@@ -41,15 +53,33 @@ function App() {
     nextMode = mode,
     options = exampleOptions,
     clock = now(),
+    investigateSources = false,
   ) {
-    const built = buildRequest(next, nextMode, options, clock);
+    // Confirm once at the input boundary; priority changes retain original timestamps.
+    const confirmed = {
+      ...next,
+      transit:
+        next.transit.enabled && !next.transit.checkedAt
+          ? { ...next.transit, checkedAt: clock }
+          : next.transit,
+      car:
+        next.car.enabled && !next.car.checkedAt
+          ? { ...next.car, checkedAt: clock }
+          : next.car,
+    };
+    if (confirmed.transit !== next.transit || confirmed.car !== next.car)
+      setDraft(confirmed);
+    const built = buildRequest(confirmed, nextMode, options, clock);
     setErrors(built.errors);
     setWarnings(built.warnings);
-    if (built.request) void recovery.compare(built.request, clock);
+    if (built.request)
+      void recovery.compare(built.request, clock, investigateSources);
+    else recovery.edit();
   }
   function example(kind: "daytime" | "overnight") {
     const f = kind === "daytime" ? daytimeFixture() : overnightFixture();
     recovery.reset();
+    setInvestigate(false);
     setMode("synthetic");
     setExampleOptions(f.candidates);
     setExampleNow(f.now);
@@ -59,6 +89,7 @@ function App() {
   }
   function real() {
     recovery.reset();
+    setInvestigate(false);
     setMode("real");
     setDraft(emptyDraft());
     setExampleOptions([]);
@@ -139,7 +170,9 @@ function App() {
           <p className="mt-1">
             {mode === "synthetic"
               ? "Every option, price, hotel and source in this example is fictional. Demonstration clock: Nov 18, 2026, 7:55 am America/New_York; source timestamps are fixed."
-              : "Only facts you enter are compared locally. No live schedule, fare, seat, rental or hotel availability has been checked."}
+              : recovery.configured
+                ? "Your supplied facts are compared by the public planner. Live availability is checked only when an available source is explicitly investigated; source warnings show what was actually checked."
+                : "Only facts you enter are compared locally. No live schedule, fare, seat, rental or hotel availability has been checked."}
           </p>
         </div>
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(20rem,25rem)_minmax(0,1fr)]">
@@ -149,7 +182,15 @@ function App() {
             synthetic={mode === "synthetic"}
             busy={busy}
             onChange={edit}
-            onSubmit={() => compare()}
+            onSubmit={() =>
+              compare(draft, mode, exampleOptions, now(), investigate)
+            }
+            configured={recovery.configured}
+            investigate={investigate}
+            onInvestigate={(value) => {
+              recovery.edit();
+              setInvestigate(value);
+            }}
             onExample={example}
             onReal={real}
           />
@@ -192,6 +233,7 @@ function App() {
             />
             <ItineraryPanel
               saved={state.persistence === "saved"}
+              arrivalEvidence={state.arrivalEvidence}
               result={state.result}
               plan={state.result?.plans.find(
                 (p) => p.id === state.selectedPlanId,

@@ -18,6 +18,9 @@ type Props = {
   errors: FormErrors;
   synthetic: boolean;
   busy: boolean;
+  configured: boolean;
+  investigate: boolean;
+  onInvestigate: (value: boolean) => void;
   onChange: (draft: Draft) => void;
   onSubmit: () => void;
   onExample: (kind: "daytime" | "overnight") => void;
@@ -131,6 +134,9 @@ export function TripForm({
   errors,
   synthetic,
   busy,
+  configured,
+  investigate,
+  onInvestigate,
   onChange,
   onSubmit,
   onExample,
@@ -543,6 +549,21 @@ export function TripForm({
           <p role="alert" className="text-sm text-destructive">
             Check the marked trip fields. Your entries are retained.
           </p>
+        )}
+        {configured && (
+          <div>
+            <Check
+              id="investigate-sources"
+              checked={investigate}
+              onChange={onInvestigate}
+            >
+              Investigate available sources
+            </Check>
+            <p className="text-xs text-muted-foreground">
+              Optional sources may be unavailable. Comparing supplied facts
+              still works; source warnings report the outcome.
+            </p>
+          </div>
         )}
         <Button type="submit" disabled={busy} className="w-full">
           {busy ? "Comparing…" : "Compare recovery options"}

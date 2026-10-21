@@ -154,3 +154,31 @@ it("marks only the same current selection saved and clears its badge on edits or
     "unsaved",
   );
 });
+
+it("ignores a same-sequence failure after a successful result and after reset", () => {
+  let state = recoveryReducer(initialRecoveryState, {
+    type: "REQUEST_STARTED",
+    sequence: 1,
+    request: f.request,
+  });
+  state = recoveryReducer(state, {
+    type: "RESULT_RECEIVED",
+    sequence: 1,
+    result,
+  });
+  expect(
+    recoveryReducer(state, {
+      type: "REQUEST_FAILED",
+      sequence: 1,
+      message: "Late",
+    }),
+  ).toBe(state);
+  state = recoveryReducer(state, { type: "RESET" });
+  expect(
+    recoveryReducer(state, {
+      type: "REQUEST_FAILED",
+      sequence: 2,
+      message: "Late",
+    }),
+  ).toBe(state);
+});

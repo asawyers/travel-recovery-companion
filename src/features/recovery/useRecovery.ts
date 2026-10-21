@@ -1,5 +1,10 @@
-import { useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { planRecovery } from "@domain/planner";
+import { toInstantMillis } from "@domain/time";
+import { ADAPTER_REVISION } from "@domain/api";
+import { comparePublic, recoveryEndpoint } from "@/lib/api";
+import { buildReuseKey, canReuseFacts } from "./refinement";
+import type { TabFactsCache } from "./refinement";
 import type { TripRequest } from "@domain/schemas";
 import {
   clearSavedSelection,
@@ -25,6 +30,18 @@ function deviceStorage<T>(
 export function useRecovery() {
   const [state, dispatch] = useReducer(recoveryReducer, initialRecoveryState);
   const sequence = useRef(0);
+  const pending = useRef<AbortController | null>(null);
+  const cache = useRef<TabFactsCache | null>(null);
+  const cachedWarnings = useRef<string[]>([]);
+  const configured = !!import.meta.env.VITE_RECOVERY_API_URL?.trim();
+  useEffect(
+    () => () => {
+      sequence.current++;
+      pending.current?.abort();
+      cache.current = null;
+    },
+    [],
+  );
   const [savedRecord, setSavedRecord] = useState(() =>
     deviceStorage(readSavedSelection, "read"),
   );
@@ -32,31 +49,152 @@ export function useRecovery() {
   const [storageError, setStorageError] = useState<string | null>(() =>
     savedRecord.ok ? null : savedRecord.message,
   );
-  function edit() {
-    setStorageMessage(null);
+  function invalidate(priorityOnly = false) {
     sequence.current++;
+    pending.current?.abort();
+    pending.current = null;
+    if (!priorityOnly) {
+      cache.current = null;
+      cachedWarnings.current = [];
+    }
+  }
+  useEffect(() => {
+    const accepted = cache.current;
+    if (
+      !accepted ||
+      state.stale ||
+      !["results", "partial_results", "no_feasible_plan"].includes(state.status)
+    )
+      return;
+    const current = sequence.current;
+    const timer = window.setTimeout(
+      () => {
+        if (sequence.current !== current) return;
+        invalidate();
+        setStorageMessage(null);
+        dispatch({
+          type: "INPUT_EDITED",
+          reason:
+            "Source checks expired. Compare again before choosing or saving an itinerary.",
+        });
+      },
+      Math.max(0, toInstantMillis(accepted.facts.expiresAt) - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [state.result, state.status, state.stale]);
+  function expireFacts() {
+    invalidate();
+    setStorageMessage(null);
+    dispatch({
+      type: "INPUT_EDITED",
+      reason:
+        "Source checks expired. Compare again before choosing or saving an itinerary.",
+    });
+  }
+  function currentFactsExpired() {
+    return (
+      cache.current !== null &&
+      (!state.request ||
+        !canReuseFacts(
+          cache.current,
+          state.request,
+          Date.now(),
+          ADAPTER_REVISION,
+        ))
+    );
+  }
+  function edit(priorityOnly = false) {
+    setStorageMessage(null);
+    invalidate(priorityOnly);
     dispatch({ type: "INPUT_EDITED" });
   }
-  async function compare(request: TripRequest, now: string) {
+  async function compare(
+    request: TripRequest,
+    now: string,
+    investigate = false,
+  ) {
     setStorageMessage(null);
+    pending.current?.abort();
+    const controller = new AbortController();
+    pending.current = controller;
     const current = ++sequence.current;
+    const isCurrent = () =>
+      current === sequence.current && !controller.signal.aborted;
     dispatch({ type: "REQUEST_STARTED", request, sequence: current });
     try {
-      // One boundary for the future Edge planner; domain arithmetic remains shared.
-      const result = await Promise.resolve().then(() =>
-        planRecovery(request, request.confirmedOptions, { now }),
-      );
-      dispatch({ type: "RESULT_RECEIVED", sequence: current, result });
-    } catch {
+      const endpoint = recoveryEndpoint(import.meta.env.VITE_RECOVERY_API_URL);
+      if (
+        endpoint &&
+        !investigate &&
+        canReuseFacts(cache.current, request, Date.now(), ADAPTER_REVISION)
+      ) {
+        const facts = cache.current!.facts;
+        const result = planRecovery(
+          { ...request, ...facts.arrival, confirmedOptions: facts.candidates },
+          facts.candidates,
+          { now },
+        );
+        result.warnings = [
+          ...new Set([...result.warnings, ...cachedWarnings.current]),
+        ];
+        if (isCurrent())
+          dispatch({
+            type: "RESULT_RECEIVED",
+            sequence: current,
+            result,
+            arrivalEvidence: facts.arrivalEvidence,
+          });
+      } else if (endpoint) {
+        cache.current = null;
+        const response = await comparePublic(
+          endpoint,
+          request,
+          investigate,
+          controller.signal,
+        );
+        if (!isCurrent()) return;
+        cache.current = {
+          inputKey: buildReuseKey(request, ADAPTER_REVISION),
+          facts: response.facts,
+        };
+        cachedWarnings.current = response.result.warnings;
+        dispatch({
+          type: "RESULT_RECEIVED",
+          sequence: current,
+          result: response.result,
+          arrivalEvidence: response.facts.arrivalEvidence,
+        });
+      } else {
+        const result = await Promise.resolve().then(() =>
+          planRecovery(request, request.confirmedOptions, { now }),
+        );
+        if (isCurrent())
+          dispatch({ type: "RESULT_RECEIVED", sequence: current, result });
+      }
+    } catch (error) {
+      if (!isCurrent()) return;
+      cache.current = null;
       dispatch({
         type: "REQUEST_FAILED",
         sequence: current,
         message:
-          "Comparison failed. Your inputs are retained; check the supplied facts and try again.",
+          error instanceof Error
+            ? error.message
+            : "Comparison failed. Your inputs are retained; check the supplied facts and retry.",
       });
+    } finally {
+      if (isCurrent()) pending.current = null;
     }
   }
   function save(now: string) {
+    if (sequence.current !== state.sequence) {
+      setStorageMessage(null);
+      return;
+    }
+    if (currentFactsExpired()) {
+      expireFacts();
+      return;
+    }
     const snapshot = selectionSnapshot(state, now, new Date().toISOString());
     const stored = snapshot.ok
       ? deviceStorage(
@@ -94,6 +232,7 @@ export function useRecovery() {
   }
   return {
     state,
+    configured,
     saved: savedRecord.ok ? savedRecord.value : null,
     storageError,
     storageMessage,
@@ -103,10 +242,14 @@ export function useRecovery() {
     compare,
     reset: () => {
       setStorageMessage(null);
-      sequence.current++;
+      invalidate();
       dispatch({ type: "RESET" });
     },
     select: (planId: string, now: string) => {
+      if (currentFactsExpired()) {
+        expireFacts();
+        return;
+      }
       setStorageMessage(null);
       dispatch({ type: "PLAN_SELECTED", planId, now });
     },

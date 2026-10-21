@@ -1,4 +1,8 @@
-import type { TripRequest, RecoveryResult } from "@domain/schemas";
+import type {
+  TripRequest,
+  RecoveryResult,
+  SourceEvidence,
+} from "@domain/schemas";
 import { toInstantMillis } from "@domain/time";
 export type RecoveryStatus =
   | "idle"
@@ -11,6 +15,7 @@ export type RecoveryStatus =
 export type RecoveryState = {
   status: RecoveryStatus;
   stale: boolean;
+  arrivalEvidence: SourceEvidence[];
   request: TripRequest | null;
   sequence: number;
   result: RecoveryResult | null;
@@ -22,14 +27,20 @@ export type RecoveryAction =
   | { type: "PLAN_SAVED"; sequence: number; planId: string }
   | { type: "SAVED_PLAN_DELETED" }
   | { type: "RESET" }
-  | { type: "INPUT_EDITED" }
+  | { type: "INPUT_EDITED"; reason?: string }
   | { type: "REQUEST_STARTED"; request: TripRequest; sequence: number }
-  | { type: "RESULT_RECEIVED"; sequence: number; result: RecoveryResult }
+  | {
+      type: "RESULT_RECEIVED";
+      sequence: number;
+      result: RecoveryResult;
+      arrivalEvidence?: SourceEvidence[];
+    }
   | { type: "REQUEST_FAILED"; sequence: number; message: string }
   | { type: "PLAN_SELECTED"; planId: string; now: string };
 export const initialRecoveryState: RecoveryState = {
   status: "idle",
   stale: false,
+  arrivalEvidence: [],
   request: null,
   sequence: 0,
   result: null,
@@ -60,7 +71,7 @@ export function recoveryReducer(
         stale: state.result !== null,
         selectedPlanId: null,
         persistence: "unsaved",
-        error: null,
+        error: action.reason ?? null,
         sequence: state.sequence + 1,
       };
     case "REQUEST_STARTED":
@@ -82,6 +93,7 @@ export function recoveryReducer(
         ...state,
         stale: false,
         result: action.result,
+        arrivalEvidence: action.arrivalEvidence ?? [],
         status: !action.result.plans.length
           ? "no_feasible_plan"
           : action.result.plans.some((p) => !p.priceComplete)
@@ -89,7 +101,7 @@ export function recoveryReducer(
             : "results",
       };
     case "REQUEST_FAILED":
-      return action.sequence === state.sequence
+      return action.sequence === state.sequence && state.status === "planning"
         ? { ...state, status: "error", error: action.message }
         : state;
     case "PLAN_SELECTED": {

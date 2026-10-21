@@ -3,6 +3,7 @@ import type {
   RecoveryResult,
   JourneyLeg,
   TripRequest,
+  SourceEvidence,
 } from "@domain/schemas";
 import {
   directions,
@@ -16,12 +17,14 @@ export function ItineraryPanel({
   request = result?.request,
   presentation = "current",
   saved = false,
+  arrivalEvidence = [],
 }: {
   plan: RecoveryPlan | undefined;
   result?: RecoveryResult | null;
   request?: TripRequest;
   presentation?: "current" | "historical";
   saved?: boolean;
+  arrivalEvidence?: SourceEvidence[];
 }) {
   const historical = presentation === "historical";
   const headingId = historical
@@ -66,6 +69,27 @@ export function ItineraryPanel({
             Final arrival {time(plan.finalArrivalAt)}. Deadline{" "}
             {request && time(request.deadlineAt)}.
           </p>
+          {arrivalEvidence.length > 0 && (
+            <div className="mt-3 text-sm">
+              <p>
+                Gate arrival {request && time(request.arrivalAt)} ·{" "}
+                {request?.arrivalBasis.replaceAll("_", " ")}
+              </p>
+              {arrivalEvidence.map((e, i) => (
+                <p
+                  key={i}
+                  className="mt-1 break-words text-xs text-muted-foreground"
+                >
+                  Arrival source: {e.provider} · {e.type} · checked{" "}
+                  {e.checkedAt}
+                  {e.providerUpdatedAt
+                    ? ` · provider updated ${e.providerUpdatedAt}`
+                    : ""}
+                  {e.expiresAt ? ` · expires ${e.expiresAt}` : ""}
+                </p>
+              ))}
+            </div>
+          )}
           {hotel && (
             <div className="mt-4 rounded-md bg-slate-100 p-4 text-sm">
               <h4 className="font-semibold">{hotel.name}</h4>
