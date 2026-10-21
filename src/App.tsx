@@ -1,43 +1,101 @@
-import { useState, type FormEvent } from "react"
-import { ArrowRight, Info, Route } from "lucide-react"
-
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
+import { useState } from "react";
+import type { ConfirmedOption, TripRequest } from "@domain/schemas";
+import { daytimeFixture, overnightFixture } from "@domain/fixtures";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogClose, DialogContent, DialogDescription,
-  DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
-import { Separator } from "@/components/ui/separator"
-
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { TripForm } from "@/features/recovery/TripForm";
+import { OptionList } from "@/features/recovery/OptionList";
+import { ItineraryPanel } from "@/features/recovery/ItineraryPanel";
+import { useRecovery } from "@/features/recovery/useRecovery";
+import {
+  buildRequest,
+  draftFromRequest,
+  emptyDraft,
+} from "@/features/recovery/formModel";
+import type { Draft, FormErrors } from "@/features/recovery/formModel";
 function App() {
-  const [readyAt, setReadyAt] = useState("")
-  const [budget, setBudget] = useState("")
-  const [notice, setNotice] = useState("")
-
-  function compareOptions(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setNotice("Comparisons are not connected yet. No schedules, prices, or availability have been checked.")
+  const [draft, setDraft] = useState(emptyDraft);
+  const [mode, setMode] = useState<TripRequest["mode"]>("real");
+  const [exampleOptions, setExampleOptions] = useState<ConfirmedOption[]>([]);
+  const [exampleNow, setExampleNow] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const recovery = useRecovery();
+  const { state } = recovery;
+  const busy = state.status === "planning" || state.status === "validating";
+  const now = () => exampleNow ?? new Date().toISOString();
+  function edit(next: Draft) {
+    recovery.edit();
+    setDraft(next);
+    setErrors({});
+    setWarnings([]);
   }
-
-  function trySyntheticExample() {
-    setReadyAt("2026-11-05T19:30")
-    setBudget("150")
-    setNotice("Synthetic example loaded: one adult ready at Boston Logan at 7:30 pm on November 5, 2026, with a $150 budget. These are sample trip details only; no availability has been checked.")
+  function compare(
+    next = draft,
+    nextMode = mode,
+    options = exampleOptions,
+    clock = now(),
+  ) {
+    const built = buildRequest(next, nextMode, options, clock);
+    setErrors(built.errors);
+    setWarnings(built.warnings);
+    if (built.request) void recovery.compare(built.request, clock);
   }
-
+  function example(kind: "daytime" | "overnight") {
+    const f = kind === "daytime" ? daytimeFixture() : overnightFixture();
+    recovery.reset();
+    setMode("synthetic");
+    setExampleOptions(f.candidates);
+    setExampleNow(f.now);
+    const next = draftFromRequest(f.request);
+    setDraft(next);
+    compare(next, "synthetic", f.candidates, f.now);
+  }
+  function real() {
+    recovery.reset();
+    setMode("real");
+    setDraft(emptyDraft());
+    setExampleOptions([]);
+    setExampleNow(null);
+    setErrors({});
+    setWarnings([]);
+  }
+  function refine(change: "cheapest" | "no-driving") {
+    const next: Draft = {
+      ...draft,
+      ...(change === "cheapest"
+        ? { priority: "cheapest" as const }
+        : { drivingAllowed: false }),
+    };
+    edit(next);
+    compare(next);
+  }
   return (
     <>
-      <a href="#trip-form" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-white focus:p-3">Skip to trip details</a>
+      <a
+        href="#trip-form"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:bg-white focus:p-3"
+      >
+        Skip to trip details
+      </a>
       <header className="border-b border-t-4 border-t-[#153247] bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
-          <p className="text-base font-semibold tracking-tight">Travel recovery companion</p>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+          <p className="font-semibold">Travel recovery companion</p>
           <div className="flex items-center gap-3">
-            <Badge variant="secondary" className="text-[#166534]">Guest mode</Badge>
+            <Badge variant="secondary" className="text-green-800">
+              Guest mode
+            </Badge>
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline">Sign in to save</Button>
@@ -45,108 +103,109 @@ function App() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Saving trips is not available yet</DialogTitle>
-                  <DialogDescription>Account features are not connected. You can explore the planner as a guest without signing in.</DialogDescription>
+                  <DialogDescription>
+                    Accounts and durable saving are not connected. You can
+                    compare and select itineraries as a guest. Your selection is
+                    only held in this page.
+                  </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                  <DialogClose asChild><Button>Continue as guest</Button></DialogClose>
+                  <DialogClose asChild>
+                    <Button>Continue as guest</Button>
+                  </DialogClose>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
         </div>
       </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
-        <div className="mb-7 max-w-3xl">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Boston to Portland recovery planner</h1>
-          <p className="mt-2 text-base leading-relaxed text-muted-foreground">A delayed San Diego–Boston flight meant missing every train to Portland and driving instead. Start with when you can leave Boston Logan.</p>
+      <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6">
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          Boston to Portland recovery planner
+        </h1>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+          A delayed San Diego–Boston flight meant missing Portland trains and
+          driving onward. Compare the whole journey from your revised Boston
+          Logan gate arrival to Portland, Maine.
+        </p>
+        <div
+          data-testid="provenance-banner"
+          className={`my-6 rounded-md border px-4 py-3 text-sm ${mode === "synthetic" ? "border-amber-700/40 bg-amber-50 text-amber-950" : "bg-white"}`}
+        >
+          <strong>
+            {mode === "synthetic"
+              ? "Synthetic / fictional example"
+              : "Traveler-entered trip"}
+          </strong>
+          <p className="mt-1">
+            {mode === "synthetic"
+              ? "Every option, price, hotel and source in this example is fictional. Demonstration clock: Nov 18, 2026, 7:55 am America/New_York; source timestamps are fixed."
+              : "Only facts you enter are compared locally. No live schedule, fare, seat, rental or hotel availability has been checked."}
+          </p>
         </div>
-
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(19rem,23rem)_minmax(0,1fr)]">
-          <Card className="rounded-lg shadow-none [--card-spacing:--spacing(5)] sm:[--card-spacing:--spacing(6)]">
-            <CardHeader className="border-b">
-              <h2 id="trip-heading" className="text-lg font-semibold">Your onward trip</h2>
-              <CardDescription>One adult, Boston Logan to Portland, Maine.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form id="trip-form" aria-labelledby="trip-heading" onSubmit={compareOptions}>
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="origin">Leaving from</FieldLabel>
-                    <Input id="origin" name="origin" value="Boston Logan (BOS)" readOnly />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="destination">Going to</FieldLabel>
-                    <Input id="destination" name="destination" value="Portland, Maine" readOnly />
-                    <FieldDescription>This prototype covers this corridor only.</FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="ready-at">Ready to leave Logan at</FieldLabel>
-                    <Input id="ready-at" name="readyAt" type="datetime-local" required value={readyAt} onChange={(event) => { setReadyAt(event.target.value); setNotice("") }} aria-describedby="ready-at-help" />
-                    <FieldDescription id="ready-at-help">Local Boston time (America/New_York). Allow time for bags and leaving the terminal.</FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="travelers">Travelers</FieldLabel>
-                    <NativeSelect id="travelers" name="travelers" defaultValue="1" className="w-full">
-                      <NativeSelectOption value="1">1 adult</NativeSelectOption>
-                    </NativeSelect>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="budget">Maximum budget (USD, optional)</FieldLabel>
-                    <Input id="budget" name="budget" type="number" min="0" step="1" inputMode="numeric" placeholder="For example, 150" value={budget} onChange={(event) => { setBudget(event.target.value); setNotice("") }} />
-                  </Field>
-                  <div className="grid gap-2">
-                    <Button type="submit" className="w-full">Compare recovery options</Button>
-                    <Button type="button" variant="outline" onClick={trySyntheticExample} className="w-full">Try synthetic example</Button>
-                    <p className="text-xs leading-relaxed text-muted-foreground">The synthetic example uses sample trip details, not live transport inventory.</p>
-                  </div>
-                </FieldGroup>
-              </form>
-            </CardContent>
-          </Card>
-
-          <div className="min-w-0 space-y-6">
-            <section aria-labelledby="options-heading" className="overflow-hidden rounded-lg border bg-white">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-5 sm:px-6">
-                <h2 id="options-heading" className="text-lg font-semibold">Recovery options</h2>
-                <Badge variant="outline" className="border-[#B45309]/30 text-[#B45309]">No availability checked</Badge>
-              </div>
-              <div className="px-5 py-6 sm:px-6">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium">
-                  <span>Boston Logan (BOS)</span><ArrowRight aria-hidden="true" className="size-4 text-muted-foreground" /><span>Portland, Maine</span>
-                </div>
-                <Separator className="my-6" />
-                <div className="flex items-start gap-4 py-5 sm:py-10">
-                  <Route className="mt-1 size-6 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <div className="max-w-lg">
-                    <h3 className="font-semibold">Your options will appear here</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Enter your trip details to prepare a comparison of onward transport. You can also load the clearly labeled synthetic example.</p>
-                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">No timetables, fares, or seats have been retrieved.</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <div aria-live="polite" aria-atomic="true">
-              {notice && (
-                <Alert className="border-[#B45309]/30 bg-white">
-                  <Info aria-hidden="true" className="text-[#B45309]" />
-                  <AlertTitle>Planner preview</AlertTitle>
-                  <AlertDescription>{notice}</AlertDescription>
-                </Alert>
-              )}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(20rem,25rem)_minmax(0,1fr)]">
+          <TripForm
+            draft={draft}
+            errors={errors}
+            synthetic={mode === "synthetic"}
+            busy={busy}
+            onChange={edit}
+            onSubmit={() => compare()}
+            onExample={example}
+            onReal={real}
+          />
+          <div className="min-w-0 space-y-5">
+            <div
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="text-sm"
+            >
+              {busy
+                ? "Comparing supplied journey facts…"
+                : state.result
+                  ? `${state.result.plans.length} recovery options. ${state.status === "partial_results" ? "Some prices are incomplete." : ""}`
+                  : "Enter trip facts to begin."}
             </div>
-
-            <section aria-labelledby="itinerary-heading" className="rounded-lg border bg-white px-5 py-5 sm:px-6">
-              <h2 id="itinerary-heading" className="text-lg font-semibold">Selected itinerary</h2>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">No itinerary selected. Once comparisons are available, choose an option to review its steps and connection times here.</p>
-            </section>
-            <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">Always confirm current schedules, prices, and availability with the operator before booking. This prototype cannot make purchases.</p>
+            {(warnings.length > 0 || state.error) && (
+              <Alert role={state.error ? "alert" : "note"}>
+                <AlertTitle>
+                  {state.error
+                    ? "Comparison unavailable"
+                    : "Check supplied facts"}
+                </AlertTitle>
+                <AlertDescription>
+                  {state.error}
+                  {warnings.map((w) => (
+                    <p key={w}>{w}</p>
+                  ))}
+                </AlertDescription>
+              </Alert>
+            )}
+            <OptionList
+              result={state.result}
+              selectedId={state.selectedPlanId}
+              now={now()}
+              onSelect={(id) => recovery.select(id, now())}
+              onRefine={refine}
+              busy={busy}
+              stale={state.stale}
+            />
+            <ItineraryPanel
+              result={state.result}
+              plan={state.result?.plans.find(
+                (p) => p.id === state.selectedPlanId,
+              )}
+            />
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Confirm current schedules, prices, pickup hours and availability
+              with the operator before booking. This guest planner cannot make
+              purchases or persist your trip.
+            </p>
           </div>
         </div>
       </main>
     </>
-  )
+  );
 }
-
-export default App
+export default App;
