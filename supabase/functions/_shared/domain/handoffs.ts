@@ -62,6 +62,8 @@ export function resolveHandoff(id: string | null | undefined): ProviderHandoff |
 /** Guard anchors at the rendering boundary, including Maps' narrow parameter allowlist. */
 export function isAllowedHandoffUrl(id: string, href: string): boolean {
   if (href.length > 2048) return false
+  const authority = /^https:\/\/([^/?#]*)/i.exec(href)?.[1]
+  if (!authority || authority.includes(':')) return false
   try {
     const url = new URL(href)
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) return false

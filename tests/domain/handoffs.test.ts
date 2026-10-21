@@ -44,11 +44,13 @@ describe('verified handoff destinations', () => {
       'https://user:pass@www.amtrak.com/home.html',
       'https://www.amtrak.com.evil.example/home.html',
       'https://www.amtrak.com:444/home.html',
+      'https://www.amtrak.com:443/home.html',
       'https://www.amtrak.com/redirect?to=https://evil.example',
     ]) expect(handoffs.isAllowedHandoffUrl('amtrak', href)).toBe(false)
 
     const map = handoffs.directions('BOS', 'Portland, ME', 'driving').toString()
     expect(handoffs.isAllowedHandoffUrl('maps-directions', map)).toBe(true)
+    expect(handoffs.isAllowedHandoffUrl('maps-directions', map.replace('www.google.com', 'www.google.com:443'))).toBe(false)
     expect(handoffs.isAllowedHandoffUrl('maps-directions', `${map}&departure_time=tomorrow`)).toBe(false)
     expect(handoffs.isAllowedHandoffUrl('maps-directions', map.replace('www.google.com', 'google.com.evil.example'))).toBe(false)
     expect(handoffs.isAllowedHandoffUrl('maps-directions', `${map}&origin=${'x'.repeat(2100)}`)).toBe(false)
