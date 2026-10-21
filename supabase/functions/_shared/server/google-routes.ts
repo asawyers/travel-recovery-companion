@@ -164,7 +164,11 @@ export function createGoogleRoutesAdapter(options: ProviderAdapterOptions): Rout
         memo.set(key, pending)
       }
       const result = await pending
-      if (!result.ok) { warnings.push(result.kind === 'rate_limited' ? 'Google Routes rate limit reached; this optional route lookup is unavailable.' : 'Google Routes optional route lookup is unavailable; retain manual facts.'); return null }
+      if (!result.ok) {
+        const reason = result.status === undefined ? result.kind : `HTTP ${result.status}`
+        warnings.push(result.kind === 'rate_limited' ? 'Google Routes rate limit reached; this optional route lookup is unavailable.' : `Google Routes lookup failed (${reason}); retain manual facts.`)
+        return null
+      }
       return result.body
     }
     const transitBody = (origin: string, departureAt: string, kind: 'bus' | 'train') => ({
@@ -173,6 +177,7 @@ export function createGoogleRoutesAdapter(options: ProviderAdapterOptions): Rout
       transitPreferences: { allowedTravelModes: [kind === 'bus' ? 'BUS' : 'TRAIN'], routingPreference: 'FEWER_TRANSFERS' }, languageCode: 'en-US', regionCode: 'us',
     })
     const addRoutes = (body: unknown, kind: 'bus' | 'train', driveMinutes: number, driveEnd?: Location) => {
+      if (body === null) return // A failed lookup already has a safe diagnostic; it is not a malformed response.
       const parsedResponse = response.safeParse(body)
       if (!parsedResponse.success) { warnings.push('Google Routes response was malformed; manual route facts were retained.'); return }
       for (const [index, value] of (parsedResponse.data.routes ?? []).entries()) {

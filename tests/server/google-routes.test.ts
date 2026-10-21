@@ -184,6 +184,16 @@ describe('Google Routes server adapter', () => {
     expect(JSON.stringify(result)).toMatch(/unavailable|rate|limit/i)
   })
 
+  it.each([400, 403, 500])('reports upstream HTTP %s without exposing the response or mislabeling it malformed', async status => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response('SECRET upstream payload', { status }))
+    const result = await adapter(fetch)(request(), { signal: signal() })
+    expect(result.status).toBe('unavailable')
+    const diagnostic = JSON.stringify(result)
+    expect(diagnostic).toContain(`HTTP ${status}`)
+    expect(diagnostic).not.toMatch(/SECRET|fixture-key|malformed/)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   it('returns safe manual fallback on malformed upstream responses', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response('{not json'))
     const result = await adapter(fetch)(request(), { signal: signal() })
