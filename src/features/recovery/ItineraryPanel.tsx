@@ -1,4 +1,5 @@
-import type { RecoveryPlan, RecoveryResult } from "@domain/schemas";
+import type { RecoveryPlan, RecoveryResult, JourneyLeg } from "@domain/schemas";
+import { directions, isAllowedHandoffUrl, resolveHandoff } from "@domain/handoffs";
 import { money, time } from "./OptionList";
 export function ItineraryPanel({
   plan,
@@ -8,6 +9,12 @@ export function ItineraryPanel({
   result: RecoveryResult | null;
 }) {
   const hotel = plan?.hotel;
+  const handoffForLeg = (leg: JourneyLeg) => {
+    if (leg.kind === "train") return resolveHandoff("amtrak");
+    if (leg.kind === "bus") return resolveHandoff("concord");
+    if (leg.kind === "car") return resolveHandoff("kayak-bos");
+    return null;
+  };
   return (
     <section
       data-testid="itinerary"
@@ -107,6 +114,103 @@ export function ItineraryPanel({
               </li>
             ))}
           </ol>
+          <section
+            aria-label="External handoffs"
+            className="mt-5 rounded-md border p-4"
+          >
+            <h4 className="font-semibold">Check options with operators</h4>
+            <p className="mt-1 text-sm text-muted-foreground">
+              These links open provider entry pages. Enter the route and dates shown below; the itinerary is not a live inventory check.
+            </p>
+            {result?.request.mode === "synthetic" && (
+              <p className="mt-2 text-sm font-medium text-amber-900">
+                This fictional itinerary is an example only. The links do not verify its schedule, prices, or availability.
+              </p>
+            )}
+            <ul className="mt-3 space-y-4">
+              {plan.legs.map((leg) => {
+                const handoff = handoffForLeg(leg);
+                if (!handoff || !isAllowedHandoffUrl(handoff.id, handoff.href)) return null;
+                const pickup = leg.kind === "car" ? plan.legs.find((item) => item.kind === "pickup") : undefined;
+                const rentalReturn = leg.kind === "car" ? plan.legs.find((item) => item.kind === "return") : undefined;
+                return (
+                  <li key={`handoff-${leg.id}`} className="text-sm">
+                    <p className="font-medium">
+                      {leg.kind === "car"
+                        ? "One-way rental: Boston Logan (BOS) pickup → Portland, Maine return"
+                        : <>{leg.kind === "train" ? "Train" : "Bus"}: {leg.from} → {leg.to}</>}
+                    </p>
+                    {leg.kind === "car" && pickup && rentalReturn ? (
+                      <p className="mt-1 text-muted-foreground">
+                        America/New_York · pickup {time(pickup.startAt)} · return window {time(rentalReturn.startAt)} to {time(rentalReturn.endAt)}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-muted-foreground">
+                        America/New_York · {time(leg.startAt)} to {time(leg.endAt)}
+                      </p>
+                    )}
+                    <p className="mt-1 text-muted-foreground">{handoff.instructions}</p>
+                    <a
+                      className="mt-2 inline-flex min-h-10 items-center rounded-md border px-3 py-2 text-sm font-medium underline"
+                      href={handoff.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${handoff.label}. ${handoff.instructions}`}
+                    >
+                      {handoff.label}
+                    </a>
+                  </li>
+                );
+              })}
+              {hotel && (() => {
+                const providerHandoff = resolveHandoff(hotel.handoffId);
+                const hotelHandoff = providerHandoff ?? resolveHandoff("hotel-search");
+                if (!hotelHandoff || !isAllowedHandoffUrl(hotelHandoff.id, hotelHandoff.href)) return null;
+                return (
+                  <li key="handoff-hotel" className="text-sm">
+                    <p className="font-medium">Hotel: {hotel.name}</p>
+                    <p className="mt-1 text-muted-foreground">{hotel.address}</p>
+                    <p className="mt-1 text-muted-foreground">
+                      {hotel.checkin} to {hotel.checkout} · {hotel.adults} adult · {hotel.rooms} room · America/New_York
+                    </p>
+                    {!providerHandoff && (
+                      <p className="mt-1 text-amber-900">Provider hotel booking link unavailable. Use a general hotel search and confirm the property and total.</p>
+                    )}
+                    <p className="mt-1 text-muted-foreground">{hotelHandoff.instructions}</p>
+                    <a
+                      className="mt-2 inline-flex min-h-10 items-center rounded-md border px-3 py-2 text-sm font-medium underline"
+                      href={hotelHandoff.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${hotelHandoff.label}. ${hotelHandoff.instructions}`}
+                    >
+                      {hotelHandoff.label}
+                    </a>
+                  </li>
+                );
+              })()}
+            </ul>
+            {result?.request.mode === "real" && (() => {
+              const corridor = directions("Boston Logan International Airport (BOS)", "Portland, Maine", "driving");
+              const href = corridor.toString();
+              return isAllowedHandoffUrl("maps-directions", href) ? (
+                <p className="mt-4 text-sm">
+                  <a
+                    className="underline"
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open Boston Logan to Portland, Maine corridor directions in Google Maps"
+                  >
+                    Open Boston Logan to Portland, Maine corridor directions in Google Maps
+                  </a>
+                </p>
+              ) : null;
+            })()}
+            <p className="mt-4 text-xs text-muted-foreground">
+              Confirm final availability and total on the provider site. Opening a link does not book, reserve, or save this itinerary.
+            </p>
+          </section>
           <ul className="mt-4 space-y-2 text-sm text-amber-900">
             {[...plan.violations, ...plan.warnings].map((w) => (
               <li key={w}>{w}</li>

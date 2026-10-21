@@ -12,6 +12,24 @@ test("guest compares, refines, recovers and invalidates a selection", async ({
   await expect(page.getByTestId("option-card").first()).toContainText(
     "rental car",
   );
+  await page
+    .getByRole("button", {
+      name: "Choose Fictional one-way rental car",
+      exact: true,
+    })
+    .click();
+  const carHandoff = page.locator(
+    'a[href="https://www.kayak.com/Boston-Logan-Intl-Airport-Car-Rentals.BOS.cap.ksp"]',
+  );
+  await expect(carHandoff).toBeVisible();
+  await expect(page.getByTestId("itinerary")).toContainText(
+    "One-way rental: Boston Logan (BOS) pickup → Portland, Maine return",
+  );
+  await expect(page.getByTestId("itinerary")).toContainText("return window");
+  await expect(page.getByTestId("itinerary")).toContainText(
+    "This fictional itinerary is an example only",
+  );
+  await expect(page.getByTestId("itinerary")).toContainText("Not booked or saved");
   await expect(
     page.getByText("15 minutes short", { exact: false }),
   ).toBeVisible();
@@ -48,6 +66,15 @@ test("guest compares, refines, recovers and invalidates a selection", async ({
   await expect(page.getByTestId("itinerary")).toContainText(
     "Not booked or saved",
   );
+  const busHandoff = page.locator(
+    'a[href="https://concordcoachlines.com/book-your-trip/"]',
+  );
+  await expect(busHandoff).toBeVisible();
+  await expect(busHandoff).toHaveAttribute("target", "_blank");
+  await expect(busHandoff).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(page.getByTestId("itinerary")).not.toContainText(
+    "Open Boston Logan to Portland, Maine corridor directions",
+  );
   await page.getByLabel("Budget (USD)").fill("140");
   await expect(page.getByTestId("itinerary")).toContainText(
     "No itinerary selected",
@@ -77,6 +104,12 @@ test("overnight example shows the actual selected hotel metadata", async ({
     "Fictional standard queen room",
   );
   await expect(page.getByTestId("itinerary")).toContainText("Late check-in");
+  await expect(page.getByTestId("itinerary")).toContainText(
+    "Fictional airport-area address, Boston, MA",
+  );
+  await expect(
+    page.locator('a[href="https://www.google.com/travel/hotels"]'),
+  ).toBeVisible();
 });
 test("a traveler-entered bus uses actual inputs and retains them on invalid dates", async ({
   page,
