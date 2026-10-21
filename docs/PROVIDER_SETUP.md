@@ -1,6 +1,6 @@
 # Provider setup after the Task 10 build
 
-Live provider calls are disabled by default. After the build, the user enabled Routes API in an existing Google project, saved its key in Supabase and explicitly authorized Google pay-as-you-go usage without a daily cap. The user confirmed setting the activation switch to true. Google live coverage verification is still pending; FlightAware account/key setup is pending. No daily quota was configured. Fixture tests establish code behavior; they do not establish real flight/route coverage or account permissions.
+Live provider calls are disabled by default. After the build, the user enabled Routes API in an existing Google project, saved its key in Supabase and explicitly authorized Google pay-as-you-go usage without a daily cap. The user confirmed setting the activation switch to true. Google live bus coverage passed direct API and deployed Brave form checks after the request/parser correction in `85db1d3`; FlightAware account/key setup is pending. No daily quota was configured. Fixture tests establish code behavior; they do not establish real flight/route coverage or account permissions.
 
 Start with Google Routes, then FlightAware. Use the existing Brave dashboard window and enter secrets directly into the relevant provider/Supabase dashboard, never into chat or Git. We can walk through one dashboard at a time.
 
@@ -47,4 +47,4 @@ These are backend secrets. Nothing belongs in a `VITE_` variable, frontend sourc
 
 Once the configured providers have approved limits or explicit pay-as-you-go authorization, change `RECOVERY_PROVIDER_USAGE_APPROVED` to `true` and ensure the running function has loaded the configuration. If a redeploy is needed, use the existing GitHub backend workflow. Each provider still requires its own key; missing keys remain unavailable.
 
-We will then perform one explicitly authorized lookup for a real supported flight/service date, check route coverage and source labels, and record actual evidence. Until that succeeds, Task10 live acceptance stays pending. Return the switch to `false` to stop new provider attempts. Manual and fictional planning remain available throughout.
+Google live route acceptance passed: two bus options were returned and rendered with schedule evidence, with no request/parser error. FlightAware live acceptance remains pending its separately authorized setup and supported flight lookup; do not treat the successful Google check as flight or hotel evidence. Return the switch to `false` to stop new provider attempts. Manual and fictional planning remain available throughout.

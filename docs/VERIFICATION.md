@@ -1,6 +1,6 @@
 # Verification status
 
-The account-free challenge app is deployed at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app) and connected to its public Supabase recovery function. Production and Preview Git deployments are confirmed. The published FlightAware/Google Routes software build passes 212 unit tests and all 32 hosted Brave cases. Six new cases use provider-shaped fixtures; actual live provider acceptance remains separate. No provider accounts/keys/cost limits exist yet, and no live provider calls were made.
+The account-free challenge app is deployed at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app) and connected to its public Supabase recovery function. Google routing is now live: direct API and isolated Brave form checks each returned two schema-valid bus plans with Google schedule evidence and no HTTP 400/parser errors. The latest correction passes 225 unit tests, build and Deno check. Prior full hosted Brave acceptance passed 32 cases, including six provider-shaped fixtures. FlightAware/hotel/model setup remains pending; Google schedules do not establish ticket inventory.
 
 ## Earlier core revisions
 
@@ -31,7 +31,7 @@ Endpoint: `https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery`. Inde
 - Real-mode manual POST 200 relabeled browser-claimed provider/live facts, cleared the source URL, removed an injected token marker and retained original evidence times.
 - GET 405, malformed JSON 400 and 65,537-byte request 413 preserved wildcard CORS without credentials.
 
-All direct hosted API acceptance POSTs used `investigate:false`; provider/model integrations remain disabled. There are no application users, database rows, purchases or bookings.
+Those earlier direct hosted API acceptance POSTs used `investigate:false` while provider/model integrations were disabled; the later Google activation check is recorded below. There are no application users, database rows, purchases or bookings.
 
 ## Hosted browser coverage
 
@@ -56,7 +56,7 @@ Use Node 24, then `npm ci`, `npm run test`, `npm run build` and `npm run dev`. [
 
 Device storage holds one selected itinerary on this browser profile. It does not sync devices. Original evidence and selection timestamps survive reload; the restored itinerary is historical until explicitly refreshed. Nothing purchases tickets or reservations.
 
-Optional FlightAware, Google Routes, LiteAPI/Nuitee rates/hosted-hotel handoff and model-agent acceptance are blocked on authorized credentials and actual usage limits. No accounts, paid calls or spend limit have been authorized merely by this plan. Manual facts and clearly labeled fictional examples remain usable; synthetic examples never masquerade as live inventory. Authentication/email are intentionally omitted. Two hours is an effort estimate, not a measured hard timer.
+FlightAware, LiteAPI/Nuitee rates/hosted-hotel handoff and model-agent acceptance remain pending separately authorized access/usage. Google has since been activated and verified under explicit pay-as-you-go authorization without a daily cap; this authorization came directly from the user, not the plan. Manual facts and clearly labeled fictional examples remain usable; synthetic examples never masquerade as live inventory. Authentication/email are intentionally omitted. Two hours is an effort estimate, not a measured hard timer.
 
 Superpowers plans, the private handoff, transferred assessment/spec/provenance and local environment files remain ignored. All transferred references are preserved locally. Prior verification checkpoints remain in Git history and the ignored local history folder.
 
@@ -97,4 +97,12 @@ Task 10 software is implemented, reviewed and deployed. Live FlightAware/Google 
 
 User confirmed saving the Google Routes key and activation switch directly in Supabase, and explicitly authorized Google pay-as-you-go without a daily cap. A hosted real-mode investigation for BOS to Portland Transportation Center, Portland ME, arrival 2026-10-22 09:00 America/New_York returned HTTP200 but zero candidates. Manual fallback remained intact. Live route acceptance has not passed.
 
-Diagnostic commit `61b97e6` adds only numeric HTTP status/fixed failure category and avoids labeling a failed-query null as malformed. Three new regression cases first failed, then all215 tests, TypeScript/Vite build and Deno entrypoint check passed; independent review approved. Main workflow39680803649 passed checks and deployed successfully. A fresh hosted investigation confirmed a Google DRIVE HTTP400 rejection and a separate bus response parsing failure. The actual provider validation detail/response shape remains unresolved; this does not establish a billing or key problem. No credentials or upstream raw error bodies were read or printed. FlightAware and hotel setup remain pending.
+Diagnostic commit `61b97e6` adds only numeric HTTP status/fixed failure category and avoids labeling a failed-query null as malformed. Three new regression cases first failed, then all215 tests, TypeScript/Vite build and Deno entrypoint check passed; independent review approved. Main workflow39680803649 passed checks and deployed successfully. A fresh hosted investigation confirmed a Google DRIVE HTTP 400 rejection and a separate bus response parsing failure. The actual provider validation detail/response shape remains unresolved; this does not establish a billing or key problem. No credentials or upstream raw error bodies were read or printed. FlightAware and hotel setup remain pending.
+
+## Google request/parser correction and live acceptance — 2026-10-21
+
+Diagnostics `e0df30d` established that the successful bus response contained six routes, exceeding our four-route parser limit. Commit `85db1d3` accepts a bounded 16-route envelope while retaining strict individual route validation, the 128 KiB body limit, three-request ceiling and eight-candidate output cap. It removes the departure timestamp only from the time-independent DRIVE request; TRANSIT departure times and TRAFFIC_UNAWARE pricing remain unchanged. The DRIVE HTTP 400 ceased on the fresh live test after that isolated request change. No account/key/billing change was needed.
+
+Regression tests failed first. All 225 tests across 15 files, TypeScript/Vite production build and Deno entrypoint check then passed. Independent reviews found no blocking regressions. GitHub main workflow 39681507931 successfully deployed the diagnostics; workflow 39681770189 successfully checked and deployed the correction.
+
+Two fresh real-mode investigations were verified: one direct schema-validated hosted POST for BOS to Portland Transportation Center, and one through the deployed app's normal form in isolated headless Brave for its Portland, ME destination. Each returned HTTP200, two validated bus candidates and two feasible plans. The actual Brave page rendered two option cards. Both carried `Google Maps Routes API` / `schedule` evidence; neither included HTTP 400 or malformed-response warnings. Responses were inspected transiently and raw provider payloads/keys were not retained. No purchase, seat inventory or fare guarantee was tested. This verifies current bus coverage; it does not establish every train/service/date combination or FlightAware/hotel access. Existing unsupported-route/manual-fallback warnings remain accurate.

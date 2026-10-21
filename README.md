@@ -6,9 +6,9 @@ The motivation is the author's San Diego → Portland journey: a delay on the Sa
 
 ## Current state
 
-[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend is connected to the deployed backend, and the provider-adapter build passes all 32 hosted Brave acceptance cases, including explicitly provider-shaped fixtures. Live API acceptance remains pending setup.
+[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend is connected to the deployed backend, and the provider-adapter build passes all 32 hosted Brave acceptance cases, including explicitly provider-shaped fixtures. A real Google Routes investigation now passes both direct API and deployed Brave form checks, returning two bus plans with schedule evidence; FlightAware setup remains pending.
 
-The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion are verified on the deployed app. Public server comparison and current-tab priority reuse are implemented. The backend is deployed through GitHub Actions and the production frontend is connected. FlightAware and Google Routes adapters are implemented but disabled pending account/key/usage-limit setup. Optional hotels and the model agent remain pending.
+The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion are verified on the deployed app. Public server comparison and current-tab priority reuse are implemented. The backend is deployed through GitHub Actions and the production frontend is connected. Google Routes is enabled and verified against the live API. The implemented FlightAware adapter remains inactive pending its account/key/usage authorization. Optional hotels and the model agent remain pending.
 
 There is no sign-in or email workflow. Saving keeps one chosen itinerary on this device's browser profile, with original evidence timestamps and an explicit delete action. It does not sync across devices or purchase tickets/reservations. A restored itinerary is historical until explicitly refreshed.
 
@@ -29,7 +29,7 @@ npm run build
 npm run test:e2e -- tests/e2e/guest.spec.ts
 ```
 
-The account-free core passes 212 unit tests, five real HTTP integration tests, 32 hosted configured-backend Brave cases (also passed locally), 25 earlier hosted core cases and 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
+The latest backend correction passes 225 unit tests, TypeScript/Vite build and Deno entrypoint check. Prior verification includes five real HTTP integration tests, 32 hosted configured-backend Brave cases (also passed locally), 25 earlier hosted core cases and 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
 
 ## Stack and backend direction
 
@@ -37,7 +37,7 @@ React/Vite/TypeScript, shadcn/ui and Tailwind share a pure validated planner wit
 
 The backend validates bounded requests, sanitizes traveler-provided evidence and returns normalized facts. It passes five real HTTP integration cases without credentials. Browser comparisons use that public endpoint when configured. Priority-only refinements reuse eligible facts in the current tab without another HTTP/provider/model call. Other edits or expiry require reassessment. Native Vercel Git integration is the deployment target, with lean functions-only backend CI.
 
-Live/schedule/traveler-confirmed/estimated/synthetic facts remain distinct. Unknown charges remain unknown. Optional provider/model access requires actual configured usage limits; no paid calls, purchases or reservations are implied. This is a challenge prototype. Two hours is an effort estimate, not a hard timer.
+Live/schedule/traveler-confirmed/estimated/synthetic facts remain distinct. Unknown charges remain unknown. Optional provider/model access requires explicit usage authorization. Google pay-as-you-go requests without a daily cap have been authorized; other provider setup remains pending. No purchases or reservations are made. This is a challenge prototype. Two hours is an effort estimate, not a hard timer.
 
 ## Flight and route providers
 
