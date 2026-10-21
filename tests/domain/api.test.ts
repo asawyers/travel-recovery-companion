@@ -3,7 +3,10 @@ import { daytimeFixture } from "@domain/fixtures";
 import { createRecoveryHandler } from "../../supabase/functions/_shared/server/handlers";
 import { comparePublic, recoveryEndpoint } from "../../src/lib/api";
 const f = daytimeFixture();
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 it("accepts only absolute public HTTP endpoints without credentials or fragments", () => {
   expect(recoveryEndpoint(undefined)).toBeNull();
   expect(
@@ -43,7 +46,7 @@ it("posts the exact public envelope without credentials and validates the real h
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "omit",
-    signal: controller.signal,
+    signal: expect.any(AbortSignal),
   });
   expect(JSON.parse(String(fetcher.mock.calls[0][1].body))).toEqual({
     request: f.request,
@@ -76,4 +79,56 @@ it("provides safe actionable errors for invalid responses, network failures and 
       new AbortController().signal,
     ),
   ).rejects.toThrow(/connection.*retained/i);
+});
+
+for (const stage of ["fetch", "body"]) {
+  it(`bounds a stalled ${stage} with a controlled deadline and cleans up its timer`, async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      requestSignal = init.signal as AbortSignal;
+      if (stage === "fetch") return new Promise<Response>(() => {});
+      return new Response(new ReadableStream({ start() {} }));
+    });
+    let outcome: unknown;
+    const settled = comparePublic(
+      "https://example.com/recovery",
+      f.request,
+      false,
+      new AbortController().signal,
+    ).catch((error) => {
+      outcome = error;
+    });
+    await vi.advanceTimersByTimeAsync(35_001);
+    expect(outcome).toBeInstanceOf(Error);
+    expect((outcome as Error).message).toMatch(/timed out.*retry.*retained/i);
+    expect(requestSignal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    await settled;
+  });
+}
+
+it("caller cancellation settles ignored-abort transport and clears the deadline timer", async () => {
+  vi.useFakeTimers();
+  let requestSignal: AbortSignal | undefined;
+  vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+    requestSignal = init.signal as AbortSignal;
+    return new Promise<Response>(() => {});
+  });
+  const controller = new AbortController();
+  let outcome: unknown;
+  const settled = comparePublic(
+    "https://example.com/recovery",
+    f.request,
+    false,
+    controller.signal,
+  ).catch((error) => {
+    outcome = error;
+  });
+  controller.abort();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(outcome).toBeInstanceOf(Error);
+  expect(requestSignal?.aborted).toBe(true);
+  expect(vi.getTimerCount()).toBe(0);
+  await settled;
 });

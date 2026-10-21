@@ -2,6 +2,10 @@ import { RecoveryResponseSchema } from "@domain/api";
 import type { RecoveryResponse } from "@domain/api";
 import type { TripRequest } from "@domain/schemas";
 
+/** Only these controlled boundary messages may be displayed by the UI. */
+export class PublicPlannerError extends Error {}
+const REQUEST_TIMEOUT_MS = 35_000;
+
 export function recoveryEndpoint(value: string | undefined): string | null {
   if (value === undefined || value.trim() === "") return null;
   try {
@@ -13,15 +17,15 @@ export function recoveryEndpoint(value: string | undefined): string | null {
       url.hash ||
       url.search
     )
-      throw new Error();
+      throw new PublicPlannerError();
     return url.toString();
   } catch {
-    throw new Error(
+    throw new PublicPlannerError(
       "Planner configuration is invalid. Set VITE_RECOVERY_API_URL to a public HTTP endpoint without credentials or query parameters. Your inputs are retained.",
     );
   }
 }
-export async function comparePublic(
+async function requestRecovery(
   endpoint: string,
   request: TripRequest,
   investigate: boolean,
@@ -38,19 +42,62 @@ export async function comparePublic(
     });
   } catch (error) {
     if (signal.aborted) throw error;
-    throw new Error(
+    throw new PublicPlannerError(
       "Cannot reach the planner. Check your connection and retry. Your inputs are retained.",
     );
   }
   if (!response.ok)
-    throw new Error(
+    throw new PublicPlannerError(
       "The planner is unavailable or rejected these trip facts. Check your inputs and retry. Your inputs are retained.",
     );
   try {
     return RecoveryResponseSchema.parse(await response.json());
   } catch {
-    throw new Error(
+    throw new PublicPlannerError(
       "The planner returned invalid trip facts. Retry the comparison. Your inputs are retained.",
     );
+  }
+}
+
+/** One total deadline covers both response headers and JSON, including ignored aborts. */
+export async function comparePublic(
+  endpoint: string,
+  request: TripRequest,
+  investigate: boolean,
+  signal: AbortSignal,
+): Promise<RecoveryResponse> {
+  const controller = new AbortController();
+  let timedOut = false;
+  let onAbort!: () => void;
+  const interrupted = new Promise<never>((_, reject) => {
+    onAbort = () =>
+      reject(
+        timedOut
+          ? new PublicPlannerError(
+              "The planner timed out. Retry the comparison. Your inputs are retained.",
+            )
+          : controller.signal.reason,
+      );
+    controller.signal.addEventListener("abort", onAbort, { once: true });
+  });
+  const forwardAbort = () => controller.abort(signal.reason);
+  signal.addEventListener("abort", forwardAbort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+  try {
+    if (signal.aborted) {
+      forwardAbort();
+      return await interrupted;
+    }
+    return await Promise.race([
+      requestRecovery(endpoint, request, investigate, controller.signal),
+      interrupted,
+    ]);
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", forwardAbort);
+    controller.signal.removeEventListener("abort", onAbort);
   }
 }

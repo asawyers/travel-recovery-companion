@@ -29,7 +29,9 @@ test("guest compares, refines, recovers and invalidates a selection", async ({
   await expect(page.getByTestId("itinerary")).toContainText(
     "This fictional itinerary is an example only",
   );
-  await expect(page.getByTestId("itinerary")).toContainText("Not booked or saved");
+  await expect(page.getByTestId("itinerary")).toContainText(
+    "Not booked or saved",
+  );
   await expect(
     page.getByText("15 minutes short", { exact: false }),
   ).toBeVisible();
@@ -187,3 +189,27 @@ for (const width of [390, 320]) {
     ).toBeLessThanOrEqual(width);
   });
 }
+
+test("unexpected planner failures hide validation internals and retain entered trip facts", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
+  await page.getByLabel("Original onward departure").fill("2025-01-01T09:15");
+  await page.getByLabel("Final destination deadline").fill("2026-11-18T14:00");
+  await page
+    .getByRole("button", { name: "Compare recovery options", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Your inputs are retained",
+  );
+  await expect(page.getByRole("alert")).not.toContainText(
+    /originalConnection|too_big|ZodError|"code"/,
+  );
+  await expect(page.getByLabel("Original onward departure")).toHaveValue(
+    "2025-01-01T09:15",
+  );
+  await expect(
+    page.getByRole("button", { name: "Save on this device", exact: true }),
+  ).toBeDisabled();
+});

@@ -2,7 +2,7 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { planRecovery } from "@domain/planner";
 import { toInstantMillis } from "@domain/time";
 import { ADAPTER_REVISION } from "@domain/api";
-import { comparePublic, recoveryEndpoint } from "@/lib/api";
+import { comparePublic, PublicPlannerError, recoveryEndpoint } from "@/lib/api";
 import { buildReuseKey, canReuseFacts } from "./refinement";
 import type { TabFactsCache } from "./refinement";
 import type { TripRequest } from "@domain/schemas";
@@ -178,7 +178,7 @@ export function useRecovery() {
         type: "REQUEST_FAILED",
         sequence: current,
         message:
-          error instanceof Error
+          error instanceof PublicPlannerError
             ? error.message
             : "Comparison failed. Your inputs are retained; check the supplied facts and retry.",
       });
