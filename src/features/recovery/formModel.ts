@@ -79,7 +79,7 @@ const amount = z
   .string()
   .regex(
     /^\d+(\.\d{1,2})?$/,
-    "Use a positive USD amount with at most two decimal places",
+    "Use a nonnegative USD amount with at most two decimal places",
   )
   .transform((v) => Math.round(Number(v) * 100))
   .pipe(z.number().int().max(100_000_000));
@@ -89,6 +89,33 @@ const minute = z
   .transform(Number)
   .pipe(z.number().int().min(0).max(10_080));
 const label = z.string().trim().min(1, "Enter this fact").max(500);
+class OptionalFactError extends Error {}
+
+function omissionCause(error: unknown, fallback: string): string {
+  if (error instanceof OptionalFactError) return error.message;
+  // Only expose known, user-facing schema messages, never serialized Zod errors.
+  if (error instanceof z.ZodError) {
+    if (
+      error.issues.some(
+        (issue) => issue.message === "Transit arrival must follow departure",
+      )
+    ) {
+      return "Transit arrival must follow departure. Correct the entered service times.";
+    }
+    if (
+      error.issues.some(
+        (issue) => issue.message === "Use whole minutes, 0 or more",
+      )
+    ) {
+      return "Enter whole-minute allowances from 0 to 10,080.";
+    }
+  }
+  if (error instanceof RangeError) {
+    return "Enter valid, unambiguous America/New_York dates and times; daylight-saving gaps and repeated local times need clarification.";
+  }
+  return fallback;
+}
+
 export const localInput = (at: string) =>
   toTripLocalTime(at).replace(/(?:Z|[+-]\d{2}:\d{2})$/, "");
 export function draftFromRequest(r: TripRequest): Draft {
@@ -196,7 +223,15 @@ export function buildRequest(
       ],
     },
   ];
-  const cash = (v: string) => (v.trim() === "" ? null : amount.parse(v));
+  const cash = (v: string, field = "Transfer cost") => {
+    if (v.trim() === "") return null;
+    const parsed = amount.safeParse(v);
+    if (!parsed.success)
+      throw new OptionalFactError(
+        `${field} must be a nonnegative USD amount with at most two decimal places, no more than $1,000,000. Leave it blank if unknown.`,
+      );
+    return parsed.data;
+  };
   const transfer = (
     from: string,
     to: string,
@@ -242,7 +277,7 @@ export function buildRequest(
           departureAt,
           arrivalAt: transitArrival,
           boardingMinutes: minute.parse(t.boardingMinutes),
-          fareCents: cash(t.fare),
+          fareCents: cash(t.fare, "Fare"),
           access: transfer(
             "BOS terminal exit",
             t.departureTerminal,
@@ -269,9 +304,9 @@ export function buildRequest(
           ],
         }),
       );
-    } catch {
+    } catch (error) {
       warnings.push(
-        "Transit option omitted: enter the service name, valid unambiguous departure/arrival, both terminals and whole-minute transfer/boarding allowances. Prices may stay blank (unknown); entered USD prices need at most 2 decimals.",
+        `Transit option omitted: ${omissionCause(error, "Enter the service name, both terminals and whole-minute transfer/boarding allowances. Prices may stay blank (unknown).")}`,
       );
     }
   }
@@ -326,7 +361,7 @@ export function buildRequest(
             ["Other charges", c.other],
           ].map(([name, value]) => ({
             label: name,
-            cents: cash(value),
+            cents: cash(value, name),
             currency: "USD",
             includedInOtherCharge: false,
           })),
@@ -338,9 +373,9 @@ export function buildRequest(
           ],
         }),
       );
-    } catch {
+    } catch (error) {
       warnings.push(
-        "Car option omitted: supply operator, pickup/return locations and all whole-minute shuttle, pickup, driving, return and walking allowances. Blank charges remain unknown.",
+        `Car option omitted: ${omissionCause(error, "Supply the operator, pickup/return locations and all whole-minute shuttle, pickup, driving, return and walking allowances. Blank charges remain unknown.")}`,
       );
     }
   }

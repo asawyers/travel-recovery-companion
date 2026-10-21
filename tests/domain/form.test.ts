@@ -87,3 +87,50 @@ describe("traveler-entered trip adapter", () => {
     ).toBeTruthy();
   });
 });
+
+const enteredCar = () => ({
+  ...emptyDraft().car,
+  enabled: true,
+  title: "Traveler rental",
+  pickup: "Boston rental pickup",
+  dropoff: "Portland rental return",
+  accessMinutes: "15",
+  accessCost: "0",
+  pickupMinutes: "30",
+  driveMinutes: "110",
+  returnMinutes: "15",
+  walkMinutes: "10",
+  rental: "100",
+  fees: "25",
+  fuel: "15",
+  tolls: "5",
+  other: "0",
+  checkedAt: now,
+});
+it("names an invalid car charge and keeps the supported transit alternative and original entries", () => {
+  const d = manual();
+  d.car = { ...enteredCar(), fuel: "-1" };
+  const result = buildRequest(d, "real", [], now);
+  expect(result.warnings.join()).toMatch(
+    /Car option omitted: Fuel must be a nonnegative USD amount/,
+  );
+  expect(result.warnings.join()).not.toMatch(/\[|Zod|stack|invalid_format/);
+  expect(result.request?.confirmedOptions.map((option) => option.id)).toEqual([
+    "manual-transit",
+  ]);
+  expect(d.car.fuel).toBe("-1");
+});
+it("explains invalid transit chronology while retaining a supported rental and entered times", () => {
+  const d = manual();
+  d.car = enteredCar();
+  d.transit.arrival = "2026-11-18T09:00";
+  const result = buildRequest(d, "real", [], now);
+  expect(result.warnings.join()).toMatch(
+    /Transit option omitted: Transit arrival must follow departure/,
+  );
+  expect(result.warnings.join()).not.toMatch(/\[|Zod|stack|custom/);
+  expect(result.request?.confirmedOptions.map((option) => option.id)).toEqual([
+    "manual-car",
+  ]);
+  expect(d.transit.arrival).toBe("2026-11-18T09:00");
+});
