@@ -21,3 +21,7 @@ supabase/.branches/
 
 # Local Superpowers planning documents
 /docs/superpowers/
+
+# Browser verification output
+/test-results/
+/playwright-report/
