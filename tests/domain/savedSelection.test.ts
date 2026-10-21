@@ -92,8 +92,41 @@ describe("device saved selection", () => {
       ok: false,
       message: expect.stringMatching(/delete.*retry/i),
     });
+    expect(writeSavedSelection(storage, snapshot)).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/delete.*retry/i),
+    });
     expect(storage.getItem(SAVED_PLAN_KEY)).toBe(raw);
     expect(clearSavedSelection(storage).ok).toBe(true);
+    expect(writeSavedSelection(storage, snapshot).ok).toBe(true);
+  });
+  it("does not overwrite an unreadable record and retries storage after access is restored", () => {
+    const backing = memory();
+    writeSavedSelection(backing, snapshot);
+    const original = backing.getItem(SAVED_PLAN_KEY);
+    let blocked = true;
+    const storage = {
+      ...backing,
+      getItem: (key: string) => {
+        if (blocked) throw new Error("Read blocked");
+        return backing.getItem(key);
+      },
+    };
+    const replacement = { ...snapshot, selectedAt: "2026-10-21T15:04:00Z" };
+    expect(writeSavedSelection(storage, replacement)).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/read.*storage/i),
+    });
+    expect(backing.getItem(SAVED_PLAN_KEY)).toBe(original);
+    blocked = false;
+    expect(writeSavedSelection(storage, replacement)).toEqual({
+      ok: true,
+      value: replacement,
+    });
+    expect(readSavedSelection(storage)).toEqual({
+      ok: true,
+      value: replacement,
+    });
   });
   it("rejects unknown keys and mismatched plan provenance", () => {
     expect(

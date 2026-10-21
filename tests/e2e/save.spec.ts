@@ -98,23 +98,52 @@ test("editing clears the current saved badge but retains history; refresh starts
   );
   expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBe(before);
 });
-test("invalid saved data stays stored until explicitly deleted", async ({
-  page,
-}) => {
-  await page.addInitScript((k) => localStorage.setItem(k, "{invalid"), key);
-  await page.goto("/");
-  await expect(page.getByRole("alert")).toContainText(/delete.*retry/i);
-  expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBe(
-    "{invalid",
-  );
-  await page
-    .getByRole("button", { name: "Delete saved plan", exact: true })
-    .click();
-  await expect(
-    page.getByText("Saved plan deleted from this device.", { exact: true }),
-  ).toBeVisible();
-  expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBeNull();
-});
+for (const raw of [
+  "{invalid",
+  JSON.stringify({ schemaVersion: 2, futurePayload: "retain" }),
+]) {
+  test(`invalid or future saved data requires deletion before replacement: ${raw}`, async ({
+    page,
+  }) => {
+    await page.addInitScript(({ key, raw }) => localStorage.setItem(key, raw), {
+      key,
+      raw,
+    });
+    await page.goto("/");
+    await expect(page.getByRole("alert")).toContainText(/delete.*retry/i);
+    await chooseHotel(page);
+    await page
+      .getByRole("button", { name: "Save on this device", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toContainText(/delete.*retry/i);
+    expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBe(raw);
+    await expect(
+      page.getByText(
+        "Saved on this device. No tickets or reservations have been purchased.",
+        { exact: true },
+      ),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Delete saved plan", exact: true })
+      .click();
+    await expect(
+      page.getByText("Saved plan deleted from this device.", { exact: true }),
+    ).toBeVisible();
+    expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBeNull();
+    await page
+      .getByRole("button", { name: "Save on this device", exact: true })
+      .click();
+    await expect(
+      page.getByText(
+        "Saved on this device. No tickets or reservations have been purchased.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(page.getByTestId("saved-plan")).toContainText(
+      "Fictional standard queen room",
+    );
+  });
+}
 test("storage getter and write/remove failures are useful and preserve the current trip", async ({
   page,
 }) => {

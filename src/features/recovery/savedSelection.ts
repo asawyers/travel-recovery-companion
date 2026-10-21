@@ -83,6 +83,13 @@ export function writeSavedSelection(
       message:
         "Cannot save this selection because its trip or itinerary is invalid. Compare again and retry.",
     };
+  const existing = readSavedSelection(storage);
+  if (!existing.ok) {
+    return {
+      ok: false,
+      message: `Cannot save while the existing device storage record cannot be read safely. ${existing.message}`,
+    };
+  }
   try {
     const raw = JSON.stringify(parsed.data);
     if (raw.length > MAX_SNAPSHOT_LENGTH)
