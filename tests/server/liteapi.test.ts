@@ -198,4 +198,93 @@ describe('labeled LiteAPI sandbox availability', () => {
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(fetch.mock.calls[1][0]).toBe('https://api.liteapi.travel/v3.0/data/hotel?hotelId=test-0')
   })
+  it.each([
+    ['empty', 'empty_results=1'], ['missing-id', 'rate_property_identity=1'], ['no-room', 'rate_room_types=1'],
+    ['missing-offer', 'rate_offer_identity=1'], ['two-rates', 'rate_count=1'], ['occupancy', 'rate_occupancy=1'],
+    ['total-shape', 'rate_total_structure=1'], ['usd-price', 'rate_total_usd=1'],
+    ['offer-total', 'rate_offer_total_mismatch=1'], ['selling-price', 'rate_selling_price=1'],
+  ])('reports static sandbox rejection category for %s without leaking provider values', async (scenario, diagnostic) => {
+    const body = sandboxReply(); const hotel = body.data[0]; const room = hotel.roomTypes[0]; const rate = room.rates[0]
+    hotel.hotelId = 'PRIVATE-PROPERTY'; room.offerId = 'PRIVATE-OFFER'; body.hotels[0].id = hotel.hotelId
+    if (scenario === 'empty') body.data = []
+    if (scenario === 'missing-id') hotel.hotelId = ''
+    if (scenario === 'no-room') hotel.roomTypes = []
+    if (scenario === 'missing-offer') room.offerId = ''
+    if (scenario === 'two-rates') room.rates.push(structuredClone(rate))
+    if (scenario === 'occupancy') rate.occupancyNumber = 9
+    if (scenario === 'total-shape') rate.retailRate.total = []
+    if (scenario === 'usd-price') rate.retailRate.total[0].currency = 'PRIVATE-CURRENCY'
+    if (scenario === 'offer-total') room.offerRetailRate.amount = 77.13
+    if (scenario === 'selling-price') room.suggestedSellingPrice[0].amount = 771.13
+    const fetch = fetcher([body]); const result = await sandboxAdapter(fetch)(sandboxRequest(), sandboxContext())
+    expect(result.status).toBe('unavailable')
+    if (result.status === 'ok') throw new Error('expected diagnostics')
+    expect(result.reason).toContain(diagnostic)
+    expect(result.reason).toContain(`received=${body.data.length}; inspected=${body.data.length}; accepted_rates=0`)
+    expect(JSON.stringify(result)).not.toMatch(/PRIVATE|771\.13|77\.13|125\.25|sand_fixture|private-offer-token/)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it.each(['identity', 'detail-request'])('distinguishes missing property identity from %s failure', async scenario => {
+    const body = sandboxReply(); body.hotels = []
+    const fetch = scenario === 'identity' ? fetcher([body, { data: { id: 'PRIVATE-WRONG-ID', name: 'PRIVATE-NAME', address: 'PRIVATE-ADDRESS' } }]) : vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(Response.json(body)).mockResolvedValueOnce(new Response('PRIVATE-BODY', { status: 500 }))
+    const result = await sandboxAdapter(fetch)(sandboxRequest(), sandboxContext())
+    expect(result.status).toBe('unavailable')
+    if (result.status === 'ok') throw new Error('expected diagnostics')
+    expect(result.reason).toContain('received=1; inspected=1; accepted_rates=1')
+    expect(result.reason).toContain('property_identity=1')
+    expect(result.reason).toContain(scenario === 'identity' ? 'detail_identity=1' : 'detail_request_failed=1')
+    expect(JSON.stringify(result)).not.toMatch(/PRIVATE|lp-hotel|125\.25|sand_fixture/)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+  it('reports output schema rejection separately without loosening date validation', async () => {
+    const req = sandboxRequest(); req.stay!.checkin += '[u-ca=iso8601]'
+    const result = await sandboxAdapter(fetcher([sandboxReply()]))(req, sandboxContext())
+    expect(result.status).toBe('unavailable')
+    if (result.status === 'ok') throw new Error('expected diagnostics')
+    expect(result.reason).toContain('accepted_rates=1')
+    expect(result.reason).toContain('output_schema=1')
+    expect(result.reason).not.toContain('u-ca')
+  })
+  it('inspects only three rate rows and aggregates bounded static rejection counts', async () => {
+    const body = sandboxReply(); body.data = Array.from({ length: 10 }, () => structuredClone(body.data[0])); body.data.forEach(hotel => { hotel.roomTypes = [] })
+    const fetch = fetcher([body]); const result = await sandboxAdapter(fetch)(sandboxRequest(), sandboxContext())
+    expect(result.status).toBe('unavailable')
+    if (result.status === 'ok') throw new Error('expected diagnostics')
+    expect(result.reason).toContain('received=10; inspected=3; accepted_rates=0')
+    expect(result.reason).toContain('rate_room_types=3')
+    expect(result.reason.length).toBeLessThan(600)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it('retains the existing production failure message without sandbox diagnostics', async () => {
+    const body = reply(); body.data[0].roomTypes = []
+    const result = await adapter(fetcher([body]))(request(), { signal: signal() })
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'No supported production hotel room offers with complete property identity and public-safe USD pricing were available.' })
+  })
+
+  it.each([true, false])('gives only sandbox rates enough time for the six-second supplier window: sandbox=%s', async sandbox => {
+    vi.useFakeTimers()
+    try {
+      const delayed = vi.fn<typeof globalThis.fetch>(() => new Promise<Response>(resolve => setTimeout(() => resolve(Response.json(sandbox ? sandboxReply() : reply())), 4_000)))
+      const pending = sandbox ? sandboxAdapter(delayed)(sandboxRequest(), sandboxContext()) : adapter(delayed)(request(), { signal: signal() })
+      await vi.advanceTimersByTimeAsync(4_001)
+      const result = await pending
+      expect(result.status).toBe(sandbox ? 'ok' : 'unavailable')
+      if (!sandbox && result.status !== 'ok') expect(result.reason).toContain('timeout')
+      expect(delayed).toHaveBeenCalledTimes(1)
+    } finally { vi.useRealTimers() }
+  })
+  it('keeps the sandbox property-details request at the default three-second deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      const body = sandboxReply(); body.hotels = []
+      const delayed = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(Response.json(body)).mockImplementationOnce(() => new Promise<Response>(resolve => setTimeout(() => resolve(Response.json({ data: { id: 'lp-hotel', name: 'Hotel', address: 'Boston' } })), 4_000)))
+      const pending = sandboxAdapter(delayed)(sandboxRequest(), sandboxContext())
+      await vi.advanceTimersByTimeAsync(3_001)
+      const result = await pending
+      expect(result.status).toBe('unavailable')
+      if (result.status !== 'ok') expect(result.reason).toContain('detail_request_failed=1')
+      expect(delayed).toHaveBeenCalledTimes(2)
+    } finally { vi.useRealTimers() }
+  })
+
 })

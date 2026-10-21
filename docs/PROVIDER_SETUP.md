@@ -4,7 +4,7 @@ The traveler supplies the revised gate-arrival time. Recovery planning does not 
 
 Google Routes is already configured and enabled in the existing project chosen by the user. Earlier real hosted API and Brave form checks returned two bus plans with Google schedule evidence. The user explicitly authorized Google pay-as-you-go without a daily cap and deferred quota setup. Leave this existing Google project, approval and key unchanged.
 
-Hotel discovery/property handoffs and actual OpenAI Agents SDK orchestration are deployed and covered by injected provider/model tests. OpenAI was subsequently authorized and activated by the user; a real GPT-6 Luna refinement through Brave passed route discovery, deterministic assessment, eligible-plan selection and visible no-driving preference application. Production hotel account/configuration acceptance is deferred. The approved explicit sandbox demo is implemented; actual sandbox acceptance awaits the privately saved sandbox key. Fixture tests do not establish hotel rates; actual model acceptance is recorded separately in VERIFICATION.md.
+Hotel discovery/property handoffs and actual OpenAI Agents SDK orchestration are deployed and covered by injected provider/model tests. OpenAI was subsequently authorized and activated by the user; a real GPT-6 Luna refinement through Brave passed route discovery, deterministic assessment, eligible-plan selection and visible no-driving preference application. Production hotel account/configuration acceptance is deferred. The approved explicit sandbox demo is implemented; the user has confirmed the sandbox key is saved, and actual sandbox response acceptance is being investigated. Fixture tests do not establish hotel rates; actual model acceptance is recorded separately in VERIFICATION.md.
 
 ## Backend configuration
 
@@ -29,7 +29,7 @@ The existing Vercel public endpoint setting and scoped GitHub Supabase deploymen
 
 ## Sandbox hotel demo (current challenge scope)
 
-The user has created an account and obtained a sandbox key, and approved labeled demo results. In the existing Supabase project, save it under **Edge Functions → Secrets** as **`LITEAPI_SANDBOX_KEY`**. Keep the value private; do not use a frontend `VITE_` variable. Confirmation of saving and actual hosted sandbox acceptance are pending. No production key, environment, booking origin or hotel approval switches need changing for this demo.
+The user has created an account and obtained a sandbox key, and approved labeled demo results. In the existing Supabase project, save it under **Edge Functions → Secrets** as **`LITEAPI_SANDBOX_KEY`**. Keep the value private; do not use a frontend `VITE_` variable. The user confirmed saving this key. Keep the existing secret; actual hosted sandbox response acceptance is being investigated. No production key, environment, booking origin or hotel approval switches need changing for this demo.
 
 Choose **Try hotel sandbox** in the app. It uses the current clock and future New York stay dates, calls only the sandbox hotel source and shows test prices. A returned property name may be real; neither its rate nor the fictional onward inputs establish live availability. Select a property, enter its demo airport/hotel and hotel/boarding-stop transfers, check-in allowance and departure, then investigate the complete journey. Save/reload retains sandbox labels; explicit refresh checks sandbox rates again. Booking links and AI assistance are disabled throughout this mode.
 

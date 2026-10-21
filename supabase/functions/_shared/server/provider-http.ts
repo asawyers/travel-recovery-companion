@@ -33,7 +33,7 @@ function errorDiagnostic(body: unknown, status: number): ProviderHttpDiagnostic 
 }
 
 /** One bounded attempt. Credentials and upstream response bodies never enter errors. */
-export async function providerJson(fetcher: typeof fetch, url: string, init: RequestInit, signal: AbortSignal): Promise<ProviderHttpResult> {
+export async function providerJson(fetcher: typeof fetch, url: string, init: RequestInit, signal: AbortSignal, timeoutMs: 3_000 | 8_000 = 3_000): Promise<ProviderHttpResult> {
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
@@ -42,7 +42,7 @@ export async function providerJson(fetcher: typeof fetch, url: string, init: Req
     abort = () => { controller.abort(); resolve({ ok: false, kind: 'aborted' }) }
     signal.addEventListener('abort', abort, { once: true })
     if (signal.aborted) abort()
-    timer = setTimeout(() => { controller.abort(); resolve({ ok: false, kind: 'timeout' }) }, 3000)
+    timer = setTimeout(() => { controller.abort(); resolve({ ok: false, kind: 'timeout' }) }, timeoutMs)
   })
   const operation = async (): Promise<ProviderHttpResult> => {
     if (signal.aborted) return { ok: false, kind: 'aborted' }

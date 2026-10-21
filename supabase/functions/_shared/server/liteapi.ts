@@ -70,21 +70,27 @@ function cancellation(value: unknown): HotelOption['cancellation'] {
   return notes.length ? { deadlineAt, penalty, text: notes.join(' ').slice(0, 4000) } : null
 }
 type RateFact = { id: string; room: string | null; board: string | null; costs: CostLine[]; cancellation: HotelOption['cancellation'] }
-function rateFact(value: unknown): RateFact | undefined {
+type RateRejection = 'rate_property_identity' | 'rate_room_types' | 'rate_offer_identity' | 'rate_count' | 'rate_occupancy' | 'rate_total_structure' | 'rate_total_usd' | 'rate_offer_total_mismatch' | 'rate_selling_price'
+type SandboxRejection = RateRejection | 'empty_results' | 'duplicate_rate' | 'property_identity' | 'detail_request_failed' | 'detail_identity' | 'output_schema'
+function rateFact(value: unknown, onReject?: (reason: RateRejection) => void): RateFact | undefined {
+  const reject = (reason: RateRejection): undefined => { onReject?.(reason); return undefined }
   const hotel = record(value); const id = text(hotel?.hotelId, 100)
-  if (!id || !Array.isArray(hotel?.roomTypes) || hotel.roomTypes.length === 0) return undefined
+  if (!id) return reject('rate_property_identity')
+  if (!Array.isArray(hotel?.roomTypes) || hotel.roomTypes.length === 0) return reject('rate_room_types')
   const offer = record(hotel.roomTypes[0])
-  if (!offer || !text(offer.offerId, 10000) || !Array.isArray(offer.rates) || offer.rates.length !== 1) return undefined
+  if (!offer || !text(offer.offerId, 10000)) return reject('rate_offer_identity')
+  if (!Array.isArray(offer.rates) || offer.rates.length !== 1) return reject('rate_count')
   const rate = record(offer.rates[0]); const retail = record(rate?.retailRate)
-  if (!rate || rate.adultCount !== 1 || rate.childCount !== 0 || rate.occupancyNumber !== 1 || !Array.isArray(retail?.total) || retail.total.length !== 1) return undefined
+  if (!rate || rate.adultCount !== 1 || rate.childCount !== 0 || rate.occupancyNumber !== 1) return reject('rate_occupancy')
+  if (!Array.isArray(retail?.total) || retail.total.length !== 1) return reject('rate_total_structure')
   const total = usd(retail.total[0])
-  if (total === null) return undefined
+  if (total === null) return reject('rate_total_usd')
   // Offer totals are optional but must agree with the single room total when present.
-  if (offer.offerRetailRate !== undefined && usd(offer.offerRetailRate) !== total) return undefined
+  if (offer.offerRetailRate !== undefined && usd(offer.offerRetailRate) !== total) return reject('rate_offer_total_mismatch')
   for (const parent of [offer, rate]) {
     if (parent.suggestedSellingPrice === undefined || parent.suggestedSellingPrice === null) continue
     const prices = parent === offer && record(parent.suggestedSellingPrice) ? [parent.suggestedSellingPrice] : parent.suggestedSellingPrice
-    if (!Array.isArray(prices) || prices.length === 0 || prices.length > 8 || prices.some(price => usd(price) === null || usd(price)! > total)) return undefined
+    if (!Array.isArray(prices) || prices.length === 0 || prices.length > 8 || prices.some(price => usd(price) === null || usd(price)! > total)) return reject('rate_selling_price')
   }
   return { id, room: text(rate.name), board: text(rate.boardName), costs: [{ label: 'Hotel room total', cents: total, currency: 'USD', includedInOtherCharge: false }, ...feeLines(retail.taxesAndFees)], cancellation: cancellation(rate.cancellationPolicies) }
 }
@@ -109,31 +115,43 @@ export function createLiteApiAdapter(options: ProviderAdapterOptions & { environ
     const fetcher = options.fetcher ?? fetch
     const headers = { 'X-API-Key': options.apiKey.trim(), 'Content-Type': 'application/json', Accept: 'application/json' }
     const stay = request.stay!
-    const result = await providerJson(fetcher, RATES_URL, { method: 'POST', headers, body: JSON.stringify({ checkin: stay.checkin, checkout: stay.checkout, currency: 'USD', guestNationality: stay.guestNationality, occupancies: [{ adults: 1, children: [] }], iataCode: 'BOS', limit: 3, maxRatesPerHotel: 1, includeHotelData: true, timeout: 6 }) }, context.signal)
+    const result = await providerJson(fetcher, RATES_URL, { method: 'POST', headers, body: JSON.stringify({ checkin: stay.checkin, checkout: stay.checkout, currency: 'USD', guestNationality: stay.guestNationality, occupancies: [{ adults: 1, children: [] }], iataCode: 'BOS', limit: 3, maxRatesPerHotel: 1, includeHotelData: true, timeout: 6 }) }, context.signal, sandbox ? 8_000 : 3_000)
     if (!result.ok) return unavailable(`Hotel availability request failed (${result.kind}${result.status ? `; HTTP ${result.status}` : ''}); supplied options were retained.`, ['timeout', 'network', 'rate_limited'].includes(result.kind))
     const body = record(result.body)
     if (!body || body.sandbox !== sandbox) return unavailable(sandbox ? 'Hotel sandbox lacked explicit sandbox:true provenance; production or unmarked rates were omitted.' : 'Hotel availability lacked explicit production provenance; sandbox or unmarked rates were omitted.')
     if (!Array.isArray(body.data) || body.data.length > 200) return unavailable('Hotel availability response was malformed; supplied options were retained.')
     const evidence: SourceEvidence = { type: sandbox ? 'estimated' : 'live', provider: sandbox ? 'Nuitee LiteAPI sandbox — test data' : 'Nuitee LiteAPI', sourceUrl: 'https://docs.liteapi.travel/reference/post_hotels-rates', checkedAt: now, serviceDate: stay.checkin, providerUpdatedAt: null, expiresAt, environment: sandbox ? 'sandbox' : 'production', warnings: ['Five-minute app evidence freshness policy; this is not a provider quote expiry.', sandbox ? 'Sandbox test data; no live availability or bookable rate. No booking can be made from this demo.' : 'Availability and price must be rechecked with the hotel booking provider; the hosted payable price is not guaranteed.'] }
     const hotels = Array.isArray(body.hotels) && body.hotels.length <= 200 ? body.hotels : []
-    const facts = body.data.slice(0, 3).map(rateFact).filter((item): item is RateFact => item !== undefined)
+    // Only fixed categories and bounded counts are exposed for sandbox diagnosis, never provider values.
+    const rejected: Partial<Record<SandboxRejection, number>> = {}
+    const countRejection = (reason: SandboxRejection): void => { if (sandbox) rejected[reason] = (rejected[reason] ?? 0) + 1 }
+    const inspected = body.data.slice(0, 3)
+    if (inspected.length === 0) countRejection('empty_results')
+    const facts = inspected.map(item => rateFact(item, sandbox ? countRejection : undefined)).filter((item): item is RateFact => item !== undefined)
     const seen = new Set<string>(); const offers: HotelOption[] = []
     for (let index = 0; index < facts.length; index++) {
       const fact = facts[index]
-      if (seen.has(fact.id)) continue
+      if (seen.has(fact.id)) { countRejection('duplicate_rate'); continue }
       seen.add(fact.id)
       const matches = hotels.filter(item => record(item)?.id === fact.id)
       let details = matches.length === 1 ? property(matches[0], fact.id) : undefined
       // One content request, only for the leading usable rate. Never follow provider-supplied URLs.
       if (!details && index === 0 && matches.length <= 1 && !context.signal.aborted) {
         const detail = await providerJson(fetcher, `${DETAIL_URL}?hotelId=${encodeURIComponent(fact.id)}`, { method: 'GET', headers }, context.signal)
-        if (detail.ok) details = property(record(detail.body)?.data, fact.id)
+        if (detail.ok) {
+          details = property(record(detail.body)?.data, fact.id)
+          if (!details) countRejection('detail_identity')
+        } else countRejection('detail_request_failed')
       }
-      if (!details) continue
+      if (!details) { countRejection('property_identity'); continue }
       const parsed = HotelOptionSchema.safeParse({ id: fact.id, ...details, room: fact.room, board: fact.board, checkin: stay.checkin, checkout: stay.checkout, adults: 1, rooms: 1, timeZone: 'America/New_York', costs: fact.costs, cancellation: fact.cancellation, lateCheckinConfirmed: false, quoteExpiresAt: null, evidence: [evidence], handoffId: !sandbox && approvedOrigin(options.bookingOrigin) ? 'nuitee-hotel' : 'hotel-search' })
       if (parsed.success) offers.push(parsed.data)
+      else countRejection('output_schema')
     }
-    if (!offers.length) return unavailable(sandbox ? 'No supported sandbox hotel test offers with complete property identity and USD pricing were available.' : 'No supported production hotel room offers with complete property identity and public-safe USD pricing were available.')
+    if (!offers.length) {
+      const diagnostics = sandbox ? ` Sandbox diagnostics: received=${body.data.length}; inspected=${inspected.length}; accepted_rates=${facts.length}; ${Object.entries(rejected).map(([reason, count]) => `${reason}=${count}`).join('; ')}.` : ''
+      return unavailable(sandbox ? `No supported sandbox hotel test offers with complete property identity and USD pricing were available.${diagnostics}` : 'No supported production hotel room offers with complete property identity and public-safe USD pricing were available.')
+    }
     return { status: 'ok', data: { offers }, evidence: [evidence], warnings: sandbox ? ['Sandbox test data; no live availability or bookings. Select a property and supply fictional transfers and next-day train or bus to complete this demo journey.', 'Late check-in and transfer service are unconfirmed test assumptions.'] : ['Hotel availability alone is not a complete recovery journey; select a property and supply its transfers and actual next-day train or bus.', 'Late check-in, transfer service and hosted checkout prices need confirmation.'] }
   }
 }

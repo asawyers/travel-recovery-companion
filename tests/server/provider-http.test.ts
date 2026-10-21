@@ -66,4 +66,34 @@ describe('bounded provider JSON requests', () => {
     expect(await pending).toEqual({ ok: false, kind: 'aborted' })
     expect(await providerJson(async () => { throw new Error('SECRET') }, 'https://provider.test', {}, new AbortController().signal)).toEqual({ ok: false, kind: 'network' })
   })
+  it('allows the fixed hotel-sandbox deadline without extending the default deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      const delayed = () => new Promise<Response>(resolve => setTimeout(() => resolve(Response.json({ sandbox: true })), 4_000))
+      const normal = providerJson(delayed, 'https://provider.test', {}, new AbortController().signal)
+      const sandbox = providerJson(delayed, 'https://provider.test', {}, new AbortController().signal, 8_000)
+      await vi.advanceTimersByTimeAsync(4_001)
+      expect(await normal).toEqual({ ok: false, kind: 'timeout' })
+      expect(await sandbox).toEqual({ ok: true, body: { sandbox: true } })
+    } finally { vi.useRealTimers() }
+  })
+  it('still bounds stalled sandbox fetches and bodies at eight seconds and honors earlier parent abort', async () => {
+    vi.useFakeTimers()
+    try {
+      for (const fetcher of [(() => new Promise<Response>(() => {})), (async () => new Response(new ReadableStream({ start() {} })))]) {
+        const pending = providerJson(fetcher, 'https://provider.test', {}, new AbortController().signal, 8_000)
+        let finished = false
+        void pending.then(() => { finished = true })
+        await vi.advanceTimersByTimeAsync(7_999)
+        expect(finished).toBe(false)
+        await vi.advanceTimersByTimeAsync(2)
+        expect(await pending).toEqual({ ok: false, kind: 'timeout' })
+      }
+      const controller = new AbortController()
+      const pending = providerJson(() => new Promise<Response>(() => {}), 'https://provider.test', {}, controller.signal, 8_000)
+      controller.abort()
+      expect(await pending).toEqual({ ok: false, kind: 'aborted' })
+    } finally { vi.useRealTimers() }
+  })
+
 })
