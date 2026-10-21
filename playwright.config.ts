@@ -7,7 +7,11 @@ export default defineConfig({
   use: {
     baseURL,
     browserName: "chromium",
-    channel: "chrome",
+    launchOptions: {
+      executablePath:
+        process.env.PLAYWRIGHT_BROWSER_EXECUTABLE_PATH ??
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    },
     trace: "retain-on-failure",
   },
   webServer: {
