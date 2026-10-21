@@ -13,7 +13,7 @@ export function planSourceLabels(plan: RecoveryPlan): string {
     synthetic: "Synthetic / fictional",
   };
   return [
-    ...new Set(evidence.map((e) => `${labels[e.type]} · ${e.provider}`)),
+    ...new Set(evidence.map((e) => `${e.environment === "sandbox" ? "Sandbox / test rate" : labels[e.type]} · ${e.provider}`)),
   ].join("; ");
 }
 export function ProviderAttribution({ plan }: { plan: RecoveryPlan }) {

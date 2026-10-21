@@ -96,10 +96,13 @@ function property(value: unknown, id: string): { name: string; address: string }
 }
 
 /** Optional availability only. All gates are server-owned; no prebook, booking or payment is invoked. */
-export function createLiteApiAdapter(options: ProviderAdapterOptions & { environment: 'production' | 'sandbox'; publicRatesApproved: boolean; bookingOrigin?: string }) {
+export function createLiteApiAdapter(options: ProviderAdapterOptions & { environment: 'production' | 'sandbox'; publicRatesApproved?: boolean; bookingOrigin?: string }) {
   return async (request: TripRequest, context: ProviderContext): Promise<ProviderResult<HotelFacts>> => {
-    if (!options.enabled || !options.apiKey?.trim() || options.environment !== 'production' || !options.publicRatesApproved || /^(?:sand_|sandbox_)/i.test(options.apiKey.trim())) return unavailable('Hotel availability is disabled or lacks approved production/public-rate configuration.')
-    if (request.mode !== 'real' || !request.overnightAllowed || !oneNight(request)) return unavailable('Hotel availability requires real mode, overnight permission and an explicit one-adult, one-room, one-night stay with guest nationality.')
+    const sandbox = options.environment === 'sandbox'
+    const sandboxKey = /^(?:sand_|sandbox_)/i.test(options.apiKey?.trim() ?? '')
+    if (!options.enabled || !options.apiKey?.trim() || (sandbox ? !sandboxKey : !options.publicRatesApproved || sandboxKey)) return unavailable(sandbox ? 'Hotel sandbox is unavailable without an enabled dedicated sandbox key.' : 'Hotel availability is disabled or lacks approved production/public-rate configuration.')
+    const permittedMode = sandbox ? request.mode === 'synthetic' && request.hotelDataMode === 'sandbox' && context.hotelSandbox === true : request.mode === 'real' && request.hotelDataMode === undefined
+    if (!permittedMode || !request.overnightAllowed || !oneNight(request)) return unavailable(sandbox ? 'Hotel sandbox requires explicit synthetic test mode, server permission, overnight permission and an explicit one-adult, one-room, one-night stay with guest nationality.' : 'Hotel availability requires real mode, overnight permission and an explicit one-adult, one-room, one-night stay with guest nationality.')
     if (context.signal.aborted) return unavailable('Hotel availability was cancelled.')
     const now = options.now(); let expiresAt: string
     try { expiresAt = new Date(toInstantMillis(now) + 300_000).toISOString() } catch { return unavailable('Hotel availability clock is invalid.') }
@@ -109,9 +112,9 @@ export function createLiteApiAdapter(options: ProviderAdapterOptions & { environ
     const result = await providerJson(fetcher, RATES_URL, { method: 'POST', headers, body: JSON.stringify({ checkin: stay.checkin, checkout: stay.checkout, currency: 'USD', guestNationality: stay.guestNationality, occupancies: [{ adults: 1, children: [] }], iataCode: 'BOS', limit: 3, maxRatesPerHotel: 1, includeHotelData: true, timeout: 6 }) }, context.signal)
     if (!result.ok) return unavailable(`Hotel availability request failed (${result.kind}${result.status ? `; HTTP ${result.status}` : ''}); supplied options were retained.`, ['timeout', 'network', 'rate_limited'].includes(result.kind))
     const body = record(result.body)
-    if (!body || body.sandbox !== false) return unavailable('Hotel availability lacked explicit production provenance; sandbox or unmarked rates were omitted.')
+    if (!body || body.sandbox !== sandbox) return unavailable(sandbox ? 'Hotel sandbox lacked explicit sandbox:true provenance; production or unmarked rates were omitted.' : 'Hotel availability lacked explicit production provenance; sandbox or unmarked rates were omitted.')
     if (!Array.isArray(body.data) || body.data.length > 200) return unavailable('Hotel availability response was malformed; supplied options were retained.')
-    const evidence: SourceEvidence = { type: 'live', provider: 'Nuitee LiteAPI', sourceUrl: 'https://docs.liteapi.travel/reference/post_hotels-rates', checkedAt: now, serviceDate: stay.checkin, providerUpdatedAt: null, expiresAt, environment: 'production', warnings: ['Five-minute app evidence freshness policy; this is not a provider quote expiry.', 'Availability and price must be rechecked with the hotel booking provider; the hosted payable price is not guaranteed.'] }
+    const evidence: SourceEvidence = { type: sandbox ? 'estimated' : 'live', provider: sandbox ? 'Nuitee LiteAPI sandbox — test data' : 'Nuitee LiteAPI', sourceUrl: 'https://docs.liteapi.travel/reference/post_hotels-rates', checkedAt: now, serviceDate: stay.checkin, providerUpdatedAt: null, expiresAt, environment: sandbox ? 'sandbox' : 'production', warnings: ['Five-minute app evidence freshness policy; this is not a provider quote expiry.', sandbox ? 'Sandbox test data; no live availability or bookable rate. No booking can be made from this demo.' : 'Availability and price must be rechecked with the hotel booking provider; the hosted payable price is not guaranteed.'] }
     const hotels = Array.isArray(body.hotels) && body.hotels.length <= 200 ? body.hotels : []
     const facts = body.data.slice(0, 3).map(rateFact).filter((item): item is RateFact => item !== undefined)
     const seen = new Set<string>(); const offers: HotelOption[] = []
@@ -127,10 +130,10 @@ export function createLiteApiAdapter(options: ProviderAdapterOptions & { environ
         if (detail.ok) details = property(record(detail.body)?.data, fact.id)
       }
       if (!details) continue
-      const parsed = HotelOptionSchema.safeParse({ id: fact.id, ...details, room: fact.room, board: fact.board, checkin: stay.checkin, checkout: stay.checkout, adults: 1, rooms: 1, timeZone: 'America/New_York', costs: fact.costs, cancellation: fact.cancellation, lateCheckinConfirmed: false, quoteExpiresAt: null, evidence: [evidence], handoffId: approvedOrigin(options.bookingOrigin) ? 'nuitee-hotel' : 'hotel-search' })
+      const parsed = HotelOptionSchema.safeParse({ id: fact.id, ...details, room: fact.room, board: fact.board, checkin: stay.checkin, checkout: stay.checkout, adults: 1, rooms: 1, timeZone: 'America/New_York', costs: fact.costs, cancellation: fact.cancellation, lateCheckinConfirmed: false, quoteExpiresAt: null, evidence: [evidence], handoffId: !sandbox && approvedOrigin(options.bookingOrigin) ? 'nuitee-hotel' : 'hotel-search' })
       if (parsed.success) offers.push(parsed.data)
     }
-    if (!offers.length) return unavailable('No supported production hotel room offers with complete property identity and public-safe USD pricing were available.')
-    return { status: 'ok', data: { offers }, evidence: [evidence], warnings: ['Hotel availability alone is not a complete recovery journey; select a property and supply its transfers and actual next-day train or bus.', 'Late check-in, transfer service and hosted checkout prices need confirmation.'] }
+    if (!offers.length) return unavailable(sandbox ? 'No supported sandbox hotel test offers with complete property identity and USD pricing were available.' : 'No supported production hotel room offers with complete property identity and public-safe USD pricing were available.')
+    return { status: 'ok', data: { offers }, evidence: [evidence], warnings: sandbox ? ['Sandbox test data; no live availability or bookings. Select a property and supply fictional transfers and next-day train or bus to complete this demo journey.', 'Late check-in and transfer service are unconfirmed test assumptions.'] : ['Hotel availability alone is not a complete recovery journey; select a property and supply its transfers and actual next-day train or bus.', 'Late check-in, transfer service and hosted checkout prices need confirmation.'] }
   }
 }

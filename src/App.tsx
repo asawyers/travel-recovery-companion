@@ -17,6 +17,7 @@ import {
   buildRequest,
   draftFromRequest,
   emptyDraft,
+  hotelSandboxDraft,
 } from "@/features/recovery/formModel";
 import type { Draft, FormErrors } from "@/features/recovery/formModel";
 import {
@@ -47,6 +48,7 @@ function RecoveryApp() {
     setHotelInvestigationNeeded(false);
     setDraft(current => ({ ...current, priority: state.result!.request.priority, drivingAllowed: state.result!.request.drivingAllowed }));
   }, [state.result, state.stale]);
+  const hotelSandbox = mode === "synthetic" && draft.hotelSandbox;
   const busy = state.status === "planning" || state.status === "validating";
   const now = () => exampleNow ?? new Date().toISOString();
   function edit(next: Draft) {
@@ -85,6 +87,7 @@ function RecoveryApp() {
     clock = now(),
     investigateSources = false,
     refinementText?: string,
+    sourceRequest: TripRequest | null = restoredRequest ?? null,
   ) {
     // Confirm once at the input boundary; priority changes retain original timestamps.
     const confirmed = {
@@ -105,7 +108,7 @@ function RecoveryApp() {
       nextMode,
       options,
       clock,
-      restoredRequest,
+      sourceRequest ?? undefined,
     );
     setErrors(built.errors);
     setWarnings(built.warnings);
@@ -127,7 +130,22 @@ function RecoveryApp() {
     setExampleNow(f.now);
     const next = draftFromRequest(f.request);
     setDraft(next);
-    compare(next, "synthetic", f.candidates, f.now);
+    compare(next, "synthetic", f.candidates, f.now, false, undefined, null);
+  }
+  function sandbox() {
+    const clock = new Date().toISOString();
+    const next = hotelSandboxDraft(clock);
+    recovery.reset();
+    setRefinement("");
+    setRefinementInvestigate(false);
+    setHotelInvestigationNeeded(false);
+    setRestoredRequest(undefined);
+    setInvestigate(false);
+    setMode("synthetic");
+    setExampleOptions([]);
+    setExampleNow(null);
+    setDraft(next);
+    compare(next, "synthetic", [], clock, true, undefined, null);
   }
   function real() {
     recovery.reset();
@@ -155,7 +173,7 @@ function RecoveryApp() {
           : historical.arrivalBasis,
     };
     const clock =
-      request.mode === "synthetic"
+      request.mode === "synthetic" && request.hotelDataMode !== "sandbox"
         ? recovery.saved.generatedAt
         : new Date().toISOString();
     recovery.edit();
@@ -167,9 +185,9 @@ function RecoveryApp() {
     setDraft(draftFromRequest(request));
     setMode(request.mode);
     setExampleOptions(
-      request.mode === "synthetic" ? request.confirmedOptions : [],
+      request.mode === "synthetic" && request.hotelDataMode !== "sandbox" ? request.confirmedOptions : [],
     );
-    setExampleNow(request.mode === "synthetic" ? clock : null);
+    setExampleNow(request.mode === "synthetic" && request.hotelDataMode !== "sandbox" ? clock : null);
     setErrors({});
     setWarnings(
       request.mode === "real"
@@ -222,12 +240,16 @@ function RecoveryApp() {
           className={`my-6 rounded-md border px-4 py-3 text-sm ${mode === "synthetic" ? "border-amber-700/40 bg-amber-50 text-amber-950" : "bg-white"}`}
         >
           <strong>
-            {mode === "synthetic"
+            {hotelSandbox
+              ? "Sandbox hotel rates + fictional onward inputs"
+              : mode === "synthetic"
               ? "Synthetic / fictional example"
               : "Traveler-entered trip"}
           </strong>
           <p className="mt-1">
-            {mode === "synthetic"
+            {hotelSandbox
+              ? "Hotel rates are sandbox test data; property names may refer to real hotels. Onward services, fares and transfer inputs are fictional. Uses the current clock and future stay dates; no live availability or reservations. All displayed amounts are test prices."
+              : mode === "synthetic"
               ? "Every option, price, hotel and source in this example is fictional. Demonstration clock: Nov 18, 2026, 7:55 am America/New_York; source timestamps are fixed."
               : recovery.configured
                 ? "Your supplied facts are compared by the public planner. Live availability is checked only when an available source is explicitly investigated; source warnings show what was actually checked."
@@ -254,6 +276,7 @@ function RecoveryApp() {
             }}
             onExample={example}
             onReal={real}
+            onHotelSandbox={sandbox}
           />
           <div className="min-w-0 space-y-5">
             <div
@@ -283,10 +306,10 @@ function RecoveryApp() {
                 </AlertDescription>
               </Alert>
             )}
-            <AssistancePanel assistance={state.assistance} value={refinement} onChange={setRefinement} busy={busy} configured={recovery.configured} hasResult={!!state.result && !state.stale}
+            {!hotelSandbox && <AssistancePanel assistance={state.assistance} value={refinement} onChange={setRefinement} busy={busy} configured={recovery.configured} hasResult={!!state.result && !state.stale}
               investigate={refinementInvestigate} onInvestigate={setRefinementInvestigate}
-              onSubmit={() => compare(draft, mode, exampleOptions, now(), refinementInvestigate, refinement)} />
-            <HotelOffersPanel offers={state.hotelOffers} selectedId={draft.hotel.hotelId} busy={busy} bookingOrigin={state.hotelBookingOrigin} expiresAt={state.hotelOffersExpiresAt} onExpired={recovery.expireOffers}
+              onSubmit={() => compare(draft, mode, exampleOptions, now(), refinementInvestigate, refinement)} />}
+            <HotelOffersPanel sandbox={hotelSandbox} offers={state.hotelOffers} selectedId={draft.hotel.hotelId} busy={busy} bookingOrigin={state.hotelBookingOrigin} expiresAt={state.hotelOffersExpiresAt} onExpired={recovery.expireOffers}
               onSelect={hotelId => {
                 if (hotelId !== draft.hotel.hotelId) edit({ ...draft, hotel: { ...emptyDraft().hotel, hotelId } });
                 setInvestigate(true);

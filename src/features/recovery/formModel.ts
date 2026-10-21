@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Temporal } from "@js-temporal/polyfill";
 import {
   TripRequestSchema,
   TransitOptionSchema,
@@ -19,6 +20,7 @@ import {
 
 export type Draft = ReturnType<typeof emptyDraft>;
 export const emptyDraft = () => ({
+  hotelSandbox: false,
   arrivalAt: "",
   originalDepartureAt: "",
   deadlineAt: "",
@@ -127,6 +129,7 @@ export const localInput = (at: string) =>
 export function draftFromRequest(r: TripRequest): Draft {
   const draft: Draft = {
     ...emptyDraft(),
+    hotelSandbox: r.mode === "synthetic" && r.hotelDataMode === "sandbox",
     arrivalAt: localInput(r.arrivalAt),
     originalDepartureAt: localInput(r.originalDepartureAt),
     deadlineAt: localInput(r.deadlineAt),
@@ -152,7 +155,7 @@ export function draftFromRequest(r: TripRequest): Draft {
       stationMinutes: String(h.stationAccess.minutes), stationCost: usd(h.stationAccess.costCents), stationKind: h.stationAccess.kind, stationCheckedAt: h.stationAccess.checkedAt,
     };
   }
-  for (const option of r.mode === "real" ? r.confirmedOptions : []) {
+  for (const option of r.mode === "real" || r.hotelDataMode === "sandbox" ? r.confirmedOptions : []) {
     if (
       (option.kind === "bus" || option.kind === "train") &&
       option.id === "manual-transit"
@@ -217,7 +220,8 @@ export function buildRequest(
   const errors: FormErrors = {};
   const warnings: string[] = [];
   // Restored inputs are historical source data, never a seed for the facts cache.
-  const original = restoredRequest?.mode === mode ? restoredRequest : undefined;
+  const hotelSandbox = mode === "synthetic" && d.hotelSandbox;
+  const original = restoredRequest?.mode === mode && (restoredRequest.hotelDataMode === "sandbox") === hotelSandbox ? restoredRequest : undefined;
   const originalDraft = original ? draftFromRequest(original) : undefined;
   const unchangedTransit =
     !!originalDraft &&
@@ -288,7 +292,7 @@ export function buildRequest(
   }
   if (Object.keys(errors).length) return { request: null, errors, warnings };
   const options =
-    mode === "synthetic"
+    mode === "synthetic" && !hotelSandbox
       ? [...exampleOptions]
       : (original?.confirmedOptions ?? []).filter(
           (option) =>
@@ -302,16 +306,16 @@ export function buildRequest(
     estimated = false,
   ): SourceEvidence[] => [
     {
-      type: estimated ? "estimated" : "traveler_confirmed",
-      provider,
+      type: hotelSandbox ? "synthetic" : estimated ? "estimated" : "traveler_confirmed",
+      provider: hotelSandbox ? `Fictional sandbox input: ${provider}` : provider,
       sourceUrl: null,
       checkedAt,
       serviceDate: toTripLocalTime(at).slice(0, 10),
       providerUpdatedAt: null,
       expiresAt: null,
-      environment: "production",
+      environment: hotelSandbox ? "synthetic" : "production",
       warnings: [
-        "Traveler-entered facts; operator availability has not been checked by this app.",
+        hotelSandbox ? "Fictional demo input and test fare; no real service or availability is claimed." : "Traveler-entered facts; operator availability has not been checked by this app.",
       ],
     },
   ];
@@ -350,7 +354,7 @@ export function buildRequest(
         : "Traveler-supplied transfer duration; an unspecified vehicle counts as a separate vehicle.",
     ],
   });
-  if (mode === "real" && d.transit.enabled && !unchangedTransit) {
+  if ((mode === "real" || hotelSandbox) && d.transit.enabled && !unchangedTransit) {
     try {
       const t = d.transit;
       const departureAt = localDateTimeToOffset(t.departure);
@@ -392,7 +396,7 @@ export function buildRequest(
           ),
           evidence: ev,
           confirmations: [
-            "Confirm current seat availability with the operator before booking.",
+            hotelSandbox ? "Fictional service and test fare only. No transport booking is available." : "Confirm current seat availability with the operator before booking.",
           ],
         }),
       );
@@ -472,7 +476,7 @@ export function buildRequest(
     }
   }
   let hotelSelection;
-  if (mode === "real" && d.overnightAllowed && d.hotel.hotelId) {
+  if ((mode === "real" || hotelSandbox) && d.overnightAllowed && d.hotel.hotelId) {
     try {
       const transit = options.find(option => option.id === "manual-transit" && (option.kind === "bus" || option.kind === "train"));
       if (!transit || (transit.kind !== "bus" && transit.kind !== "train") || toTripLocalTime(transit.departureAt).slice(0, 10) !== d.checkout)
@@ -492,6 +496,7 @@ export function buildRequest(
   }
   const parsed = TripRequestSchema.safeParse({
     mode,
+    ...(hotelSandbox ? { hotelDataMode: "sandbox" } : {}),
     airport: "BOS",
     destination: "Portland, ME",
     timeZone: "America/New_York",
@@ -499,7 +504,7 @@ export function buildRequest(
     arrivalBasis:
       mode === "synthetic" && originalDraft?.arrivalAt === d.arrivalAt
         ? original!.arrivalBasis
-        : "traveler_confirmed",
+        : hotelSandbox ? "scheduled_gate" : "traveler_confirmed",
     flight: null,
     originalDepartureAt,
     originalAccessMinutes,
@@ -525,4 +530,14 @@ export function buildRequest(
       "Add a date-specific confirmed train, bus or car option below. No schedules or prices are fetched automatically.",
     );
   return { request: parsed.data, errors, warnings };
+}
+
+/** Explicit fictional demo inputs; hotel quotes are fetched separately by user action. */
+export function hotelSandboxDraft(now: string): Draft {
+  const checkin = Temporal.Instant.from(now).toZonedDateTimeISO("America/New_York").toPlainDate().add({ days: 1 }).toString();
+  const checkout = Temporal.PlainDate.from(checkin).add({ days: 1 }).toString();
+  const draft = emptyDraft();
+  return { ...draft, hotelSandbox: true, arrivalAt: `${checkin}T18:00`, originalDepartureAt: `${checkin}T18:15`, deadlineAt: `${checkout}T14:00`, drivingAllowed: false, overnightAllowed: true, checkin, checkout, guestNationality: "US",
+    transit: { ...draft.transit, enabled: true, title: "Fictional demo bus — test fare", departure: `${checkout}T10:00`, arrival: `${checkout}T12:00`, fare: "35", departureTerminal: "Fictional Boston boarding stop", arrivalTerminal: "Fictional Portland stop", accessMinutes: "30", accessCost: "0", finalMinutes: "15", finalCost: "0", checkedAt: now },
+  };
 }

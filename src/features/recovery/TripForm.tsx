@@ -27,6 +27,7 @@ type Props = {
   onSubmit: () => void;
   onExample: (kind: "daytime" | "overnight") => void;
   onReal: () => void;
+  onHotelSandbox: () => void;
 };
 type TextFieldProps = {
   name: string;
@@ -145,6 +146,7 @@ export function TripForm({
   onSubmit,
   onExample,
   onReal,
+  onHotelSandbox,
 }: Props) {
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     onChange({ ...d, [key]: value });
@@ -304,18 +306,19 @@ export function TripForm({
               "guestNationality",
               "Guest nationality (2-letter country code)",
               "text",
-              "Enter explicitly, for example US. Never inferred.",
+              d.hotelSandbox ? "US is an explicit fictional demo default; edit for this test stay." : "Enter explicitly, for example US. Never inferred.",
             )}
             <p className="text-xs text-muted-foreground">
-              1 adult, 1 room. Choose Investigate available sources to check enabled hotel sources. Returned room rates need complete transfer and next-day transit facts before becoming a recovery journey.
+              {d.hotelSandbox ? "1 adult, 1 room. Investigate sandbox hotel rates to check the test source. Test rates need two property transfers and the fictional checkout-date transit before becoming a complete test journey." : "1 adult, 1 room. Choose Investigate available sources to check enabled hotel sources. Returned room rates need complete transfer and next-day transit facts before becoming a recovery journey."}
             </p>
           </fieldset>
         )}
-        {!synthetic && d.overnightAllowed && d.hotel.hotelId && (
+        {(!synthetic || d.hotelSandbox) && d.overnightAllowed && d.hotel.hotelId && (
           <fieldset className="space-y-4 rounded-md border p-3">
             <legend className="px-1 text-sm font-semibold">Selected hotel journey</legend>
             <p className="text-sm font-medium">{selectedHotelName ?? `Selected property: ${d.hotel.hotelId}`}</p>
-            <p className="text-xs text-muted-foreground">Enter facts for this exact property. Airport access starts at BOS terminal exit. Hotel access to transit ends at the actual boarding stop in the confirmed train or bus below. No shuttle or timetable is inferred. Blank fees stay unknown.</p>
+            {d.hotelSandbox && <p className="text-sm text-amber-950">Enter fictional test allowances for this property. All transfer costs entered here are test amounts; no transfer service is checked.</p>}
+            <p className="text-xs text-muted-foreground">{d.hotelSandbox ? "Airport access starts at BOS terminal exit. Bind the second test transfer to the exact fictional boarding stop below. No shuttle or timetable is inferred. Blank fees stay unknown." : "Enter facts for this exact property. Airport access starts at BOS terminal exit. Hotel access to transit ends at the actual boarding stop in the confirmed train or bus below. No shuttle or timetable is inferred. Blank fees stay unknown."}</p>
             {([
               ["hotelMinutes", "Airport to hotel minutes", "number"],
               ["hotelCost", "Airport to hotel cost (USD)", "number"],
@@ -332,19 +335,17 @@ export function TripForm({
             <Button type="button" variant="outline" onClick={() => update("hotel", { ...d.hotel, hotelId: "" })}>Remove hotel selection</Button>
           </fieldset>
         )}
-        {!synthetic && (
+        {(!synthetic || d.hotelSandbox) && (
           <>
             <details className="rounded-md border p-3">
               <summary className="cursor-pointer text-sm font-medium">
-                Add a confirmed train or bus
+                {d.hotelSandbox ? "Edit fictional train or bus" : "Add a confirmed train or bus"}
               </summary>
               <div className="mt-3 space-y-4">
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Use date-specific facts you checked with the operator. No
-                  timetable or seat inventory is fetched. Blank prices mean
-                  unknown; enter 0 only when free.
+                  {d.hotelSandbox ? "These editable service times, stops, transfer allowances and fares are fictional test inputs. The US nationality is an explicit demo default. No real operator service or availability is claimed. Blank prices mean unknown." : "Use date-specific facts you checked with the operator. No timetable or seat inventory is fetched. Blank prices mean unknown; enter 0 only when free."}
                 </p>
-                <p className="flex flex-wrap gap-4 text-sm">
+                {!d.hotelSandbox && <p className="flex flex-wrap gap-4 text-sm">
                   <a
                     className="text-primary underline"
                     href="https://www.amtrak.com/"
@@ -361,7 +362,7 @@ export function TripForm({
                   >
                     Concord Coach official site
                   </a>
-                </p>
+                </p>}
                 <Check
                   id="transit-enabled"
                   checked={d.transit.enabled}
@@ -400,7 +401,7 @@ export function TripForm({
                 {transitText("arrival", "Transit arrival", "datetime-local")}
                 {transitText("departureTerminal", "Departure terminal")}
                 {transitText("arrivalTerminal", "Arrival terminal")}
-                {transitText("fare", "Fare (USD)", "number")}
+                {transitText("fare", d.hotelSandbox ? "Test fare (USD)" : "Fare (USD)", "number")}
                 {transitText(
                   "boardingMinutes",
                   "Transit boarding minutes",
@@ -476,7 +477,7 @@ export function TripForm({
                   These times or prices are estimates
                 </Check>
                 <p className="break-words text-xs text-muted-foreground">
-                  {d.transit.estimated ? "Estimated" : "Traveler confirmed"} ·
+                  {d.hotelSandbox ? "Fictional test inputs" : d.transit.estimated ? "Estimated" : "Traveler confirmed"} ·
                   recorded {d.transit.checkedAt || "when enabled"}
                 </p>
                 <Button
@@ -493,7 +494,7 @@ export function TripForm({
                 </Button>
               </div>
             </details>
-            <details className="rounded-md border p-3">
+            {!d.hotelSandbox && <details className="rounded-md border p-3">
               <summary className="cursor-pointer text-sm font-medium">
                 Add a rental car estimate
               </summary>
@@ -565,7 +566,7 @@ export function TripForm({
                   I rechecked the car facts
                 </Button>
               </div>
-            </details>
+            </details>}
           </>
         )}
         {Object.keys(errors).length > 0 && (
@@ -580,20 +581,22 @@ export function TripForm({
               checked={investigate}
               onChange={onInvestigate}
             >
-              Investigate available sources
+              {d.hotelSandbox ? "Investigate sandbox hotel rates" : "Investigate available sources"}
             </Check>
             <p className="text-xs text-muted-foreground">
-              Relevant current trip inputs are sent to enabled third-party
-              sources only when you choose this investigation. Optional sources
-              may be unavailable. Comparing supplied facts still works; source
-              warnings report the outcome.
+              {d.hotelSandbox ? "Checks only the hotel sandbox using test rates. No live availability, transport sources, AI assistance or bookings. Sandbox rates may be unavailable." : "Relevant current trip inputs are sent to enabled third-party sources only when you choose this investigation. Optional sources may be unavailable. Comparing supplied facts still works; source warnings report the outcome."}
             </p>
           </div>
         )}
         <Button type="submit" disabled={busy} className="w-full">
-          {busy ? "Comparing…" : !synthetic && configured && hotelInvestigationNeeded ? "Investigate selected hotel journey" : "Compare recovery options"}
+          {busy ? "Comparing…" : (!synthetic || d.hotelSandbox) && configured && hotelInvestigationNeeded ? "Investigate selected hotel journey" : "Compare recovery options"}
         </Button>
       </form>
+      <div className="space-y-3 border-t p-5">
+        <p className="text-sm font-medium">Try test hotel rates</p>
+        <Button type="button" variant="outline" disabled={busy} onClick={onHotelSandbox}>Try hotel sandbox</Button>
+        <p className="text-xs text-muted-foreground">Sandbox hotel rates with editable fictional onward inputs. No live availability or reservations. Requires an available sandbox source.</p>
+      </div>
       <div className="space-y-3 border-t p-5">
         <p className="text-sm font-medium">Explore fictional examples</p>
         <div className="grid gap-2">

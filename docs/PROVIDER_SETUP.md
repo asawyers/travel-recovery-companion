@@ -4,7 +4,7 @@ The traveler supplies the revised gate-arrival time. Recovery planning does not 
 
 Google Routes is already configured and enabled in the existing project chosen by the user. Earlier real hosted API and Brave form checks returned two bus plans with Google schedule evidence. The user explicitly authorized Google pay-as-you-go without a daily cap and deferred quota setup. Leave this existing Google project, approval and key unchanged.
 
-Hotel discovery/property handoffs and actual OpenAI Agents SDK orchestration are deployed and covered by injected provider/model tests. OpenAI was subsequently authorized and activated by the user; a real GPT-6 Luna refinement through Brave passed route discovery, deterministic assessment, eligible-plan selection and visible no-driving preference application. Live hotel account/configuration acceptance remains pending. Fixture tests do not establish hotel rates; actual model acceptance is recorded separately in VERIFICATION.md.
+Hotel discovery/property handoffs and actual OpenAI Agents SDK orchestration are deployed and covered by injected provider/model tests. OpenAI was subsequently authorized and activated by the user; a real GPT-6 Luna refinement through Brave passed route discovery, deterministic assessment, eligible-plan selection and visible no-driving preference application. Production hotel account/configuration acceptance is deferred. The approved explicit sandbox demo is implemented; actual sandbox acceptance awaits the privately saved sandbox key. Fixture tests do not establish hotel rates; actual model acceptance is recorded separately in VERIFICATION.md.
 
 ## Backend configuration
 
@@ -17,18 +17,27 @@ Use the user's preferred manual dashboard flow in Brave. Open Supabase project [
 | `RECOVERY_HOTEL_USAGE_APPROVED` | Default off; set `true` only after explicit hotel API usage approval. |
 | `RECOVERY_HOTEL_PUBLIC_RATES_APPROVED` | Default off; set `true` only after confirming the account permits these public rates and its SSP/markup/hosted-price configuration is compatible. |
 | `LITEAPI_ENVIRONMENT` | Must be exactly `production` for live hotel discovery. |
+| `LITEAPI_SANDBOX_KEY` | Sandbox key used only by explicit hotel-demo investigations. No production flags or key are needed; real trips cannot use it. |
 | `LITEAPI_KEY` | Authorized production LiteAPI key; sandbox keys/results cannot represent live inventory. |
 | `LITEAPI_BOOKING_ORIGIN` | Optional assigned bare HTTPS origin, such as `https://<assigned-subdomain>.nuitee.link`; no trailing slash, path, port, credentials, query, fragment or wildcard. |
 | `RECOVERY_MODEL_USAGE_APPROVED` | Default off; set `true` only after explicit paid model usage approval. |
 | `OPENAI_API_KEY` | Key for the user's existing authorized OpenAI API account/project. |
 
-All four hotel requirements must hold together: both hotel approvals equal `true`, `LITEAPI_ENVIRONMENT=production`, and a production `LITEAPI_KEY` is present. Model activation independently requires `RECOVERY_MODEL_USAGE_APPROVED=true` and `OPENAI_API_KEY`; the model is selected by the server registry. Missing configuration produces an explicit unavailable fallback while the deterministic planner remains usable.
+For production only, all four hotel requirements must hold together: both hotel approvals equal `true`, `LITEAPI_ENVIRONMENT=production`, and a production `LITEAPI_KEY` is present. Model activation independently requires `RECOVERY_MODEL_USAGE_APPROVED=true` and `OPENAI_API_KEY`; the model is selected by the server registry. Missing configuration produces an explicit unavailable fallback while the deterministic planner remains usable.
 
 The existing Vercel public endpoint setting and scoped GitHub Supabase deployment credential remain in use. Native Vercel Git integration deploys the frontend; GitHub Actions deploys the recovery function. Secret configuration does not itself prove that the intended code revision was deployed.
 
-## Hotel access and activation
+## Sandbox hotel demo (current challenge scope)
 
-The user requested a manual account-setup walkthrough. Start at https://connect.nuitee.com/register/ using the official LiteAPI signup link. The [getting-started guide](https://docs.liteapi.travel/docs/getting-a-sandbox-key) provides a free sandbox account without a credit card. Let the user complete signup/verification privately and report reaching the dashboard. Account-guidance authorization does not authorize submitting payment details, funding a wallet, booking, or activating live hotel calls. Production-key/public-rate/usage decisions remain pending; confirm the actual dashboard requirements before proceeding.
+The user has created an account and obtained a sandbox key, and approved labeled demo results. In the existing Supabase project, save it under **Edge Functions → Secrets** as **`LITEAPI_SANDBOX_KEY`**. Keep the value private; do not use a frontend `VITE_` variable. Confirmation of saving and actual hosted sandbox acceptance are pending. No production key, environment, booking origin or hotel approval switches need changing for this demo.
+
+Choose **Try hotel sandbox** in the app. It uses the current clock and future New York stay dates, calls only the sandbox hotel source and shows test prices. A returned property name may be real; neither its rate nor the fictional onward inputs establish live availability. Select a property, enter its demo airport/hotel and hotel/boarding-stop transfers, check-in allowance and departure, then investigate the complete journey. Save/reload retains sandbox labels; explicit refresh checks sandbox rates again. Booking links and AI assistance are disabled throughout this mode.
+
+The server requires a sandbox-prefixed key and an explicit sandbox response; production results are rejected. Ordinary synthetic examples stay offline. Real trips cannot request this sandbox source. Missing configuration produces an unavailable warning without invented rates. One demo investigation uses the same bounded one-rates/at-most-one-details requests, and request-scoped memoization, as the hotel adapter. No reservation, prebook or purchase is performed.
+
+## Production hotel access and activation (deferred)
+
+The challenge currently uses sandbox access only. LiteAPI/Nuitée is one provider account; production setup is deferred. The [getting-started guide](https://docs.liteapi.travel/docs/getting-a-sandbox-key) documents free sandbox access without a credit card. If production access is desired later, inspect the existing account dashboard in Brave. Guidance does not authorize submitting payment details, funding a wallet, booking or activating production calls. Production-key/public-rate/usage decisions remain pending.
 
 1. With authorized access, open the LiteAPI dashboard in Brave and establish the account's production access and applicable API usage terms. Do not paste credentials into the conversation or commit them.
 2. Verify the account's public-channel eligibility, suggested selling price (SSP) requirements, account markup and the assigned hosted site's payable-price behavior. The app has no login-based closed user group. It does not manufacture markup to make a rate public-safe; returned SSP values above the quoted room total cause that offer to be omitted. Missing SSP does not remove the need for operator approval. Review [rates structure](https://docs.liteapi.travel/docs/hotel-rates-api-json-data-structure) and [revenue/commission guidance](https://docs.liteapi.travel/docs/revenue-management-and-commission).
@@ -60,7 +69,7 @@ A request has a shared 30-second deadline, six model turns, twelve attempted too
 
 Provider discovery is memoized per request, including failures. One explicit investigation makes at most three Google Routes requests, one hotel rates request and one leading-property details request even when SDK tools repeat. These activation switches and request limits are not aggregate spending caps. Repeated user investigations are separate requests.
 
-Synthetic mode never calls providers or the model. `investigate=false` prevents provider requests; a separately requested and authorized model refinement may still assess supplied facts. Priority-only deterministic refinement reuses eligible current-tab facts without another request. Other edits or expiry require reassessment.
+Ordinary synthetic examples never call providers or the model. The explicit hotel sandbox is the sole exception for sandbox hotel discovery; it never calls Google Routes, OpenAI or production hotels. `investigate=false` prevents provider requests; a separately requested and authorized model refinement may still assess supplied facts. Priority-only deterministic refinement reuses eligible current-tab facts without another request. Other edits or expiry require reassessment.
 
 Supported Google discovery covers direct Concord bus or Amtrak/Downeaster rail via North Station, with validated access/final walking. Other operators and multi-vehicle journeys are omitted rather than assigned an incorrect booking link. Google times are schedules/estimates; missing fares stay unknown, and no seats, available taxi or rental inventory are claimed. Hotel transfers and actual checkout-date service must be supplied separately; the existing three Google calls do not silently expand to acquire them. No purchases are made.
 

@@ -35,6 +35,7 @@ export function ItineraryPanel({
     ? "saved-itinerary-heading"
     : "itinerary-heading";
   const hotel = plan?.hotel;
+  const hotelSandbox = request?.hotelDataMode === "sandbox" || !!hotel?.evidence.some(source => source.environment === "sandbox");
   const handoffForLeg = (leg: JourneyLeg) => {
     if (leg.kind === "train") return resolveHandoff("amtrak");
     if (leg.kind === "bus") return resolveHandoff("concord");
@@ -63,12 +64,13 @@ export function ItineraryPanel({
                 ? "Selected for review · Saved on this device · Not booked"
                 : "Selected for review · Not booked or saved"}
           </p>
+          {hotelSandbox && <p className="mt-3 text-sm font-semibold text-amber-950">Sandbox / test itinerary · Test hotel rates and fictional onward services, fares and transfers · No live availability or bookings</p>}
           <h3 className="mt-3 font-semibold">{plan.title}</h3>
           <ProviderAttribution plan={plan} />
           <p className="mt-2 text-sm tabular-nums">
             {plan.durationMinutes} minutes from gate arrival ·{" "}
             {money(plan.knownCostCents)}{" "}
-            {plan.priceComplete ? "total" : "known charges + unknown costs"}
+            {hotelSandbox ? plan.priceComplete ? "test total" : "known test charges + unknown costs" : plan.priceComplete ? "total" : "known charges + unknown costs"}
           </p>
           <p className="mt-2 text-sm">
             Final arrival {time(plan.finalArrivalAt)}. Deadline{" "}
@@ -119,7 +121,7 @@ export function ItineraryPanel({
               </p>
               {hotel.costs.map((cost, i) => (
                 <p key={i}>
-                  {cost.label}:{" "}
+                  {hotelSandbox ? "Test " : ""}{cost.label}:{" "}
                   {cost.cents === null ? "unknown" : `${money(cost.cents)} USD`}
                   {cost.includedInOtherCharge ? " (included elsewhere)" : ""}
                 </p>
@@ -165,7 +167,7 @@ export function ItineraryPanel({
                 </p>
                 {leg.costs.map((c, i) => (
                   <p key={i} className="mt-1 text-muted-foreground">
-                    {c.label}:{" "}
+                    {hotelSandbox ? "Test " : ""}{c.label}:{" "}
                     {c.cents === null ? "unknown" : `${money(c.cents)} USD`}
                     {c.includedInOtherCharge ? " (included elsewhere)" : ""}
                   </p>
@@ -196,7 +198,7 @@ export function ItineraryPanel({
               </li>
             ))}
           </ol>
-          <section
+          {hotelSandbox ? <p className="mt-5 rounded-md border border-amber-700/40 bg-amber-50 p-4 text-sm text-amber-950">Test only. Hotel and transport booking links are disabled for this sandbox itinerary.</p> : <section
             aria-label="External handoffs"
             className="mt-5 rounded-md border p-4"
           >
@@ -331,7 +333,7 @@ export function ItineraryPanel({
               Confirm final availability and total on the provider site. Opening
               a link does not book, reserve, or save this itinerary.
             </p>
-          </section>
+          </section>}
           <ul className="mt-4 space-y-2 text-sm text-amber-900">
             {[...plan.violations, ...plan.warnings].map((w) => (
               <li key={w}>{w}</li>

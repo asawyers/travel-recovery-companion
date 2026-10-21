@@ -129,3 +129,73 @@ describe('bounded LiteAPI availability adapter', () => {
     expect(result.status).not.toBe('ok'); expect(JSON.stringify(result)).not.toContain('SECRET')
   })
 })
+
+
+describe('labeled LiteAPI sandbox availability', () => {
+  const sandboxRequest = () => ({ ...request(), mode: 'synthetic' as const, hotelDataMode: 'sandbox' as const })
+  const sandboxAdapter = (fetch: typeof globalThis.fetch, extra: Record<string, unknown> = {}) => adapter(fetch, { environment: 'sandbox', apiKey: 'sand_fixture-key', publicRatesApproved: false, ...extra })
+  const sandboxReply = () => ({ ...reply(), sandbox: true })
+  const sandboxContext = () => ({ signal: signal(), hotelSandbox: true })
+
+  it('normalizes explicit test rates with sandbox provenance, bounded search and no production handoff', async () => {
+    const body = sandboxReply(); body.data[0].roomTypes[0].rates[0].retailRate.taxesAndFees = []
+    const fetch = fetcher([body])
+    const result = await sandboxAdapter(fetch, { bookingOrigin: 'https://hotels.example.test' })(sandboxRequest(), sandboxContext())
+    expect(result.status).toBe('ok')
+    if (result.status !== 'ok') throw new Error('expected sandbox facts')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls[0][0]).toBe('https://api.liteapi.travel/v3.0/hotels/rates')
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ limit: 3, maxRatesPerHotel: 1, includeHotelData: true, occupancies: [{ adults: 1, children: [] }] })
+    const hotel = result.data.offers[0]
+    expect(hotel.handoffId).toBe('hotel-search')
+    expect(hotel.evidence[0]).toMatchObject({ type: 'estimated', environment: 'sandbox', checkedAt: NOW, expiresAt: '2026-11-19T03:00:00.000Z' })
+    expect(hotel.evidence[0].provider).toMatch(/sandbox.*test data/i)
+    expect(hotel.evidence[0].warnings.join(' ')).toMatch(/test data.*(?:not live|no live)/i)
+    expect(result.warnings.join(' ')).toMatch(/sandbox.*test data/i)
+    expect(sumCosts(hotel.costs)).toMatchObject({ knownCostCents: 12525, priceComplete: false })
+    expect(JSON.stringify(result)).not.toMatch(/sand_fixture-key|private-offer-token|hotels\.example\.test/)
+  })
+  it.each(['sand_fixture', 'sandbox_fixture'])('accepts only dedicated sandbox credentials such as %s without production approval', async apiKey => {
+    const fetch = fetcher([sandboxReply()])
+    expect((await sandboxAdapter(fetch, { apiKey })(sandboxRequest(), sandboxContext())).status).toBe('ok')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it.each([{ enabled: false }, { apiKey: undefined }, { apiKey: '' }, { apiKey: 'prod-fixture-key' }, { environment: 'production' }])('makes no request without sandbox configuration: %j', async extra => {
+    const fetch = fetcher([sandboxReply()])
+    expect((await sandboxAdapter(fetch, extra)(sandboxRequest(), sandboxContext())).status).toBe('unavailable')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it.each(['real', 'missing-marker', 'missing-server-permission', 'disallowed', 'no-stay', 'two-nights', 'missing-nationality', 'two-adults', 'two-rooms', 'aborted'])('makes no request for unsupported sandbox input %s', async scenario => {
+    const req = sandboxRequest(); const ctx = sandboxContext()
+    if (scenario === 'real') req.mode = 'real' as never
+    if (scenario === 'missing-marker') delete (req as { hotelDataMode?: string }).hotelDataMode
+    if (scenario === 'missing-server-permission') ctx.hotelSandbox = false
+    if (scenario === 'disallowed') req.overnightAllowed = false
+    if (scenario === 'no-stay') req.stay = null
+    if (scenario === 'two-nights') req.stay!.checkout = '2026-11-20'
+    if (scenario === 'missing-nationality') delete (req.stay as { guestNationality?: string }).guestNationality
+    if (scenario === 'two-adults') req.stay!.adults = 2 as never
+    if (scenario === 'two-rooms') req.stay!.rooms = 2 as never
+    if (scenario === 'aborted') { const controller = new AbortController(); controller.abort(); ctx.signal = controller.signal }
+    const fetch = fetcher([sandboxReply()])
+    expect((await sandboxAdapter(fetch)(req, ctx)).status).toBe('unavailable')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it.each([false, undefined, 'true'])('rejects rates without literal sandbox:true: %j', async sandbox => {
+    const fetch = fetcher([{ ...reply(), sandbox }])
+    expect((await sandboxAdapter(fetch)(sandboxRequest(), sandboxContext())).status).toBe('unavailable')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it('preserves the same three-property and single-detail cap for sandbox rates', async () => {
+    const body = sandboxReply(); const base = body.data[0]
+    body.data = Array.from({ length: 6 }, (_, index) => ({ ...structuredClone(base), hotelId: `test-${index}` }))
+    body.hotels = body.data.slice(1).map(item => ({ id: item.hotelId, name: 'Test hotel', address: 'Boston address' }))
+    const fetch = fetcher([body, { data: { id: 'test-0', name: 'Test hotel', address: 'Boston address' } }])
+    const result = await sandboxAdapter(fetch)(sandboxRequest(), sandboxContext())
+    expect(result.status).toBe('ok')
+    if (result.status !== 'ok') throw new Error('expected sandbox facts')
+    expect(result.data.offers).toHaveLength(3)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch.mock.calls[1][0]).toBe('https://api.liteapi.travel/v3.0/data/hotel?hotelId=test-0')
+  })
+})

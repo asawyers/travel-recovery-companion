@@ -189,6 +189,7 @@ export function useRecovery() {
         const result = await Promise.resolve().then(() =>
           planRecovery(request, request.confirmedOptions, { now }),
         );
+        if (request.hotelDataMode === "sandbox") result.warnings.push("Hotel sandbox unavailable: the public planner is not configured. No hotel rates or live availability were checked. Fictional supplied inputs were compared locally.");
         if (isCurrent())
           dispatch({ type: "RESULT_RECEIVED", sequence: current, result,
             ...(refinement?.trim() ? { assistance: { status: "unavailable", summary: "Assisted refinement is unavailable because the public planner is not configured. Use the priority and driving controls to refine supplied facts.", appliedPreferences: {}, selectedPlanId: null, activity: [] } as const } : {}),

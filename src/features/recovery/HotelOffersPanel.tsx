@@ -5,25 +5,27 @@ import { isAllowedHandoffUrl, resolveHotelHandoff } from "@domain/handoffs";
 import { Button } from "@/components/ui/button";
 import { money, time } from "./OptionList";
 
-export function HotelOffersPanel({ offers, selectedId, onSelect, busy, bookingOrigin, expiresAt, onExpired }: {
-  offers: HotelOption[]; selectedId: string; onSelect: (hotelId: string) => void; busy: boolean; bookingOrigin?: string; expiresAt: string | null; onExpired: () => void;
+export function HotelOffersPanel({ offers, selectedId, onSelect, busy, bookingOrigin, expiresAt, onExpired, sandbox = false }: {
+  sandbox?: boolean; offers: HotelOption[]; selectedId: string; onSelect: (hotelId: string) => void; busy: boolean; bookingOrigin?: string; expiresAt: string | null; onExpired: () => void;
 }) {
   if (!offers.length) return null;
   return <section data-testid="hotel-offers" aria-labelledby="hotel-offers-heading" className="rounded-lg border bg-white p-5">
-    <h2 id="hotel-offers-heading" className="text-lg font-semibold">Hotel rates only</h2>
-    <p className="mt-2 text-sm text-muted-foreground">These offers are not complete recovery journeys. Choose a property, enter two property-specific transfers and an actual checkout-date train or bus, then investigate the full journey. A room rate alone does not make an overnight plan feasible.</p>
+    <h2 id="hotel-offers-heading" className="text-lg font-semibold">{sandbox ? "Hotel rates only · Test rates" : "Hotel rates only"}</h2>
+    {sandbox && <p className="mt-2 text-sm font-medium text-amber-950">Sandbox test rates; no live availability or booking. Property names may refer to real hotels. Enter fictional transfer allowances and use the editable fictional checkout-date service to test a complete journey.</p>}
+    <p className="mt-2 text-sm text-muted-foreground">These offers are not complete recovery journeys. Choose a property, enter two property-specific transfers and {sandbox ? "a fictional checkout-date train or bus" : "an actual checkout-date train or bus"}, then investigate the full journey. A room rate alone does not make an overnight plan feasible.</p>
     <ul className="mt-4 divide-y border-y">{offers.map(hotel => {
       const fresh = () => {
         try { return !!expiresAt && Math.min(...originalExpiries(hotel).map(toInstantMillis), toInstantMillis(expiresAt)) > Date.now(); }
         catch { return false; }
       };
       const handoff = resolveHotelHandoff(hotel, bookingOrigin);
-      const allowed = isAllowedHandoffUrl(handoff.id, handoff.href, bookingOrigin);
+      const testRate = sandbox || hotel.evidence.some(source => source.environment === "sandbox");
+      const allowed = !testRate && isAllowedHandoffUrl(handoff.id, handoff.href, bookingOrigin);
       return <li key={hotel.id} className="space-y-2 py-4 text-sm">
         <h3 className="font-semibold">{hotel.name}</h3><p>{hotel.address}</p>
         <p>{hotel.room ?? "Room unconfirmed"} · {hotel.board ?? "Board unconfirmed"}</p>
         <p>{hotel.checkin} to {hotel.checkout} · {hotel.adults} adult · {hotel.rooms} room</p>
-        {hotel.costs.map((cost, index) => <p key={index}>{cost.label}: {cost.cents === null ? "unknown" : `${money(cost.cents)} USD`}{cost.includedInOtherCharge ? " (included elsewhere)" : ""}</p>)}
+        {hotel.costs.map((cost, index) => <p key={index}>{testRate ? "Test " : ""}{cost.label}: {cost.cents === null ? "unknown" : `${money(cost.cents)} USD`}{cost.includedInOtherCharge ? " (included elsewhere)" : ""}</p>)}
         <p>{hotel.cancellation?.text ?? "Cancellation terms unconfirmed."}</p>
         {hotel.cancellation?.deadlineAt && <p>Cancellation deadline {time(hotel.cancellation.deadlineAt)}.</p>}
         {hotel.cancellation?.penalty && <p>Cancellation penalty: {hotel.cancellation.penalty}</p>}
@@ -34,7 +36,7 @@ export function HotelOffersPanel({ offers, selectedId, onSelect, busy, bookingOr
           <Button variant={selectedId === hotel.id ? "secondary" : "outline"} disabled={busy} onClick={() => { if (fresh()) onSelect(hotel.id); else onExpired(); }}>{selectedId === hotel.id ? `Selected ${hotel.name}` : `Use ${hotel.name}`}</Button>
           {allowed && <a href={handoff.href} onClick={event => { if (!fresh()) { event.preventDefault(); onExpired(); } }} target="_blank" rel="noopener noreferrer" className="underline">{handoff.label}</a>}
         </div>
-        <p className="text-xs text-muted-foreground">{handoff.instructions} Opening a link does not book or reserve a room.</p>
+        <p className="text-xs text-muted-foreground">{testRate ? "Test offer only. Hotel and transport booking links are disabled in this sandbox." : `${handoff.instructions} Opening a link does not book or reserve a room.`}</p>
       </li>;
     })}</ul>
   </section>;

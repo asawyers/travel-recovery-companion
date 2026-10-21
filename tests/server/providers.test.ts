@@ -93,3 +93,62 @@ describe('request-scoped provider discovery sessions', () => {
     expect(facts.warnings.join(' ')).toMatch(/Routes.*unavailable/); expect(facts.warnings.join(' ')).toMatch(/Hotel.*unavailable/)
   })
 })
+
+
+describe('isolated hotel sandbox discovery', () => {
+  const sandboxRequest = () => ({ ...request(), mode: 'synthetic' as const, hotelDataMode: 'sandbox' as const })
+  it('memoizes only sandbox hotels while keeping routes and production hotels blocked', async () => {
+    const routes = vi.fn(async () => routesResult()); const hotels = vi.fn(async () => hotelResult())
+    const availability = deferred<ReturnType<typeof hotelResult>>()
+    const sandboxHotels = vi.fn(() => availability.promise)
+    const req = sandboxRequest(); const ctx = { ...context(), hotelSandbox: true }
+    const session = createProviderRegistry({ routes, hotels, sandboxHotels }).createSession!(req, ctx)
+    const first = session.findHotels(); const repeated = session.findHotels()
+    expect(first).toBe(repeated)
+    expect(sandboxHotels).toHaveBeenCalledExactlyOnceWith(req, ctx)
+    expect((await session.findTransport()).candidates).toEqual([])
+    availability.resolve(hotelResult())
+    const result = await first
+    expect(result.offers).toEqual([hotel()]); expect(result.candidates).toEqual([])
+    expect(await session.findHotels()).toBe(result)
+    expect(routes).not.toHaveBeenCalled(); expect(hotels).not.toHaveBeenCalled()
+  })
+  it.each(['missing-marker', 'missing-server-permission', 'aborted', 'deadline-reached', 'not-allowed', 'no-stay'])('skips sandbox and production providers for %s', async scenario => {
+    const req = sandboxRequest(); const controller = new AbortController(); const ctx = { signal: controller.signal, hotelSandbox: true }
+    if (scenario === 'missing-marker') delete (req as { hotelDataMode?: string }).hotelDataMode
+    if (scenario === 'missing-server-permission') ctx.hotelSandbox = false
+    if (scenario === 'aborted') controller.abort()
+    if (scenario === 'deadline-reached') req.arrivalAt = req.deadlineAt
+    if (scenario === 'not-allowed') req.overnightAllowed = false
+    if (scenario === 'no-stay') req.stay = null
+    const routes = vi.fn(); const hotels = vi.fn(); const sandboxHotels = vi.fn()
+    const facts = await createProviderRegistry({ routes, hotels, sandboxHotels }).gatherPermittedFacts(req, ctx)
+    expect(facts.candidates).toEqual([]); expect(facts.offers ?? []).toEqual([])
+    expect(routes).not.toHaveBeenCalled(); expect(hotels).not.toHaveBeenCalled(); expect(sandboxHotels).not.toHaveBeenCalled()
+    expect(facts.warnings.length).toBeGreaterThan(0)
+  })
+  it('does not fall back to production hotels when sandbox credentials are unavailable', async () => {
+    const hotels = vi.fn(async () => hotelResult())
+    const facts = await createProviderRegistry({ hotels }).gatherPermittedFacts(sandboxRequest(), { ...context(), hotelSandbox: true })
+    expect(facts.offers ?? []).toEqual([]); expect(hotels).not.toHaveBeenCalled()
+    expect(facts.warnings.join(' ')).toMatch(/sandbox.*(?:unavailable|configured)/i)
+  })
+  it('keeps real discovery on production hotels even when sandbox adapter is configured', async () => {
+    const hotels = vi.fn(async () => hotelResult()); const sandboxHotels = vi.fn(async () => hotelResult())
+    const facts = await createProviderRegistry({ hotels, sandboxHotels }).gatherPermittedFacts(request(), context())
+    expect(facts.offers).toEqual([hotel()]); expect(hotels).toHaveBeenCalledTimes(1); expect(sandboxHotels).not.toHaveBeenCalled()
+  })
+  it('memoizes sandbox failures and preserves cancellation after transport is skipped', async () => {
+    const sandboxHotels = vi.fn(async () => { throw new Error('SECRET sandbox error') })
+    const session = createProviderRegistry({ sandboxHotels }).createSession!(sandboxRequest(), { ...context(), hotelSandbox: true })
+    const first = session.findHotels(); expect(session.findHotels()).toBe(first)
+    const result = await first
+    expect(result.offers).toEqual([]); expect(JSON.stringify(result)).not.toContain('SECRET')
+    expect(sandboxHotels).toHaveBeenCalledTimes(1)
+    const controller = new AbortController()
+    const cancelled = createProviderRegistry({ sandboxHotels }).createSession!(sandboxRequest(), { signal: controller.signal, hotelSandbox: true })
+    await cancelled.findTransport(); controller.abort()
+    expect((await cancelled.findHotels()).warnings.join(' ')).toMatch(/cancelled/i)
+    expect(sandboxHotels).toHaveBeenCalledTimes(1)
+  })
+})

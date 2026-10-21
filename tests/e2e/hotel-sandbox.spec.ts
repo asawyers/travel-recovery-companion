@@ -1,0 +1,120 @@
+import { test, expect } from "@playwright/test";
+import { overnightFixture } from "../../supabase/functions/_shared/domain/fixtures";
+import { buildHotelRecovery } from "../../supabase/functions/_shared/domain/hotel-recovery";
+import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
+import { ADAPTER_REVISION, RecoveryResponseSchema } from "../../supabase/functions/_shared/domain/api";
+import type { HotelOption, TripRequest } from "../../supabase/functions/_shared/domain/schemas";
+
+const endpoint = "**/functions/v1/recovery";
+function realResponse(request: TripRequest) {
+  const now = new Date().toISOString();
+  return RecoveryResponseSchema.parse({ result: planRecovery(request, [], { now }), facts: { candidates: [], checkedAt: now, expiresAt: new Date(Date.now() + 180_000).toISOString(), adapterRevision: ADAPTER_REVISION, arrival: { arrivalAt: request.arrivalAt, arrivalBasis: request.arrivalBasis }, arrivalEvidence: [{ type: "traveler_confirmed", environment: "production", provider: "Traveler input", sourceUrl: null, checkedAt: now, serviceDate: request.arrivalAt.slice(0, 10), expiresAt: null, providerUpdatedAt: null, warnings: [] }] } });
+}
+function sandboxResponse(request: TripRequest, available = true) {
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 180_000).toISOString();
+  const fixture = overnightFixture().candidates.find(option => option.kind === "overnight")!;
+  if (fixture.kind !== "overnight") throw new Error("Missing hotel fixture");
+  const offer: HotelOption = { ...fixture.hotel, id: "sandbox-property", name: "Boston Sandbox Property", checkin: request.stay!.checkin, checkout: request.stay!.checkout, quoteExpiresAt: expiresAt, evidence: [{ type: "estimated", environment: "sandbox", provider: "LiteAPI sandbox test rates", sourceUrl: null, checkedAt: now, serviceDate: request.stay!.checkin, providerUpdatedAt: null, expiresAt, warnings: ["Test rates only; no live availability or bookings."] }] };
+  const hotelOffers = available ? [offer, { ...offer, id: "sandbox-property-2", name: "Second Sandbox Property" }] : [];
+  // Like the handler, recollect hotel facts instead of reusing browser snapshot quotes.
+  const manualOptions = request.confirmedOptions.filter(option => option.id === "manual-transit");
+  const pairing = buildHotelRecovery({ ...request, confirmedOptions: manualOptions }, hotelOffers, now);
+  const candidates = [...manualOptions, ...pairing.candidates];
+  const result = planRecovery({ ...request, confirmedOptions: candidates }, candidates, { now });
+  if (!available) result.warnings.push("Hotel sandbox unavailable. No sandbox key is configured; no hotel availability was checked.");
+  return RecoveryResponseSchema.parse({ result, facts: { candidates, hotelOffers, checkedAt: now, expiresAt, adapterRevision: ADAPTER_REVISION, arrival: { arrivalAt: request.arrivalAt, arrivalBasis: request.arrivalBasis }, arrivalEvidence: [{ ...manualOptions[0].evidence[0], checkedAt: now, serviceDate: request.stay!.checkin }] } });
+}
+test("explicit hotel sandbox keeps test labels through full journey, cache reuse, saving and refresh", async ({ page }) => {
+  const posts: any[] = [];
+  await page.route(endpoint, async route => { const post = route.request().postDataJSON(); posts.push(post); await route.fulfill({ json: post.request.mode === "real" ? realResponse(post.request) : sandboxResponse(post.request) }); });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Try hotel sandbox", exact: true }).click();
+  await expect(page.getByTestId("provenance-banner")).toContainText("Sandbox hotel rates");
+  await expect(page.getByTestId("provenance-banner")).toContainText("fictional onward inputs");
+  await expect(page.getByTestId("hotel-offers")).toContainText("Test rates");
+  await expect(page.getByTestId("hotel-offers").locator('a[href^="http"]')).toHaveCount(0);
+  await expect(page.getByLabel("Refine this comparison")).toHaveCount(0);
+  expect(posts).toHaveLength(1);
+  expect(posts[0]).toMatchObject({ investigate: true, request: { mode: "synthetic", hotelDataMode: "sandbox", confirmedOptions: [{ id: "manual-transit", evidence: [{ environment: "synthetic", type: "synthetic" }] }] } });
+  const checkin = await page.getByLabel("Check-in date", { exact: true }).inputValue();
+  const checkout = await page.getByLabel("Check-out date", { exact: true }).inputValue();
+  expect(checkin > new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())).toBe(true);
+  await page.getByRole("button", { name: "Use Boston Sandbox Property", exact: true }).click();
+  await page.getByLabel("Airport to hotel minutes", { exact: true }).fill("20");
+  await page.getByLabel("Hotel check-in minutes", { exact: true }).fill("15");
+  await page.getByLabel("Leave hotel at", { exact: true }).fill(`${checkout}T09:00`);
+  await page.getByLabel("Hotel to boarding stop minutes", { exact: true }).fill("25");
+  await page.getByRole("button", { name: "Investigate selected hotel journey", exact: true }).click();
+  const hotelPlan = page.getByTestId("option-card").filter({ hasText: "Boston Sandbox Property and next-day bus" });
+  await expect(hotelPlan).toBeVisible();
+  await expect(hotelPlan).toContainText("Known test charges only");
+  await expect(hotelPlan).toContainText("+ unknown");
+  await hotelPlan.getByRole("button", { name: /Choose Boston Sandbox Property/ }).click();
+  await expect(page.getByTestId("itinerary")).toContainText("Sandbox / test itinerary");
+  await expect(page.getByTestId("itinerary")).toContainText("known test charges + unknown costs");
+  await expect(page.getByTestId("itinerary").locator('a[href^="http"]')).toHaveCount(0);
+  expect(posts).toHaveLength(2);
+  await page.getByLabel("Priority", { exact: true }).selectOption("cheapest");
+  await page.getByRole("button", { name: "Compare recovery options", exact: true }).click();
+  await expect(hotelPlan).toBeVisible();
+  expect(posts).toHaveLength(2);
+  await hotelPlan.getByRole("button", { name: /Choose Boston Sandbox Property/ }).click();
+  await page.getByRole("button", { name: "Save on this device", exact: true }).click();
+  await expect(page.getByTestId("saved-plan")).toContainText("Sandbox / test itinerary");
+  const original = await page.evaluate(() => localStorage.getItem("travel-recovery:selected:v1"));
+  expect(JSON.parse(original!).request.hotelDataMode).toBe("sandbox");
+  await page.reload();
+  await expect(page.getByTestId("saved-plan")).toContainText("Sandbox / test itinerary");
+  await expect(page.getByTestId("saved-plan").locator('a[href^="http"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Refresh this plan", exact: true }).click();
+  await expect(page.getByTestId("provenance-banner")).toContainText("Sandbox hotel rates");
+  await expect.poll(() => posts.length).toBe(3);
+  expect(posts[2]).toMatchObject({ investigate: true, request: { hotelDataMode: "sandbox" } });
+  expect(await page.evaluate(() => localStorage.getItem("travel-recovery:selected:v1"))).toBe(original);
+  await page.getByRole("button", { name: "Try hotel sandbox", exact: true }).click();
+  await expect.poll(() => posts.length).toBe(4);
+  expect(posts[3].request.confirmedOptions.map((option: { id: string }) => option.id)).toEqual(["manual-transit"]);
+  expect(posts[3].request).not.toHaveProperty("hotelSelection");
+  await page.getByRole("button", { name: "Use my own trip", exact: true }).click();
+  await expect(page.getByTestId("hotel-offers")).toHaveCount(0);
+  await expect(page.getByTestId("provenance-banner")).toContainText("Traveler-entered trip");
+  await page.getByLabel("Revised gate arrival", { exact: true }).fill(`${checkin}T18:00`);
+  await page.getByLabel("Original onward departure", { exact: true }).fill(`${checkin}T18:15`);
+  await page.getByLabel("Final destination deadline", { exact: true }).fill(`${checkout}T14:00`);
+  await page.getByRole("button", { name: "Compare recovery options", exact: true }).click();
+  await expect.poll(() => posts.length).toBe(5);
+  expect(posts[4].request).toMatchObject({ mode: "real", confirmedOptions: [] });
+  expect(posts[4].request).not.toHaveProperty("hotelDataMode");
+});
+test("sandbox property and boarding stop edits clear their bound transfer facts", async ({ page }) => {
+  await page.route(endpoint, async route => { const post = route.request().postDataJSON(); await route.fulfill({ json: sandboxResponse(post.request) }); });
+  await page.goto("/"); await page.getByRole("button", { name: "Try hotel sandbox", exact: true }).click();
+  await page.getByRole("button", { name: "Use Boston Sandbox Property", exact: true }).click();
+  await page.getByLabel("Airport to hotel minutes", { exact: true }).fill("20");
+  await page.getByLabel("Hotel to boarding stop minutes", { exact: true }).fill("25");
+  await page.getByText("Edit fictional train or bus", { exact: true }).click();
+  await page.getByLabel("Departure terminal", { exact: true }).fill("Another fictional stop");
+  await expect(page.getByLabel("Hotel to boarding stop minutes", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Airport to hotel minutes", { exact: true })).toHaveValue("20");
+  await page.getByRole("button", { name: "Use Second Sandbox Property", exact: true }).click();
+  await expect(page.getByLabel("Airport to hotel minutes", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Leave hotel at", { exact: true })).toHaveValue("");
+});
+test("missing sandbox key reports unavailable without showing hotel offers", async ({ page }) => {
+  await page.route(endpoint, async route => { const post = route.request().postDataJSON(); await route.fulfill({ json: sandboxResponse(post.request, false) }); });
+  await page.goto("/"); await page.getByRole("button", { name: "Try hotel sandbox", exact: true }).click();
+  await expect(page.getByText("Hotel sandbox unavailable. No sandbox key is configured; no hotel availability was checked.")).toBeVisible();
+  await expect(page.getByTestId("hotel-offers")).toHaveCount(0);
+  await expect(page.getByTestId("provenance-banner")).toContainText("no live availability");
+});
+
+test("sandbox offers expire after input edits even though the comparison cache was cleared", async ({ page }) => {
+  await page.clock.install();
+  await page.route(endpoint, async route => { const post = route.request().postDataJSON(); await route.fulfill({ json: sandboxResponse(post.request) }); });
+  await page.goto("/"); await page.getByRole("button", { name: "Try hotel sandbox", exact: true }).click();
+  await expect(page.getByTestId("hotel-offers")).toBeVisible();
+  await page.getByLabel("Budget (USD)").fill("500");
+  await page.clock.fastForward(181_000);
+  await expect(page.getByTestId("hotel-offers")).toHaveCount(0);
+});

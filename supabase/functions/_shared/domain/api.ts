@@ -6,7 +6,7 @@ import { AssistanceSchema } from './assistance.ts'
 import type { Assistance } from './assistance.ts'
 import { toInstantMillis } from './time.ts'
 
-export const ADAPTER_REVISION = 'public-recovery-v4'
+export const ADAPTER_REVISION = 'public-recovery-v5'
 export const MAX_FACT_AGE_MS = 5 * 60 * 1000
 const timestamp = z.string().max(40).refine(value => {
   try { toInstantMillis(value); return true } catch { return false }
@@ -76,7 +76,7 @@ export const RecoveryResponseSchema = z.strictObject({ result: RecoveryResultSch
       if (Array.isArray(item)) return item.every(validEvidence)
       if (!item || typeof item !== 'object') return true
       if ('type' in item && 'environment' in item) return request.mode === 'synthetic'
-        ? item.type === 'synthetic' && item.environment === 'synthetic'
+        ? (item.type === 'synthetic' && item.environment === 'synthetic') || (request.hotelDataMode === 'sandbox' && item.type === 'estimated' && item.environment === 'sandbox')
         : item.type !== 'synthetic' && item.environment === 'production'
       return Object.values(item).every(validEvidence)
     }

@@ -8,6 +8,7 @@ vi.mock('../../supabase/functions/_shared/server/recovery-agent.ts',()=>({create
 const keys={GOOGLE_ROUTES_API_KEY:'routes-test',LITEAPI_KEY:'hotels-test',OPENAI_API_KEY:'model-test',OPENAI_MODEL:'explicit-test-model'}
 async function load(values:Record<string,string|undefined>){
  vi.resetModules()
+ routes.mockClear();hotels.mockClear();agent.mockClear()
  const get=vi.fn((name:string)=>values[name]);vi.stubGlobal('Deno',{env:{get},serve:vi.fn()})
  await import('../../supabase/functions/recovery/index.ts')
  return get.mock.calls.flat()
@@ -17,13 +18,24 @@ describe('independent provider and model activation',()=>{
   try{
    const reads=await load(keys)
    expect(routes.mock.lastCall?.[0]).toMatchObject({enabled:false})
-   expect(hotels.mock.lastCall?.[0]).toMatchObject({enabled:false})
+   expect(hotels.mock.calls[0]?.[0]).toMatchObject({enabled:false})
    expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:false})
    expect(reads).not.toContain('GOOGLE_ROUTES_API_KEY');expect(reads).not.toContain('LITEAPI_KEY');expect(reads).not.toContain('OPENAI_API_KEY')
   }finally{vi.unstubAllGlobals()}
  })
  it('does not let Google usage approval authorize hotel or model calls',async()=>{
-  try{await load({...keys,RECOVERY_PROVIDER_USAGE_APPROVED:'true'});expect(routes.mock.lastCall?.[0]).toMatchObject({enabled:true});expect(hotels.mock.lastCall?.[0]).toMatchObject({enabled:false});expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:false})}finally{vi.unstubAllGlobals()}
+  try{await load({...keys,RECOVERY_PROVIDER_USAGE_APPROVED:'true'});expect(routes.mock.lastCall?.[0]).toMatchObject({enabled:true});expect(hotels.mock.calls[0]?.[0]).toMatchObject({enabled:false});expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:false})}finally{vi.unstubAllGlobals()}
+ })
+ it('activates a separate sandbox adapter from its own key without enabling paid providers',async()=>{
+  try{
+   const reads=await load({...keys,LITEAPI_SANDBOX_KEY:'sand_fixture'})
+   expect(hotels.mock.calls).toHaveLength(2)
+   expect(hotels.mock.calls[0]?.[0]).toMatchObject({enabled:false})
+   expect(hotels.mock.calls[1]?.[0]).toMatchObject({enabled:true,environment:'sandbox',apiKey:'sand_fixture'})
+   expect(routes.mock.lastCall?.[0]).toMatchObject({enabled:false})
+   expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:false})
+   expect(reads).not.toContain('LITEAPI_KEY');expect(reads).not.toContain('OPENAI_API_KEY')
+  }finally{vi.unstubAllGlobals()}
  })
  it('uses the registered recovery model without reading an environment model override',async()=>{
   try{
@@ -35,10 +47,10 @@ describe('independent provider and model activation',()=>{
  it('requires independent hotel public-rate/environment and model configuration',async()=>{
   try{
    await load({...keys,RECOVERY_HOTEL_USAGE_APPROVED:'true',RECOVERY_MODEL_USAGE_APPROVED:'true'})
-   expect(hotels.mock.lastCall?.[0]).toMatchObject({enabled:false})
+   expect(hotels.mock.calls[0]?.[0]).toMatchObject({enabled:false})
    expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:true,modelName:'gpt-6-luna'})
    await load({...keys,RECOVERY_HOTEL_USAGE_APPROVED:'true',RECOVERY_HOTEL_PUBLIC_RATES_APPROVED:'true',LITEAPI_ENVIRONMENT:'production',RECOVERY_MODEL_USAGE_APPROVED:'true',OPENAI_API_KEY:undefined})
-   expect(hotels.mock.lastCall?.[0]).toMatchObject({enabled:true,environment:'production',publicRatesApproved:true})
+   expect(hotels.mock.calls[0]?.[0]).toMatchObject({enabled:true,environment:'production',publicRatesApproved:true})
    expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:false})
   }finally{vi.unstubAllGlobals()}
  })

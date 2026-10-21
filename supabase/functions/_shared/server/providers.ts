@@ -21,12 +21,13 @@ export const providerCapabilities = Object.freeze({ transit: 'optional', hotel: 
 const empty = (warning: string): ProviderFacts => ({ candidates: [], offers: [], warnings: [warning] })
 
 /** Memoized per-request discovery. Caller owns the aggregate deadline and shared cancellation signal. */
-export function createProviderRegistry(adapters: { routes?: RoutesAdapter; hotels?: HotelsAdapter }): ProviderRegistry {
+export function createProviderRegistry(adapters: { routes?: RoutesAdapter; hotels?: HotelsAdapter; sandboxHotels?: HotelsAdapter }): ProviderRegistry {
   const createSession = (request: TripRequest, context: ProviderContext): ProviderSession => {
     let transport: Promise<ProviderFacts> | undefined
     let hotels: Promise<ProviderFacts> | undefined
-    function blocked(): ProviderFacts | undefined {
-      if (request.mode === 'synthetic') return empty('Synthetic investigation uses fictional supplied facts; no live provider was called.')
+    const hotelSandbox = request.mode === 'synthetic' && request.hotelDataMode === 'sandbox' && context.hotelSandbox === true
+    function blocked(permitSandboxHotels = false): ProviderFacts | undefined {
+      if (request.mode === 'synthetic' && !(permitSandboxHotels && hotelSandbox)) return empty('Synthetic investigation uses fictional supplied facts; no live provider was called.')
       if (context.signal.aborted) return empty('Optional provider investigation was cancelled; manual facts were retained.')
       if (toInstantMillis(request.arrivalAt) >= toInstantMillis(request.deadlineAt)) return empty('The hard destination deadline is already reached at airport arrival; routes and hotel investigation were skipped because no complete journey can qualify.')
       return undefined
@@ -42,12 +43,13 @@ export function createProviderRegistry(adapters: { routes?: RoutesAdapter; hotel
       } catch { return empty('Routes investigation is unavailable; supplied manual options were retained.') }
     }
     async function findHotels(): Promise<ProviderFacts> {
-      const skip = blocked()
+      const skip = blocked(true)
       if (skip) return skip
       if (!request.overnightAllowed || request.stay === null) return empty('Hotel investigation is unavailable without overnight permission and an explicit intended stay.')
-      if (!adapters.hotels) return empty('Hotel investigation is unavailable; no live hotel availability was checked because no hotel provider is configured.')
+      const adapter = hotelSandbox ? adapters.sandboxHotels : adapters.hotels
+      if (!adapter) return empty(hotelSandbox ? 'Hotel sandbox is unavailable; no sandbox hotel provider is configured.' : 'Hotel investigation is unavailable; no live hotel availability was checked because no hotel provider is configured.')
       try {
-        const result = await adapters.hotels(request, context)
+        const result = await adapter(request, context)
         if (result.status !== 'ok') return empty(`Hotel investigation is ${result.status}: ${result.reason}`)
         return { candidates: [], offers: result.data.offers, warnings: result.warnings }
       } catch { return empty('Hotel investigation is unavailable; supplied manual options were retained.') }

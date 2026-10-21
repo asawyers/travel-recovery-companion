@@ -32,8 +32,8 @@ function mapEvidence(value: unknown, transform: (evidence: SourceEvidence) => So
   }
   return value
 }
-function safeProviderEvidence(evidence: SourceEvidence, mode: TripRequest['mode']): SourceEvidence {
-  if (mode === 'synthetic') return sanitizeEvidence(evidence, mode)
+function safeProviderEvidence(evidence: SourceEvidence, mode: TripRequest['mode'], hotelSandbox = false): SourceEvidence {
+  if (mode === 'synthetic' && !(hotelSandbox && evidence.environment === 'sandbox' && evidence.type === 'estimated')) return sanitizeEvidence(evidence, mode)
   let sourceUrl = evidence.sourceUrl
   if (sourceUrl) {
     const url = new URL(sourceUrl)
@@ -101,16 +101,21 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
       let hotelOffers: HotelOption[] = []
       let latest: Assessment | undefined
       let assessmentNumber = 0
-      const allowedDiscovery = parsed.data.investigate && request.mode === 'real'
-      if (parsed.data.investigate && request.mode === 'synthetic') warnings.push('Optional live investigation is unavailable for synthetic trips; fictional supplied facts were compared.')
+      const hotelSandbox = request.mode === 'synthetic' && request.hotelDataMode === 'sandbox'
+      const allowedDiscovery = parsed.data.investigate && (request.mode === 'real' || hotelSandbox)
+      if (hotelSandbox) warnings.push('Hotel sandbox / test data: room quotes and onward inputs do not establish live availability or reservations.')
+      if (parsed.data.investigate && request.mode === 'synthetic' && !hotelSandbox) warnings.push('Optional live investigation is unavailable for synthetic trips; fictional supplied facts were compared.')
       // A session owns complete adapter promises, including failures and their HTTP caps.
-      const context = { signal: providerController.signal }
+      const context = { signal: providerController.signal, hotelSandbox }
       const session = deps.providers.createSession?.(request, context)
       let legacy: Promise<ProviderFacts> | undefined
       const legacyFacts = () => legacy ??= deps.providers.gatherPermittedFacts(request, context)
       const source: ProviderSession = session ?? {
         findTransport: async () => { const facts = await legacyFacts(); return { candidates: facts.candidates, warnings: facts.warnings } },
-        findHotels: async () => { const facts = await legacyFacts(); return { candidates: [], offers: facts.offers, warnings: [] } },
+        findHotels: async () => {
+          if (hotelSandbox) return { candidates: [], offers: [], warnings: ['Hotel sandbox investigation is unavailable without a dedicated sandbox provider session.'] }
+          const facts = await legacyFacts(); return { candidates: [], offers: facts.offers, warnings: [] }
+        },
       }
       const memo: Partial<Record<'transport' | 'hotels', Promise<AgentDiscovery>>> = {}
       const discover = (kind: 'transport' | 'hotels'): Promise<AgentDiscovery> => {
@@ -118,6 +123,7 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
         if (memo[kind]) return memo[kind]!
         memo[kind] = (async () => {
           if (!allowedDiscovery) return { candidates: [], offers: [], warnings: ['Provider investigation was not enabled; supplied facts were retained.'] }
+          if (kind === 'transport' && request.mode === 'synthetic') return { candidates: [], offers: [], warnings: [] }
           if (kind === 'hotels' && !request.overnightAllowed) return { candidates: [], offers: [], warnings: [] }
           providerTimer ??= setTimeout(() => providerController.abort(), PROVIDER_TIMEOUT_MS)
           try {
@@ -125,9 +131,14 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
             active()
             if (!Array.isArray(extra.candidates) || extra.candidates.length > 12 || !Array.isArray(extra.warnings)) throw new Error('Invalid adapter output')
             const adapted = normalizeCandidates(request, extra.candidates)
-            const candidates = adapted.candidates.map(candidate => mapEvidence(candidate, item => safeProviderEvidence(item, request.mode))) as ConfirmedOption[]
-            const offers = (extra.offers ?? []).map(offer => HotelOptionSchema.parse(mapEvidence(offer, item => safeProviderEvidence(item, request.mode))))
-            if (offers.length > 3 || offers.some(offer => offer.evidence.some(item => item.environment !== 'production' || item.type === 'synthetic'))) throw new Error('Invalid hotel evidence')
+            const candidates = adapted.candidates.map(candidate => mapEvidence(candidate, item => safeProviderEvidence(item, request.mode, hotelSandbox))) as ConfirmedOption[]
+            const rawOffers = extra.offers ?? []
+            if (!Array.isArray(rawOffers) || rawOffers.length > 3) throw new Error('Invalid hotel output')
+            const parsedOffers = rawOffers.map(offer => HotelOptionSchema.parse(offer))
+            if (parsedOffers.some(offer => offer.evidence.some(item => hotelSandbox
+              ? item.environment !== 'sandbox' || item.type !== 'estimated'
+              : item.environment !== 'production' || item.type === 'synthetic'))) throw new Error('Invalid hotel evidence')
+            const offers = parsedOffers.map(offer => HotelOptionSchema.parse(mapEvidence(offer, item => safeProviderEvidence(item, request.mode, hotelSandbox))))
             extraCandidates.push(...candidates)
             hotelOffers.push(...offers)
             hotelOffers = [...new Map(hotelOffers.map(offer => [offer.id, offer])).values()].slice(0, 3)
@@ -197,7 +208,7 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
       const candidates = result.request.confirmedOptions
       const expiresAt = [new Date(toInstantMillis(checkedAt) + MAX_FACT_AGE_MS).toISOString(),
         ...originalExpiries([candidates, evidence, hotelOffers])].sort((a, b) => toInstantMillis(a) - toInstantMillis(b))[0]
-      const hotelBookingOrigin = configuredHotelOrigin(deps.hotelBookingOrigin)
+      const hotelBookingOrigin = hotelSandbox ? null : configuredHotelOrigin(deps.hotelBookingOrigin)
       const body: RecoveryResponse = RecoveryResponseSchema.parse({ result, facts: {
         candidates, arrival: { arrivalAt: result.request.arrivalAt, arrivalBasis: result.request.arrivalBasis }, arrivalEvidence: evidence,
         checkedAt, expiresAt, adapterRevision: ADAPTER_REVISION,

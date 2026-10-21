@@ -15,6 +15,7 @@ export function SavedPlanPanel({
   busy: boolean;
   configured: boolean;
 }) {
+  const hotelSandbox = saved.request.hotelDataMode === "sandbox";
   const expired =
     saved.plan.evidenceExpiresAt &&
     toInstantMillis(saved.plan.evidenceExpiresAt) <= Date.now();
@@ -30,7 +31,7 @@ export function SavedPlanPanel({
       <p className="text-sm">
         Historical snapshot{expired ? " · Evidence expired" : ""}. Saved in this
         browser profile on this device only. Clearing browser data removes it.
-        Refresh and recheck all facts before choosing or booking.
+        {hotelSandbox ? "Sandbox / test itinerary. All rates and onward inputs remain test data; no bookings are available." : "Refresh and recheck all facts before choosing or booking."}
       </p>
       <dl className="space-y-1 break-words text-xs text-muted-foreground">
         <div>
@@ -51,7 +52,9 @@ export function SavedPlanPanel({
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        {configured
+        {hotelSandbox
+          ? configured ? "Refresh explicitly checks sandbox hotel rates with the current clock and the original dates and source timestamps. The historical saved record is retained. No live availability or bookings." : "Sandbox source unavailable: configure the public planner to retrieve test hotel rates. Refresh compares original fictional inputs locally."
+          : configured
           ? "Refresh asks the public planner to investigate available sources and compare the original inputs. Sources may be unavailable; warnings report what was checked. Original source timestamps are retained."
           : "Refresh starts a new local comparison with the original source timestamps. Previous provider checks need manual reconfirmation; no live availability is fetched."}
       </p>

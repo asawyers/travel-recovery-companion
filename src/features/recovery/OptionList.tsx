@@ -33,6 +33,7 @@ export function OptionList({
   busy: boolean;
   stale: boolean;
 }) {
+  const hotelSandbox = result?.request.hotelDataMode === "sandbox";
   return (
     <section
       aria-labelledby="options-heading"
@@ -142,7 +143,7 @@ export function OptionList({
                     </div>
                     <div>
                       <dt className="text-muted-foreground">
-                        {p.priceComplete ? "Total (USD)" : "Known charges only"}
+                        {hotelSandbox ? p.priceComplete ? "Test total (USD)" : "Known test charges only" : p.priceComplete ? "Total (USD)" : "Known charges only"}
                       </dt>
                       <dd className="mt-1 font-semibold tabular-nums">
                         {money(p.knownCostCents)}

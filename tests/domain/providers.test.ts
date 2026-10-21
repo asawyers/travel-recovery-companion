@@ -7,7 +7,7 @@ import { createProviderRegistry, disabledProviders, providerCapabilities } from 
 
 describe('routes-only response contract', () => {
   it('invalidates facts collected with the retired provider integration', () => {
-    expect(ADAPTER_REVISION).toBe('public-recovery-v4')
+    expect(ADAPTER_REVISION).toBe('public-recovery-v5')
     expect(providerCapabilities).toEqual({ transit: 'optional', hotel: 'unavailable', model: 'disabled' })
   })
   it('rejects retired flight reports in normalized facts and results', async () => {

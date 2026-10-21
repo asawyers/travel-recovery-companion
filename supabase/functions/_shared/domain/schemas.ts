@@ -112,7 +112,7 @@ export type HotelSelection = z.infer<typeof HotelSelectionSchema>
 
 /** Trusted normalized facts may reveal that the original hard deadline is already unreachable. */
 export const PlanningTripRequestSchema = z.strictObject({
-  mode: z.enum(['real', 'synthetic']), airport: z.literal('BOS'),
+  mode: z.enum(['real', 'synthetic']), hotelDataMode: z.literal('sandbox').optional(), airport: z.literal('BOS'),
   destination: text.refine(value => /\bPortland\s*,?\s*(?:ME|Maine)\b/i.test(value) && !/\b(?:Oregon|OR)\b/i.test(value), 'Supported coverage is BOS to a public destination in Portland, Maine (Portland, ME)'),
   timeZone: z.literal('America/New_York'), arrivalAt: timestamp,
   arrivalBasis: z.enum(['actual_gate', 'estimated_gate', 'scheduled_gate', 'traveler_confirmed']),
@@ -125,6 +125,7 @@ export const PlanningTripRequestSchema = z.strictObject({
   hotelSelection: HotelSelectionSchema.nullable().optional(),
   stay: z.strictObject({ ...stayFields, guestNationality: z.string().regex(/^[A-Z]{2}$/) }).refine(orderedStay, 'Stay checkout must follow checkin').nullable(),
 }).superRefine((value, ctx) => {
+  if (value.hotelDataMode === 'sandbox' && value.mode !== 'synthetic') ctx.addIssue({ code: 'custom', path: ['hotelDataMode'], message: 'Hotel sandbox data requires explicit synthetic demo mode' })
   validateEvidenceMode(value.confirmedOptions, value.mode, ctx, ['confirmedOptions'])
 })
 /** Browser input still requires a deadline after the supplied arrival. */
