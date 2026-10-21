@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "zod": "npm:zod@4.6.7",
+    "@js-temporal/polyfill": "npm:@js-temporal/polyfill@0.5.1"
+  },
+  "compilerOptions": { "strict": true },
+  "nodeModulesDir": "none"
+}
