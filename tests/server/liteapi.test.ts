@@ -202,7 +202,7 @@ describe('labeled LiteAPI sandbox availability', () => {
     ['empty', 'empty_results=1'], ['missing-id', 'rate_property_identity=1'], ['no-room', 'rate_room_types=1'],
     ['missing-offer', 'rate_offer_identity=1'], ['two-rates', 'rate_count=1'], ['occupancy', 'rate_occupancy=1'],
     ['total-shape', 'rate_total_structure=1'], ['usd-price', 'rate_total_usd=1'],
-    ['offer-total', 'rate_offer_total_mismatch=1'], ['selling-price', 'rate_selling_price=1'],
+    ['offer-total', 'rate_offer_total_mismatch=1'],
   ])('reports static sandbox rejection category for %s without leaking provider values', async (scenario, diagnostic) => {
     const body = sandboxReply(); const hotel = body.data[0]; const room = hotel.roomTypes[0]; const rate = room.rates[0]
     hotel.hotelId = 'PRIVATE-PROPERTY'; room.offerId = 'PRIVATE-OFFER'; body.hotels[0].id = hotel.hotelId
@@ -215,7 +215,6 @@ describe('labeled LiteAPI sandbox availability', () => {
     if (scenario === 'total-shape') rate.retailRate.total = []
     if (scenario === 'usd-price') rate.retailRate.total[0].currency = 'PRIVATE-CURRENCY'
     if (scenario === 'offer-total') room.offerRetailRate.amount = 77.13
-    if (scenario === 'selling-price') room.suggestedSellingPrice[0].amount = 771.13
     const fetch = fetcher([body]); const result = await sandboxAdapter(fetch)(sandboxRequest(), sandboxContext())
     expect(result.status).toBe('unavailable')
     if (result.status === 'ok') throw new Error('expected diagnostics')
@@ -285,6 +284,22 @@ describe('labeled LiteAPI sandbox availability', () => {
       if (result.status !== 'ok') expect(result.reason).toContain('detail_request_failed=1')
       expect(delayed).toHaveBeenCalledTimes(2)
     } finally { vi.useRealTimers() }
+  })
+
+  it.each(['above-retail', 'unsupported-metadata'])('keeps public selling-price gates exclusive to production quotes: %s', async scenario => {
+    const body = sandboxReply()
+    const room = body.data[0].roomTypes[0]
+    if (scenario === 'above-retail') room.suggestedSellingPrice[0].amount = 771.13
+    else (room as unknown as Record<string, unknown>).suggestedSellingPrice = 'PRIVATE-UNUSED-METADATA'
+    const demo = await sandboxAdapter(fetcher([body]))(sandboxRequest(), sandboxContext())
+    expect(demo.status).toBe('ok')
+    if (demo.status !== 'ok') throw new Error('expected nonbookable sandbox quote')
+    expect(sumCosts(demo.data.offers[0].costs).knownCostCents).toBe(12525)
+    expect(demo.data.offers[0].handoffId).toBe('hotel-search')
+    expect(demo.data.offers[0].evidence[0]).toMatchObject({ environment: 'sandbox', type: 'estimated' })
+    expect(JSON.stringify(demo)).not.toMatch(/PRIVATE|771\.13/)
+    const live = await adapter(fetcher([{ ...body, sandbox: false }]))(request(), { signal: signal() })
+    expect(live.status).toBe('unavailable')
   })
 
 })

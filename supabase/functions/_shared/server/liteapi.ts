@@ -72,7 +72,7 @@ function cancellation(value: unknown): HotelOption['cancellation'] {
 type RateFact = { id: string; room: string | null; board: string | null; costs: CostLine[]; cancellation: HotelOption['cancellation'] }
 type RateRejection = 'rate_property_identity' | 'rate_room_types' | 'rate_offer_identity' | 'rate_count' | 'rate_occupancy' | 'rate_total_structure' | 'rate_total_usd' | 'rate_offer_total_mismatch' | 'rate_selling_price'
 type SandboxRejection = RateRejection | 'empty_results' | 'duplicate_rate' | 'property_identity' | 'detail_request_failed' | 'detail_identity' | 'output_schema'
-function rateFact(value: unknown, onReject?: (reason: RateRejection) => void): RateFact | undefined {
+function rateFact(value: unknown, enforcePublicPrice: boolean, onReject?: (reason: RateRejection) => void): RateFact | undefined {
   const reject = (reason: RateRejection): undefined => { onReject?.(reason); return undefined }
   const hotel = record(value); const id = text(hotel?.hotelId, 100)
   if (!id) return reject('rate_property_identity')
@@ -87,7 +87,9 @@ function rateFact(value: unknown, onReject?: (reason: RateRejection) => void): R
   if (total === null) return reject('rate_total_usd')
   // Offer totals are optional but must agree with the single room total when present.
   if (offer.offerRetailRate !== undefined && usd(offer.offerRetailRate) !== total) return reject('rate_offer_total_mismatch')
-  for (const parent of [offer, rate]) {
+  // Public-channel selling-price restrictions apply only to production quotes.
+  // Sandbox totals are validated test data; no booking/handoff is enabled.
+  if (enforcePublicPrice) for (const parent of [offer, rate]) {
     if (parent.suggestedSellingPrice === undefined || parent.suggestedSellingPrice === null) continue
     const prices = parent === offer && record(parent.suggestedSellingPrice) ? [parent.suggestedSellingPrice] : parent.suggestedSellingPrice
     if (!Array.isArray(prices) || prices.length === 0 || prices.length > 8 || prices.some(price => usd(price) === null || usd(price)! > total)) return reject('rate_selling_price')
@@ -127,7 +129,7 @@ export function createLiteApiAdapter(options: ProviderAdapterOptions & { environ
     const countRejection = (reason: SandboxRejection): void => { if (sandbox) rejected[reason] = (rejected[reason] ?? 0) + 1 }
     const inspected = body.data.slice(0, 3)
     if (inspected.length === 0) countRejection('empty_results')
-    const facts = inspected.map(item => rateFact(item, sandbox ? countRejection : undefined)).filter((item): item is RateFact => item !== undefined)
+    const facts = inspected.map(item => rateFact(item, !sandbox, sandbox ? countRejection : undefined)).filter((item): item is RateFact => item !== undefined)
     const seen = new Set<string>(); const offers: HotelOption[] = []
     for (let index = 0; index < facts.length; index++) {
       const fact = facts[index]
