@@ -6,9 +6,9 @@ The motivation is the author's San Diego → Portland journey: a delay on the Sa
 
 ## Current state
 
-[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend currently uses the local planner; the hosted backend is deployed, with browser connection setup in progress.
+[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend is connected to the deployed backend, and all 25 hosted Brave acceptance cases pass.
 
-The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion work locally. Public server comparison and current-tab priority reuse are implemented. The backend is deployed through GitHub Actions; the production frontend connection and optional live integrations remain pending.
+The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion are verified on the deployed app. Public server comparison and current-tab priority reuse are implemented. The backend is deployed through GitHub Actions and the production frontend is connected. Optional live integrations remain pending.
 
 There is no sign-in or email workflow. Saving keeps one chosen itinerary on this device's browser profile, with original evidence timestamps and an explicit delete action. It does not sync across devices or purchase tickets/reservations. A restored itinerary is historical until explicitly refreshed.
 
@@ -29,7 +29,7 @@ npm run build
 npm run test:e2e -- tests/e2e/guest.spec.ts
 ```
 
-The account-free core passes 111 unit tests, five real HTTP integration tests, 25 configured-backend Brave cases, 14 local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
+The account-free core passes 111 unit tests, five real HTTP integration tests, 25 hosted configured-backend Brave cases, 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
 
 ## Stack and backend direction
 
@@ -38,6 +38,14 @@ React/Vite/TypeScript, shadcn/ui and Tailwind share a pure validated planner wit
 The local backend validates bounded requests, sanitizes traveler-provided evidence and returns normalized facts. It passes five real HTTP integration cases without credentials. Browser comparisons use that public endpoint when configured. Priority-only refinements reuse eligible facts in the current tab without another HTTP/provider/model call. Other edits or expiry require reassessment. Native Vercel Git integration is the deployment target, with lean functions-only backend CI.
 
 Live/schedule/traveler-confirmed/estimated/synthetic facts remain distinct. Unknown charges remain unknown. Optional provider/model access requires actual configured usage limits; no paid calls, purchases or reservations are implied. This is a challenge prototype. Two hours is an effort estimate, not a hard timer.
+
+## How a comparison works
+
+The form sends validated trip facts to the public Edge Function. The function limits request size, validates the envelope and relabels browser-supplied provider claims as traveler-confirmed or estimated facts. The shared pure planner builds complete journeys, checks boarding cutoffs and constraints, and ranks them using timestamps and integer USD cents.
+
+The browser validates the response and keeps fresh facts in the current tab. A priority-only change reranks those facts without another request. Saving writes one selected itinerary and its original evidence timestamps to this browser’s local storage; reloading restores a historical snapshot without fetching or booking anything.
+
+The hosted browser regression checks this complete flow: compare over real HTTP, change priority with zero extra requests, change a factual constraint with a new request, select/save, reload without HTTP, and explicitly delete. Provider-shaped test fixtures are labeled test evidence, not live inventory.
 
 ## Optional local backend
 
@@ -55,9 +63,9 @@ The browser endpoint setting is optional: set `VITE_RECOVERY_API_URL=http://127.
 
 ## Deployment status and setup
 
-[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. GitHub checks and the functions-only backend deployment passed. The [Vercel frontend](https://travel-recovery-companion.vercel.app) is publicly accessible. All 14 local-planner Brave browser checks passed against that HTTPS URL. Automatic main/feature-branch Vercel deployments were observed. The public challenge API now uses wildcard CORS without an origin allowlist. The author saved the production frontend endpoint address; the latest public bundle still lacks it, so a fresh build with the saved setting and configured browser verification remain pending.
+[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. GitHub checks and functions-only backend deployment passed. All 25 configured Brave cases passed against the stable HTTPS frontend, including real backend comparison and device save/reload/delete. Native main/branch Git deployments were observed; the author confirmed Production / Ready and Preview / Ready labels. The deployed public API uses wildcard CORS without an origin allowlist. No core hosting blocker remains.
 
-Connect only this repository to a new personal Vercel project using [Vercel’s native GitHub integration](https://vercel.com/docs/git/vercel-for-github). Use the Vite preset, repository root, Node 24, `npm ci`, `npm run build`, `dist` and production branch `main`. Main pushes should produce production deployments; branch/PR pushes should produce previews and GitHub deployment status. Verify both deployed commit SHAs. No Vercel token or custom deploy Action is needed.
+This repository is connected to its dedicated Vercel project using [Vercel’s native GitHub integration](https://vercel.com/docs/git/vercel-for-github). Use the Vite preset, repository root, Node 24, `npm ci`, `npm run build`, `dist` and production branch `main`. Main pushes should produce production deployments; branch/PR pushes should produce previews and GitHub deployment status. Verify both deployed commit SHAs. No Vercel token or custom deploy Action is needed.
 
 Leave `VITE_RECOVERY_API_URL` empty for local-only previews. Set `VITE_RECOVERY_API_URL=https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery` in the Vercel production environment, then rebuild through a Git push or redeployment. The deployed endpoint uses wildcard CORS without an origin-registration setting. No product Auth callbacks, email settings or frontend Supabase keys are required.
 
@@ -71,4 +79,4 @@ The GitHub workflow checks Node 24 install, unit tests and build on pushes/PRs. 
 - Explain local run commands and source labels; the author must understand the code even when AI is used.
 - Authentication is intentionally omitted by the author’s scope decision. Live inventory and the optional agent remain unavailable until authorized access and usage limits exist.
 
-Hosted recovery endpoint: `https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery`. Direct unauthenticated daytime, overnight and manual-input requests passed runtime validation; daytime and overnight plans matched the pure planner. The Vercel production endpoint setting is saved; its new build and configured browser checks must pass before claiming end-to-end hosted acceptance.
+Hosted recovery endpoint: `https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery`. Direct unauthenticated daytime, overnight and manual-input requests passed runtime validation; daytime and overnight plans matched the pure planner. The production frontend includes this address, and its configured hosted browser acceptance passed.

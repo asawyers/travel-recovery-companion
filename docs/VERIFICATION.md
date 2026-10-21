@@ -1,107 +1,64 @@
 # Verification status
 
-This is a coding-challenge prototype under active implementation. The Vercel frontend and its local-planner flow are verified publicly; the hosted backend is deployed and directly verified; browser connection and live-provider integrations remain pending.
+The account-free challenge app is deployed at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app) and connected to its public Supabase recovery function. Production and Preview Git deployments are confirmed. The independent technical gate passed, including all 25 configured hosted Brave cases; optional live travel and model integrations remain unavailable.
 
-## Verified locally
+## Revisions
 
-Application revision: `4c9c9c71fa44727925c4bf1a288b445b6e831966` (application reviewed at `f0f3836`; subsequent browser configuration selects Brave). Runtime: Node 24.22.0. Implementation branch: `feat/travel-recovery-companion`.
+- Deployed application: `6af5d8c775c64d702210a3a37bbe618cb1bcfde7`; stable frontend asset `/assets/index-DJ4PH_o5.js` includes the public backend address.
+- Backend behavior: public CORS amendment `828ba97be49db908d32b775b01f4650acd0329da`, also deployed through the docs-only source `6af5d8c`. Facts revision is `public-manual-v1`.
+- Acceptance tests: `cb9b7bed1971741e46cfc8dd7d5aba5d7d22eaa6`, a test synchronization correction with no application change.
+- Runtime: Node 24.22.0, Deno 2.9.1, Brave 154.1.96.60.
 
-- `npm run test`: 108 tests pass across contracts, time/money, planner, overnight, reducer, form adapter, device storage and server handlers.
-- `npm run build`: TypeScript and production Vite build pass. The main-chunk size warning is recorded; this is not a runtime failure.
-- Brave Browser 154.1.96.60: 25 configured-backend and 14 local-only browser cases pass. These are the current browser acceptance runs; older Chrome evidence below is historical.
-- Independent spec and code-quality reviews passed for Tasks 1–8 application behavior.
-- Manual and fictional guest comparisons use the same deterministic planner. Manual train/bus/car input, unknown prices, seconds, DST rejection, stale-result protection, constraint changes, no-plan recovery and selection were checked.
-- Desktop and 390/320 px mobile layouts, keyboard selection, full hotel metadata and persistent fictional-data labels were inspected. No console errors were observed in the final guest browser checks.
+## Fresh independent technical gate
 
-The explicit fictional fixtures reproduce $72/12:50 train, $47/12:10 bus, $145/11:45 car, and $202/10:40 next-day hotel-plus-bus totals/arrivals. These are regression examples, not real schedules, quotes or availability.
-
-## Pending
-
-- Manually confirm the dashboard Production/Preview labels for the verified main/branch Git-triggered deployments. The public frontend smoke checks passed.
-- Rebuild Vercel with its saved production endpoint setting, then run configured hosted browser acceptance.
-- Optional FlightAware, Google Routes, LiteAPI/Nuitee and model integrations; credentials and actual usage limits have not been configured or authorized merely by planning them.
-
-Existing hosted setup blockers remain recorded in the local session handoff. Frontend and direct backend deployment checks are verified below; configured browser-to-backend acceptance is pending. Local Docker has six healthy Supabase services (API 54321, DB 54322, Mailpit 54324); the public recovery function is locally and directly hosted verified; browser connection is pending. Local Auth is unused by this app.
-
-## Reproduce the current local app
-
-Use the Node version in `.nvmrc`, then run `npm ci`, `npm run test`, `npm run build` and `npm run dev`. The app is served at `http://127.0.0.1:5173/`. The user requested Brave for browser testing. Playwright uses the installed Brave executable; prior Chrome results remain historical evidence. `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` overrides the default macOS Brave path.
-
-No hard build timer was started. The user clarified that two hours is an effort estimate; no measured total or historical timer result is asserted.
-
-## Provider entry pages checked on 2026-10-21
-
-Read-only inspection verified the official [Amtrak entry page](https://www.amtrak.com/home.html), [Concord trip form](https://concordcoachlines.com/book-your-trip/), [KAYAK Boston Logan car search](https://www.kayak.com/Boston-Logan-Intl-Airport-Car-Rentals.BOS.cap.ksp), and [Google Maps URL documentation](https://developers.google.com/maps/documentation/urls/get-started). No actual inventory, timetables, quotes, purchases or reservations were verified. Concord warns that Boston/Logan tickets do not reserve a specific date or seat.
-
-[Google Hotels](https://www.google.com/travel/hotels) resolved to official Google Travel but the inspection client received an unsupported-browser page. It is offered only as generic hotel discovery, with manual property/area and stay-date instructions. A Nuitée assigned hotel-booking origin has not been configured or verified.
-
-## Acceptance scope
-
-The author removed authentication and email delivery from this challenge. Browser acceptance is account-free compare/refine/select/device-save/reload/historical-restore/delete, with all feedback in-app. No account or session isolation is claimed. Local Supabase Auth is unused tooling, not part of the product.
-
-## Account-free local saving verified
-
-Revision `fc5e7491da149c1bfad0b68d5acaf46d2b94a0b4` removes sign-in UI and adds one device-local snapshot with historical restore, explicit delete and guarded refresh. Independent spec and quality reviews passed. All 74 unit tests, TypeScript/build, five existing guest Chrome scenarios and seven save/history/storage-error Chrome scenarios passed. The initial 11-scenario browser run was followed by the two updated malformed/version-2 recovery cases; the spec reviewer then reran all seven save scenarios. A controller check at 320px confirmed unchanged snapshot/metadata after reload, zero sign-in buttons, no horizontal overflow and no console errors.
-
-## Historical public stateless HTTP gate
-
-Revision `42eb7be5032cf225a63bfa5eaf50d8f7b8ff31cb`: independent spec and quality reviews passed. Captured checks: 95 unit tests (21 handler cases), TypeScript/build, Deno entrypoint check and five real loopback HTTP integration tests. Independent daytime and overnight HTTP responses deeply matched the same pure planner; no credentials, app users or database rows were used.
-
-| Gate criterion | Captured evidence |
+| Check | Captured result |
 | --- | --- |
-| Public validated planner | Synthetic and manual POST 200; three daytime plans/candidates; pure-planner daytime/overnight equality |
-| Untrusted browser provenance | Nested hotel/access/final-transfer/next-day cases relabeled API claims; original evidence times retained |
-| HTTP boundaries | Allowed OPTIONS 204, unlisted OPTIONS/POST 403, GET 405, invalid JSON/fields 400, declared/chunked oversized body 413 |
-| Disabled providers and useful failures | Zero calls with investigation off; unavailable/failing investigation preserves manual/no-plan 200 |
-| Strict normalized facts and expiry | Runtime schema cases retain original timestamps, five-minute/earliest-quote expiry and public-manual-v1 revision |
-| Actual local execution | Five loopback node:test cases and Deno check passed independently against the running function |
+| `npm ci` | Passed, 2.42 seconds |
+| `npm run test` | 111 tests across 11 files passed |
+| `npm run build` | TypeScript and Vite build passed; existing chunk-size warning |
+| Deno entrypoint check | Passed |
+| Local real HTTP integration | Five guarded loopback cases passed against an isolated Deno server using the real handler |
+| Configured hosted Brave suite | All 25 cases passed in 44.6 seconds (45.06 seconds wall) |
 
-Historical behavior at `42eb7be` (superseded by the public CORS amendment below): the local Supabase Kong gateway rewrites `Access-Control-Allow-Origin` to `*`, including error responses. Exact-origin handler unit checks pass, and actual unlisted-origin requests still return 403. This platform behavior is documented rather than changed. CORS is not caller authentication; the endpoint is intentionally public. All provider/model adapters remain disabled/unavailable, and injected tests are not live-provider acceptance.
+The isolated local server was stopped after verification. Local HTTP ran through `node --test tests/integration/core.test.mjs` with an explicit loopback `RECOVERY_API_URL`; it did not target hosted services. The normal local command `npm run test:integration` uses the same test file and a local environment file; that npm wrapper was not rerun in this gate.
 
-## Browser/backend integration checks
+## Hosted API acceptance
 
-Revision `f0f3836d3711c299385b2c212fc167a24b2773f3`: implementation checks pass for 108 unit tests, five real HTTP integration cases, 25 configured-endpoint Chrome cases, 14 no-config Chrome cases and TypeScript/build. Independent spec and quality reviews passed the application changes, including 38 focused tests and four targeted refresh regressions.
+Endpoint: `https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery`. Independent HTTPS checks passed without Authorization, API keys or cookies:
 
-The configured browser sends only `{request, investigate}` with no Authorization, API key or cookies. A priority-only change reranks normalized facts locally without another POST; factual changes request a new comparison. Original evidence times are retained, and real wall-clock expiry disables stale selection/saving. Late responses cannot replace a newer comparison or cache. Errors preserve inputs and show controlled messages; fetch and response parsing have one 35-second deadline.
+- Production, arbitrary and literal-null Origin preflights returned 204 with wildcard CORS and no credential allowance. No origin-registration setting is required.
+- Daytime POST 200 returned three plans and overnight POST 200 returned two. Both responses passed runtime schema validation and exact pure-planner plan comparison.
+- Real-mode manual POST 200 relabeled browser-claimed provider/live facts, cleared the source URL, removed an injected token marker and retained original evidence times.
+- GET 405, malformed JSON 400 and 65,537-byte request 413 preserved wildcard CORS without credentials.
 
-Refresh is an explicit configured investigation (providers remain unavailable), consumes investigation intent once, and preserves traveler inputs for later refinement. A manual compare/save/refresh/cheapest regression records two POSTs with option counts `[1,1]`; the final priority change adds zero requests. Local-only refresh adds zero requests. Saved snapshot storage remains unchanged until another explicit save/delete. A controller check independently observed initial/cheapest/no-driving POST counts of 1/1/2, no auth header, zero sign-in controls, a 320px layout without overflow and no app console errors.
+All direct hosted API acceptance POSTs used `investigate:false`; provider/model integrations remain disabled. There are no application users, database rows, purchases or bookings.
 
-## Brave browser verification
+## Hosted browser coverage
 
-At `4c9c9c71fa44727925c4bf1a288b445b6e831966`, installed Brave Browser `154.1.96.60` passed all 25 configured-backend cases (26.6 seconds) and all 14 local-only cases (14.5 seconds). Playwright launched the explicit Brave executable using isolated temporary profiles; no personal browser profile was accessed. No Chrome fallback is configured. These runs supersede Chrome as the current browser acceptance evidence.
+The real HTTP core case passed compare, priority refinement without another POST, factual constraint changes with another POST, selection, device save, reload as a historical snapshot without HTTP and explicit deletion. Other cases cover no-plan recovery, stale/late responses, cache expiry, source timestamps, manual input, overnight hotel metadata, 320/390 px layouts and storage failures that preserve existing data. Provider-shaped injected responses are test fixtures and do not count as live-provider evidence. Test profiles are isolated from the author's personal Brave storage.
 
-## Public source and GitHub checks
+The initial configured hosted run passed 24/25 cases in 45.0 seconds. The remaining investigation test changed priority before the response completed, correctly aborting that investigation. Revision `cb9b7be` waits for the real response body and enabled Compare button before asserting cache reuse. Its original failure was reproduced; five consecutive corrected hosted runs passed in 16.2 seconds. The two-POST assertion remains intact. The subsequent independent complete hosted run passed all 25 cases in 44.6 seconds.
 
-Source was published to `asawyers/travel-recovery-companion` on `main` and `feat/travel-recovery-companion`. [Main CI run 39659316788](https://github.com/asawyers/travel-recovery-companion/actions/runs/39659316788) passed at `904555c98b94ecdec337710b3570d9747236a296` on 2026-10-21: Node setup, dependency installation, unit tests and build all succeeded. `deploy-backend` was skipped as designed because hosted deployment is not enabled. The subsequently recorded documentation update does not change application behavior. Workflow/configuration and public documentation passed independent spec and quality review.
+## Native deployment evidence
 
-Pre-publication checks covered explicit staged paths, 117 historical Git blobs, secret patterns, and exclusion of local environment files, Superpowers documents and private transferred references. No matching secrets or private reference paths were found in that scan. Original references remain on disk.
+Public source: [asawyers/travel-recovery-companion](https://github.com/asawyers/travel-recovery-companion). Main and `feat/travel-recovery-companion` use native Vercel Git integration:
 
-The user created a dedicated project. The management connector remains unavailable for it, while a separately authorized project-scoped GitHub deployment credential successfully deployed the recovery function. Vercel and direct backend evidence are recorded below; configured browser acceptance is pending. Optional provider/model adapters remain disabled while access and authorized usage limits are unavailable.
+- Branch-only `384bbca02b7eedc4d1f12d6c68dbb0f73d2ab333` triggered [a successful deployment](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/5g6C41No8r14evVB27ctYe3jzjyL) while main remained at `e563c76`.
+- Main `2eb20c1a30efa7b0c13771635d4ebe16f7cd5466` separately triggered [a successful deployment](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/DQZF57AoQJKm6dzWijtAB2Xhp5VJ).
+- The rebuilt configured frontend at `6af5d8c` has [successful Vercel status](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/4cM1yn1CaEudwkLr8P6v99wpuS7H). The author confirmed main Production / Ready and feature Preview / Ready labels.
+- Main [GitHub run 39670000927](https://github.com/asawyers/travel-recovery-companion/actions/runs/39670000927) at `6af5d8c` passed install/tests/build and functions-only deployment, job 119465175869. There is no frontend deploy Action, app schema, migration or authentication setup. Frontend and backend delivery are separate.
 
-## Public Vercel frontend verified
+The author entered the scoped deployment token directly into GitHub. Only secret names were verified; no credential value was read or committed. Management-connector access to the project remains unavailable, but the separately authorized CI credential successfully deploys it. No denied management operation was retried without new access evidence.
 
-The author created the Vercel project. `https://travel-recovery-companion.vercel.app/` returned HTTP200 with the expected app title. GitHub’s Vercel commit status reports success at `e563c76a4ff333925ee12269e16384378776736c`; the matching project overview was located in the author’s existing Brave window.
+## Local run and submission
 
-Against that stable HTTPS frontend, all 14 Brave guest/device-save tests passed in 11.8seconds: explicit fictional and traveler-entered comparisons, constraints and selection, 320/390px layouts, controlled errors, historical save/reload/delete, malformed/versioned storage preservation, quota failures and manual refresh/priority refinement. Test storage used isolated profiles, without modifying the author’s personal saved plans.
+Use Node 24, then `npm ci`, `npm run test`, `npm run build` and `npm run dev`. [README](../README.md) includes optional local Supabase commands, public endpoint configuration, Brave setup and the UI → Edge → pure planner → device-storage explanation, with one meaningful browser regression. The author should review that explanation and the code before submitting; automated checks do not establish personal understanding.
 
-This is frontend acceptance with the local planner, not hosted Edge or live-provider acceptance. Feature-branch push `384bbca02b7eedc4d1f12d6c68dbb0f73d2ab333` subsequently generated a new successful Vercel deployment automatically: [deployment details](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/5g6C41No8r14evVB27ctYe3jzjyL). Main was still at `e563c76` when that branch status was observed. Subsequent main push `2eb20c1a30efa7b0c13771635d4ebe16f7cd5466` also triggered a successful [Vercel deployment](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/DQZF57AoQJKm6dzWijtAB2Xhp5VJ). Exact dashboard Production/Preview labels remain to be checked manually.
+Device storage holds one selected itinerary on this browser profile. It does not sync devices. Original evidence and selection timestamps survive reload; the restored itinerary is historical until explicitly refreshed. Nothing purchases tickets or reservations.
 
-## Historical checkpoint: initial hosted backend deployment
+Optional FlightAware, Google Routes, LiteAPI/Nuitee rates/hosted-hotel handoff and model-agent acceptance are blocked on authorized credentials and actual usage limits. No accounts, paid calls or spend limit have been authorized merely by this plan. Manual facts and clearly labeled fictional examples remain usable; synthetic examples never masquerade as live inventory. Authentication/email are intentionally omitted. Two hours is an effort estimate, not a measured hard timer.
 
-The user created project `isclmlhsktuocgdoizmc` and entered a project-scoped deployment token directly into GitHub’s production environment. No token value was read into chat or committed. Repository deployment gate is enabled. Main [run39665108179](https://github.com/asawyers/travel-recovery-companion/actions/runs/39665108179), rerun at source `2eb20c1a30efa7b0c13771635d4ebe16f7cd5466`, passed install/tests/build and the recovery function deployment (job119456275061). No database, migration, application-user or provider/model setup was performed.
-
-Actual HTTPS endpoint: `https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery`. Credential-free daytime and overnight POSTs returned200 with three and two plans respectively, runtime-validated responses and exact pure-planner plan parity. Manual real-mode test input returned200, downgraded browser-live claims and removed provider URLs. Unlisted origin OPTIONS403, GET405 and malformedJSON400 passed. Revision is `public-manual-v1`.
-
-At source2eb20c1, production-origin OPTIONS returned403. The user subsequently removed the origin-allowlist requirement for this challenge: wildcard credential-free CORS was awaiting publication at that checkpoint. The frontend remains on its working local planner until the revised backend and configured production browser checks pass. No live inventory acceptance is claimed.
-
-
-## Historical checkpoint: local CORS simplification
-
-The author removed the origin-registration requirement for this stateless coding challenge. Source `828ba97be49db908d32b775b01f4650acd0329da` removes the origin allowlist, environment setting and obsolete server environment example. Browser responses use `Access-Control-Allow-Origin: *` without credential support. Local verification passed 111 unit tests, typecheck/build, Deno check and five actual loopback HTTP cases, including arbitrary/null/absent origins and unchanged validation/method/body-limit behavior. Hosted publication and configured Brave acceptance were pending at that checkpoint; hosted CORS results follow below.
+Superpowers plans, the private handoff, transferred assessment/spec/provenance and local environment files remain ignored. All transferred references are preserved locally. Prior verification checkpoints remain in Git history and the ignored local history folder.
 
 
-## Hosted public CORS verified
-
-Source `828ba97be49db908d32b775b01f4650acd0329da` was published to main and the implementation branch. Main [run39669510342](https://github.com/asawyers/travel-recovery-companion/actions/runs/39669510342) passed checks and functions-only deployment (job119463508662). Independent spec and quality reviews approved the amendment. Actual hosted HTTPS checks passed: production/arbitrary/literal-null OPTIONS204; daytime POST200 with three plans; overnight POST200 with two plans; both runtime-schema validated and exactly matching the pure planner; GET405, malformedJSON400 and oversized413. All responses include wildcard CORS and omit credential support. No origin-registration setting is needed.
-
-The user reported saving Production `VITE_RECOVERY_API_URL`. Git-triggered Vercel deployments report success, but the stable HTTPS frontend still served `/assets/index-BrOvtPI5.js` without the backend address at this checkpoint. Production environment targeting and main deployment labels are being checked manually. Configured full-stack browser acceptance is not yet claimed.
+The technical gate also checked keyboard selection, 320/390 px layouts without horizontal overflow, and fixed provider hrefs with safe new-tab attributes. It did not verify live inventory or the author’s personal understanding. The production build retains a nonblocking main-chunk warning above 500 kB; npm reported an unapproved optional `fsevents` install script. Neither prevented the captured install/build/browser checks.
