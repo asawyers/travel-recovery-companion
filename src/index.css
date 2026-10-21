@@ -1,0 +1,135 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+/* State variants from the shadcn 4.22.1 generated stylesheet. */
+@custom-variant data-open {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-closed {
+  &:where([data-state="closed"]),
+  &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-checked {
+  &:where([data-state="checked"]),
+  &:where([data-checked]:not([data-checked="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-unchecked {
+  &:where([data-state="unchecked"]),
+  &:where([data-unchecked]:not([data-unchecked="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-selected {
+  &:where([data-selected="true"]) {
+    @slot;
+  }
+}
+
+@custom-variant data-disabled {
+  &:where([data-disabled="true"]),
+  &:where([data-disabled]:not([data-disabled="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-active {
+  &:where([data-state="active"]),
+  &:where([data-active]:not([data-active="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
+  }
+}
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+
+:root {
+  color-scheme: light;
+  --background: #F1F5F9;
+  --foreground: #153247;
+  --card: #FFFFFF;
+  --card-foreground: #153247;
+  --popover: #FFFFFF;
+  --popover-foreground: #153247;
+  --primary: #1D4ED8;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F1F5F9;
+  --secondary-foreground: #153247;
+  --muted: #F1F5F9;
+  --muted-foreground: #475569;
+  --accent: #E2E8F0;
+  --accent-foreground: #153247;
+  --destructive: #B91C1C;
+  --border: #CBD5E1;
+  --input: #94A3B8;
+  --ring: #1D4ED8;
+  --radius: 0.5rem;
+  --warning: #B45309;
+  --success: #166534;
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html { @apply font-sans; }
+  body { @apply m-0 min-w-80 bg-background text-foreground antialiased; }
+  button, input, select { font: inherit; }
+  input, select { font-variant-numeric: tabular-nums; }
+  [data-slot="input"], [data-slot="native-select"], [data-slot="button"] { min-height: 2.75rem; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
