@@ -1,15 +1,15 @@
 # Verification status
 
-The account-free challenge app is deployed at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app) and connected to its public Supabase recovery function. Production and Preview Git deployments are confirmed. The deployed core previously passed 25 hosted Brave cases. The new FlightAware/Google Routes build passes its local gate below; publication and live provider acceptance remain separate. No provider accounts/keys/cost limits exist yet, and no live provider calls were made.
+The account-free challenge app is deployed at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app) and connected to its public Supabase recovery function. Production and Preview Git deployments are confirmed. The published FlightAware/Google Routes software build passes 212 unit tests and all 32 hosted Brave cases. Six new cases use provider-shaped fixtures; actual live provider acceptance remains separate. No provider accounts/keys/cost limits exist yet, and no live provider calls were made.
 
-## Revisions
+## Earlier core revisions
 
 - Deployed application: `6af5d8c775c64d702210a3a37bbe618cb1bcfde7`; stable frontend asset `/assets/index-DJ4PH_o5.js` includes the public backend address.
 - Backend behavior: public CORS amendment `828ba97be49db908d32b775b01f4650acd0329da`, also deployed through the docs-only source `6af5d8c`. Facts revision is `public-manual-v1`.
 - Acceptance tests: `cb9b7bed1971741e46cfc8dd7d5aba5d7d22eaa6`, a test synchronization correction with no application change.
 - Runtime: Node 24.22.0, Deno 2.9.1, Brave 154.1.96.60.
 
-## Fresh independent technical gate
+## Earlier core technical gate
 
 | Check | Captured result |
 | --- | --- |
@@ -82,4 +82,13 @@ Seven new browser cases cover provider UI and public policy pages; six use expli
 
 Spec review corrected late/equal verified arrivals reverting to an earlier fallback, manual/provider ID collisions, missing walking links becoming zero-minute transfers, unrelated arrival evidence on the flight report and attribution details. Regression tests failed before each fix and passed afterward. Trusted planning requests can represent an unreachable deadline while public input remains strict; the planner returns no selectable plan and preserves the deadline. The initial 196-test/31-browser run preceded those corrections; the final counts above supersede it.
 
-Both independent spec scopes and final quality review approved the corrected implementation and setup documentation. Publication is pending at this checkpoint. Optional real flight/route acceptance stays blocked on authorized accounts/keys and actual limits; no fixture result closes that gate. The requested next step after the build is the [provider setup guide](PROVIDER_SETUP.md).
+Both independent spec scopes and final quality review approved the corrected implementation and setup documentation. The source was subsequently published and hosted verification passed as recorded below. Optional real flight/route acceptance stays blocked on authorized accounts/keys and actual limits; no fixture result closes that gate. The requested next step after the build is the [provider setup guide](PROVIDER_SETUP.md).
+
+
+## Task 10 publication and hosted acceptance
+
+Reviewed source `93c1548b343a4e3333c14827396bb5e8da569bd3` was published to main and the implementation branch. [Main CI 39676958859](https://github.com/asawyers/travel-recovery-companion/actions/runs/39676958859) passed checks and backend deployment; branch CI 39676955929 passed. [Native Vercel deployment](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/5p1Xy3LDkR7VmxkzcniJQ1M7bzNT) succeeded. No provider secrets or activation switch were configured.
+
+Fresh complete Brave acceptance against the stable HTTPS frontend passed all 32 cases in 48.0 seconds, output `/tmp/travel-task10-hosted-brave`. Six provider-shaped responses were test fixtures, not real API observations. Independent direct hosted checks passed eight CORS/error cases, real-mode provenance sanitization and a bounded POST explicitly asserting `public-providers-v2`. All direct API acceptance POSTs used `investigate:false`. Frontend, terms/privacy and JS asset `/assets/index-N_FLIvdM.js` returned 200; the bundle contained the correct backend address. Browser policy-page cases verified rendered content, beyond the HTTP app shells.
+
+Task 10 software is implemented, reviewed and deployed. Live FlightAware/Google coverage remains blocked because the user has no provider accounts/keys yet and no actual usage/spend limits have been agreed/configured. The next action is the requested manual setup walkthrough, beginning with a dedicated Google Cloud project. No authentication, email or hard-timer setup is needed.

@@ -6,7 +6,7 @@ The motivation is the author's San Diego → Portland journey: a delay on the Sa
 
 ## Current state
 
-[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend is connected to the deployed backend, and the deployed core has passed hosted Brave acceptance. The provider-adapter build is verified locally and is awaiting publication.
+[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend is connected to the deployed backend, and the provider-adapter build passes all 32 hosted Brave acceptance cases, including explicitly provider-shaped fixtures. Live API acceptance remains pending setup.
 
 The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion are verified on the deployed app. Public server comparison and current-tab priority reuse are implemented. The backend is deployed through GitHub Actions and the production frontend is connected. FlightAware and Google Routes adapters are implemented but disabled pending account/key/usage-limit setup. Optional hotels and the model agent remain pending.
 
@@ -29,7 +29,7 @@ npm run build
 npm run test:e2e -- tests/e2e/guest.spec.ts
 ```
 
-The account-free core passes 212 unit tests, five real HTTP integration tests, 32 local configured-backend Brave cases, 25 earlier hosted core cases and 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
+The account-free core passes 212 unit tests, five real HTTP integration tests, 32 hosted configured-backend Brave cases (also passed locally), 25 earlier hosted core cases and 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
 
 ## Stack and backend direction
 
@@ -71,7 +71,7 @@ The browser endpoint setting is optional: set `VITE_RECOVERY_API_URL=http://127.
 
 ## Deployment status and setup
 
-[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. GitHub checks and functions-only backend deployment passed. All 25 configured Brave cases passed against the stable HTTPS frontend, including real backend comparison and device save/reload/delete. Native main/branch Git deployments were observed; the author confirmed Production / Ready and Preview / Ready labels. The deployed public API uses wildcard CORS without an origin allowlist. No core hosting blocker remains.
+[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. GitHub checks and functions-only backend deployment passed. All 32 configured Brave cases passed against the stable HTTPS frontend, including real backend comparison and device save/reload/delete. Native main/branch Git deployments were observed; the author confirmed Production / Ready and Preview / Ready labels. The deployed public API uses wildcard CORS without an origin allowlist. No core hosting blocker remains.
 
 This repository is connected to its dedicated Vercel project using [Vercel’s native GitHub integration](https://vercel.com/docs/git/vercel-for-github). Use the Vite preset, repository root, Node 24, `npm ci`, `npm run build`, `dist` and production branch `main`. Main pushes should produce production deployments; branch/PR pushes should produce previews and GitHub deployment status. Verify both deployed commit SHAs. No Vercel token or custom deploy Action is needed.
 
