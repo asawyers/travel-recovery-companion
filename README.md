@@ -54,7 +54,7 @@ The browser endpoint setting is optional: set `VITE_RECOVERY_API_URL=http://127.
 
 ## Deployment status and setup
 
-[Public source](https://github.com/asawyers/travel-recovery-companion) is the target repository. Hosted frontend/backend URLs and Git-triggered deployment evidence are pending. A local build is not a deployed application.
+[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. GitHub checks passed; backend deployment remains deliberately disabled. Hosted frontend/backend URLs and Git-triggered deployment evidence are pending. A local build is not a deployed application.
 
 Connect only this repository to a new personal Vercel project using [Vercel’s native GitHub integration](https://vercel.com/docs/git/vercel-for-github). Use the Vite preset, repository root, Node 24, `npm ci`, `npm run build`, `dist` and production branch `main`. Main pushes should produce production deployments; branch/PR pushes should produce previews and GitHub deployment status. Verify both deployed commit SHAs. No Vercel token or custom deploy Action is needed.
 

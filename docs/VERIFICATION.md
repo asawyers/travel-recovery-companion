@@ -17,7 +17,7 @@ The explicit fictional fixtures reproduce $72/12:50 train, $47/12:10 bus, $145/1
 
 ## Pending
 
-- Public source push, native GitHub-connected Vercel deployment and actual deployed-URL smoke checks.
+- Native GitHub-connected Vercel production/preview deployment and actual deployed-URL smoke checks.
 - Dedicated hosted Supabase Edge project and functions-only GitHub Actions delivery (no application schema or migration step).
 - Optional FlightAware, Google Routes, LiteAPI/Nuitee and model integrations; credentials and actual usage limits have not been configured or authorized merely by planning them.
 
@@ -69,3 +69,11 @@ Refresh is an explicit configured investigation (providers remain unavailable), 
 ## Brave browser verification
 
 At `4c9c9c71fa44727925c4bf1a288b445b6e831966`, installed Brave Browser `154.1.96.60` passed all 25 configured-backend cases (26.6 seconds) and all 14 local-only cases (14.5 seconds). Playwright launched the explicit Brave executable using isolated temporary profiles; no personal browser profile was accessed. No Chrome fallback is configured. These runs supersede Chrome as the current browser acceptance evidence.
+
+## Public source and GitHub checks
+
+Source was published to `asawyers/travel-recovery-companion` on `main` and `feat/travel-recovery-companion`. [Main CI run 39659316788](https://github.com/asawyers/travel-recovery-companion/actions/runs/39659316788) passed at `904555c98b94ecdec337710b3570d9747236a296` on 2026-10-21: Node setup, dependency installation, unit tests and build all succeeded. `deploy-backend` was skipped as designed because hosted deployment is not enabled. The subsequently recorded documentation update does not change application behavior. Workflow/configuration and public documentation passed independent spec and quality review.
+
+Pre-publication checks covered explicit staged paths, 117 historical Git blobs, secret patterns, and exclusion of local environment files, Superpowers documents and private transferred references. No matching secrets or private reference paths were found in that scan. Original references remain on disk.
+
+Hosting remains incomplete: Vercel requires interactive dashboard sign-in; dedicated hosted Supabase project creation/read/cost access was denied. No Vercel production/preview deployment SHA, deployed public Edge endpoint or stable HTTPS device-save acceptance is claimed. Optional provider/model adapters remain disabled while access and authorized usage limits are unavailable.
