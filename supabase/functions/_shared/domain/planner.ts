@@ -73,9 +73,9 @@ function buildPlan(request: TripRequest, candidate: ConfirmedOption, now: string
     warnings.push('Schedule feasibility does not reserve a seat; confirm inventory before booking.')
   } else if (candidate.kind === 'car') {
     if (!request.drivingAllowed) violations.push('Driving is not allowed by the traveler.')
-    checkService(candidate.evidence, localDate(journey.at), 'Car pickup')
     checkService(candidate.access.evidence, localDate(journey.at), 'Rental access')
     journey.transfer(candidate.access)
+    checkService(candidate.evidence, localDate(journey.at), 'Car pickup')
     journey.add('pickup', journey.place, addMinutes(journey.at, candidate.pickupMinutes), candidate.evidence)
     journey.add('car', candidate.finalTransfer.from, addMinutes(journey.at, candidate.driveMinutes), candidate.evidence, candidate.costs, candidate.id)
     journey.add('return', journey.place, addMinutes(journey.at, candidate.returnMinutes), candidate.evidence)

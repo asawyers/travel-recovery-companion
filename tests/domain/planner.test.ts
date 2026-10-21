@@ -165,3 +165,25 @@ describe('precise gate-arrival timestamps', () => {
     expect(RecoveryResultSchema.safeParse(r).success).toBe(true)
   })
 })
+
+describe('rental pickup after midnight', () => {
+  it('validates pickup evidence on the pickup day while retaining the access service day', async () => {
+    const { overnightFixture } = await import('@domain/fixtures')
+    const f = overnightFixture(); f.request.arrivalAt = '2026-11-18T23:10:00-05:00'; f.request.confirmedOptions = []
+    const car = f.candidates.find(c => c.kind === 'car') as CarOption
+    car.evidence[0].serviceDate = '2026-11-19'
+    f.candidates = [car]
+    const accepted = run(f)
+    expect(accepted.plans.map(p => p.id)).toEqual(['car'])
+    expect(accepted.plans[0].legs.find(l => l.kind === 'pickup')?.startAt).toBe('2026-11-19T00:10:00-05:00')
+    expect(accepted.plans[0].legs.find(l => l.kind === 'transfer')?.evidence[0].serviceDate).toBe('2026-11-18')
+  })
+  it('rejects prior-day pickup evidence when access crosses into the next day', async () => {
+    const { overnightFixture } = await import('@domain/fixtures')
+    const f = overnightFixture(); f.request.arrivalAt = '2026-11-18T23:10:00-05:00'; f.request.confirmedOptions = []
+    f.candidates = f.candidates.filter(c => c.kind === 'car')
+    const rejected = run(f)
+    expect(rejected.plans).toHaveLength(0)
+    expect(rejected.warnings.join()).toMatch(/pickup.*service date/i)
+  })
+})
