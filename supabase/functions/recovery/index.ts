@@ -3,6 +3,7 @@ import { createProviderRegistry } from '../_shared/server/providers.ts'
 import { createGoogleRoutesAdapter } from '../_shared/server/google-routes.ts'
 import { createLiteApiAdapter } from '../_shared/server/liteapi.ts'
 import { createRecoveryAgent } from '../_shared/server/recovery-agent.ts'
+import { MODEL_REGISTRY } from '../_shared/server/model-registry.ts'
 
 const now = () => new Date().toISOString()
 // Independent switches authorize usage; none is an enforced spending cap.
@@ -15,10 +16,10 @@ const hotelKey = hotelApproved && hotelPublicRatesApproved && hotelEnvironment =
 const hotelBookingOrigin = hotelApproved ? Deno.env.get('LITEAPI_BOOKING_ORIGIN') : undefined
 const modelApproved = Deno.env.get('RECOVERY_MODEL_USAGE_APPROVED') === 'true'
 const modelKey = modelApproved ? Deno.env.get('OPENAI_API_KEY') : undefined
-const modelName = modelApproved ? Deno.env.get('OPENAI_MODEL') : undefined
+const modelName = MODEL_REGISTRY.recovery.id
 const providers = createProviderRegistry({
   routes: createGoogleRoutesAdapter({ enabled: routesApproved && Boolean(routesKey), apiKey: routesKey, now }),
   hotels: createLiteApiAdapter({ enabled: hotelApproved && hotelPublicRatesApproved && hotelEnvironment === 'production' && Boolean(hotelKey), publicRatesApproved: hotelPublicRatesApproved, environment: hotelEnvironment, apiKey: hotelKey, bookingOrigin: hotelBookingOrigin, now }),
 })
-const agent = createRecoveryAgent({ enabled: modelApproved && Boolean(modelKey) && Boolean(modelName?.trim()), apiKey: modelKey, modelName, now })
+const agent = createRecoveryAgent({ enabled: modelApproved && Boolean(modelKey), apiKey: modelKey, modelName, now })
 Deno.serve(createRecoveryHandler({ now, providers, agent, hotelBookingOrigin }))

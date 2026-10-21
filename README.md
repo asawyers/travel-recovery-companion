@@ -59,7 +59,7 @@ The assistant uses `@openai/agents` 0.20.0 (`Agent`, `Runner` and real SDK tools
 
 One request has a shared 30-second deadline, at most six model turns, twelve attempted tool calls and one repair. Discovery promises are memoized per request, including failures, so repeated SDK tool calls do not increase Google or hotel call limits. Tracing, response storage and automatic model retries are disabled; no prompt/chat history is persisted by the app. Synthetic mode does not run the model or providers. Disabling investigation prevents provider requests; an explicitly requested, configured assistant can still assess supplied facts. Missing configuration or invalid/limited model output produces an explicit fallback and retains deterministic plans.
 
-Hotel and model switches default off independently. After the build, follow the [manual dashboard activation guide](docs/PROVIDER_SETUP.md): hotel account/key/public-price verification and usage approval remain outstanding; the existing OpenAI account still needs an explicit model choice and acceptable paid-usage decision. No model name, paid allowance or new-account permission is assumed.
+Hotel and model switches default off independently. After the build, follow the [manual dashboard activation guide](docs/PROVIDER_SETUP.md): hotel account/key/public-price verification and usage approval remain outstanding; `gpt-6-luna` is selected in the server-side [model registry](supabase/functions/_shared/server/model-registry.ts). Only its API key and separate paid-usage activation remain pending; no `OPENAI_MODEL` environment variable is needed. No paid allowance or new-account permission is assumed.
 
 ## How a comparison works
 

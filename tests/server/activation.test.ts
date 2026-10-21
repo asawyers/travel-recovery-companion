@@ -25,12 +25,19 @@ describe('independent provider and model activation',()=>{
  it('does not let Google usage approval authorize hotel or model calls',async()=>{
   try{await load({...keys,RECOVERY_PROVIDER_USAGE_APPROVED:'true'});expect(routes.mock.lastCall?.[0]).toMatchObject({enabled:true});expect(hotels.mock.lastCall?.[0]).toMatchObject({enabled:false});expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:false})}finally{vi.unstubAllGlobals()}
  })
+ it('uses the registered recovery model without reading an environment model override',async()=>{
+  try{
+   const reads=await load({...keys,RECOVERY_MODEL_USAGE_APPROVED:'true',OPENAI_MODEL:'unexpected-environment-model'})
+   expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:true,modelName:'gpt-6-luna'})
+   expect(reads).not.toContain('OPENAI_MODEL')
+  }finally{vi.unstubAllGlobals()}
+ })
  it('requires independent hotel public-rate/environment and model configuration',async()=>{
   try{
    await load({...keys,RECOVERY_HOTEL_USAGE_APPROVED:'true',RECOVERY_MODEL_USAGE_APPROVED:'true'})
    expect(hotels.mock.lastCall?.[0]).toMatchObject({enabled:false})
-   expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:true,modelName:'explicit-test-model'})
-   await load({...keys,RECOVERY_HOTEL_USAGE_APPROVED:'true',RECOVERY_HOTEL_PUBLIC_RATES_APPROVED:'true',LITEAPI_ENVIRONMENT:'production',RECOVERY_MODEL_USAGE_APPROVED:'true',OPENAI_MODEL:undefined})
+   expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:true,modelName:'gpt-6-luna'})
+   await load({...keys,RECOVERY_HOTEL_USAGE_APPROVED:'true',RECOVERY_HOTEL_PUBLIC_RATES_APPROVED:'true',LITEAPI_ENVIRONMENT:'production',RECOVERY_MODEL_USAGE_APPROVED:'true',OPENAI_API_KEY:undefined})
    expect(hotels.mock.lastCall?.[0]).toMatchObject({enabled:true,environment:'production',publicRatesApproved:true})
    expect(agent.mock.lastCall?.[0]).toMatchObject({enabled:false})
   }finally{vi.unstubAllGlobals()}

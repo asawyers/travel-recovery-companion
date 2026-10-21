@@ -21,9 +21,8 @@ Use the user's preferred manual dashboard flow in Brave. Open Supabase project [
 | `LITEAPI_BOOKING_ORIGIN` | Optional assigned bare HTTPS origin, such as `https://<assigned-subdomain>.nuitee.link`; no trailing slash, path, port, credentials, query, fragment or wildcard. |
 | `RECOVERY_MODEL_USAGE_APPROVED` | Default off; set `true` only after explicit paid model usage approval. |
 | `OPENAI_API_KEY` | Key for the user's existing authorized OpenAI API account/project. |
-| `OPENAI_MODEL` | Exact model identifier explicitly chosen by the user and available to that account; no default is guessed. |
 
-All four hotel requirements must hold together: both hotel approvals equal `true`, `LITEAPI_ENVIRONMENT=production`, and a production `LITEAPI_KEY` is present. Model activation independently requires `RECOVERY_MODEL_USAGE_APPROVED=true`, `OPENAI_API_KEY` and a nonblank explicit `OPENAI_MODEL`. Missing configuration produces an explicit unavailable fallback while the deterministic planner remains usable.
+All four hotel requirements must hold together: both hotel approvals equal `true`, `LITEAPI_ENVIRONMENT=production`, and a production `LITEAPI_KEY` is present. Model activation independently requires `RECOVERY_MODEL_USAGE_APPROVED=true` and `OPENAI_API_KEY`; the model is selected by the server registry. Missing configuration produces an explicit unavailable fallback while the deterministic planner remains usable.
 
 The existing Vercel public endpoint setting and scoped GitHub Supabase deployment credential remain in use. Native Vercel Git integration deploys the frontend; GitHub Actions deploys the recovery function. Secret configuration does not itself prove that the intended code revision was deployed.
 
@@ -47,9 +46,11 @@ Hotel evidence uses a five-minute app freshness window. This is not a provider q
 
 ## Model choice and activation
 
-The user has an existing OpenAI account, but has not chosen a model or authorized paid model usage for this feature. After the build, ask which exact available model to use and what paid usage is acceptable, including whether an aggregate spending limit is required. Do not infer a model name or treat a time/tool limit as a dollar cap. Do not create another account.
+The user has an existing OpenAI account and explicitly chose `gpt-6-luna`. The server-owned `MODEL_REGISTRY.recovery` in `supabase/functions/_shared/server/model-registry.ts` records its provider and exact model ID. There is no `OPENAI_MODEL` environment setting or environment override; an old setting, if present, is ignored and can be deleted. Change the registry in source to change the model.
 
-After that decision, the user can open the existing OpenAI account in Brave, create or select an appropriately scoped project key, and save `OPENAI_API_KEY`, the chosen `OPENAI_MODEL` and `RECOVERY_MODEL_USAGE_APPROVED=true` privately in the target Supabase Edge Function secrets. Confirm any account-level spend controls separately; this application does not implement an aggregate model-spend cap. Validate one explicitly authorized assistance request against the deployed revision, confirming that it uses assessed plan identifiers and that unavailable/limited responses preserve deterministic results. No live paid model acceptance has been performed yet.
+Create or select an API key in the existing OpenAI project and save only `OPENAI_API_KEY` privately in the target Supabase Edge Function secrets. Do not create a new account or paste the key into chat. The separate `RECOVERY_MODEL_USAGE_APPROVED` switch must equal `true` before the application reads the key or enables model requests. A missing/false switch leaves assistance unavailable while deterministic planning continues; setting it false is also a quick off switch.
+
+That switch records explicit authorization for paid model use; it is not authentication, a billing check, a rate limit or an aggregate spending cap. Paid use for the public demo has not yet been confirmed. Explain that distinction and obtain the user's usage decision before enabling it. Confirm any requested account-level spend controls separately. After activation, validate one explicitly authorized assistance request against the deployed revision, confirming that it uses assessed plan identifiers and that unavailable/limited responses preserve deterministic results. No live paid model acceptance has been performed yet.
 
 The implementation uses `@openai/agents` 0.20.0 with actual `Agent`, `Runner`, schema-defined tools and structured output, backed by the `openai` 7.39.0 client. Tests inject an SDK model and exercise SDK execution; this is distinct from paid API acceptance. Tools discover transport/hotel offers for the fixed request and invoke the deterministic planner. Only explicitly requested driving permission and ranking priority changes are accepted. Dates, destination, arrival, deadline, budget, overnight permission, stay and traveler facts require editing the form.
 

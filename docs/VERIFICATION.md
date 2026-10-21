@@ -155,3 +155,10 @@ The full hosted Brave suite passed **35/35 cases in1.7minutes** against the stab
 A separate actual Google investigation through the deployed app's normal Brave form returned HTTP200, two Google schedule candidates, two plans and two rendered cards. Its response validated as `public-recovery-v4`, with traveler-confirmed arrival, flight:null and no retired flight controls/panel or HTTP400/malformed warning. A separate direct deployed refinement with investigate:false returned HTTP200, public-recovery-v4, assistance:unavailable, unchanged original driving preference, empty applied patch and no hotel offers. This confirms honest disabled-model fallback; it does not establish a live model call. No OpenAI/hotel activation occurred.
 
 All task-owned local servers and isolated browser processes were stopped after verification. Public documentation now records the software as implemented/deployed and live model/hotel activation as pending. The author's code-understanding/submission review remains a human check. Superpowers/private handoff/source references remain ignored and were not published.
+
+
+## Model registry amendment — 2026-10-21
+
+The user chose `gpt-6-luna` and requested a server-side registry instead of environment model selection. `MODEL_REGISTRY.recovery` now records the provider/model ID in `server/model-registry.ts`; the Edge entrypoint no longer reads `OPENAI_MODEL`. A regression first failed for an injected environment override, then passed with the registry. Key absence and the independent `RECOVERY_MODEL_USAGE_APPROVED` gate remain covered. The flag remains an activation/off switch, not a spending cap; no paid-use decision or live model call was inferred from the model choice.
+
+All337unit tests across22files, TypeScript/Vite build and Deno entrypoint checking passed; independent review approved. Browser/UI/planner behavior is unchanged, so the previously captured35hostedBrave/7HTTP results were not rerun for this configuration-only amendment. No secret was read, configured or enabled by the agent. The user is adding OPENAI_API_KEY privately.
