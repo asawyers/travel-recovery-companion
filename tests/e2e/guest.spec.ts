@@ -126,3 +126,31 @@ test("a traveler-entered bus uses actual inputs and retains them on invalid date
     ),
   ).toBe(true);
 });
+
+for (const width of [390, 320]) {
+  test(`overnight plan selection fits a ${width}px viewport`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Overnight fictional example", exact: true })
+      .click();
+    const choose = page.getByRole("button", {
+      name: "Choose Fictional overnight hotel and morning bus",
+      exact: true,
+    });
+    await expect(choose).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+    await choose.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("itinerary")).toContainText(
+      "Fictional standard queen room",
+    );
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+  });
+}

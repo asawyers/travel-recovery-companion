@@ -143,7 +143,7 @@ function App() {
               : "Only facts you enter are compared locally. No live schedule, fare, seat, rental or hotel availability has been checked."}
           </p>
         </div>
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(20rem,25rem)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(20rem,25rem)_minmax(0,1fr)]">
           <TripForm
             draft={draft}
             errors={errors}

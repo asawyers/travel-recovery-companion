@@ -178,11 +178,12 @@ export function OptionList({
                   )}
                   <Button
                     className="mt-4"
+                    aria-label={`Choose ${p.title}`}
                     disabled={stale || !p.selectable || expired || busy}
                     aria-pressed={selectedId === p.id}
                     onClick={() => onSelect(p.id)}
                   >
-                    Choose {p.title}
+                    Choose this plan
                   </Button>
                 </article>
               );
