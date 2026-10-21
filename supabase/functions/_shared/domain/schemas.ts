@@ -64,7 +64,7 @@ export type TransitOption = z.infer<typeof TransitOptionSchema>
 export const CarOptionSchema = z.strictObject({
   kind: z.literal('car'), id, title: text, access: TransferInputSchema, pickupMinutes: minutes,
   driveMinutes: minutes, returnMinutes: minutes, finalTransfer: TransferInputSchema,
-  costs: z.array(CostLineSchema).max(32), pickupHoursConfirmed: z.boolean(), returnLocationConfirmed: z.boolean(),
+  costs: z.array(CostLineSchema).min(1).max(32), pickupHoursConfirmed: z.boolean(), returnLocationConfirmed: z.boolean(),
   evidence: evidences, confirmations: notes,
 })
 export type CarOption = z.infer<typeof CarOptionSchema>
@@ -72,7 +72,7 @@ export type CarOption = z.infer<typeof CarOptionSchema>
 // Define the full hotel before plans: strict parsing must preserve room and quote metadata.
 export const HotelOptionSchema = z.strictObject({
   id, name: text, address: text, room: text.nullable(), board: text.nullable(), ...stayFields,
-  timeZone: z.literal('America/New_York'), costs: z.array(CostLineSchema).max(32),
+  timeZone: z.literal('America/New_York'), costs: z.array(CostLineSchema).min(1).max(32),
   cancellation: z.strictObject({ deadlineAt: timestamp.nullable(), penalty: text.nullable(), text: z.string().trim().min(1).max(4000) }).nullable(),
   lateCheckinConfirmed: z.boolean(), quoteExpiresAt: timestamp.nullable(), evidence: evidences,
   handoffId: z.enum(['nuitee-hotel', 'hotel-search']),

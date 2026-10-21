@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CostLineSchema, HotelOptionSchema, RecoveryPlanSchema, RecoveryResultSchema, SourceEvidenceSchema, TripRequestSchema } from '@domain/schemas'
+import { CarOptionSchema, CostLineSchema, HotelOptionSchema, RecoveryPlanSchema, RecoveryResultSchema, SourceEvidenceSchema, TripRequestSchema } from '@domain/schemas'
 
 const at = '2026-11-18T08:00:00-05:00'
 const evidence = () => ({ type: 'synthetic', provider: 'Fictional schedule', sourceUrl: null, checkedAt: at, serviceDate: '2026-11-18', providerUpdatedAt: null, expiresAt: null, environment: 'synthetic', warnings: ['Fictional example'] })
@@ -143,5 +143,27 @@ describe('explicit fictional scenario fixtures', () => {
     expect(fixture.now).toBe('2026-11-18T07:55:00-05:00')
     fixture.request.confirmedOptions.length = 0
     expect(overnightFixture().candidates).toHaveLength(2)
+  })
+})
+
+
+describe('explicit car and hotel pricing', () => {
+  it('rejects absent price lines while preserving explicit free and unknown prices', async () => {
+    const { daytimeFixture, overnightFixture } = await import('@domain/fixtures')
+    const car = daytimeFixture().candidates.find(option => option.kind === 'car')!
+    expect(CarOptionSchema.safeParse({ ...car, costs: [] }).success).toBe(false)
+    expect(HotelOptionSchema.safeParse({ ...hotel(), costs: [] }).success).toBe(false)
+    for (const cents of [0, null]) {
+      const costs = [{ label: 'Explicit price', cents, currency: 'USD', includedInOtherCharge: false }]
+      expect(CarOptionSchema.safeParse({ ...car, costs }).success).toBe(true)
+      expect(HotelOptionSchema.safeParse({ ...hotel(), costs }).success).toBe(true)
+    }
+    const trip = overnightFixture().request
+    const night = trip.confirmedOptions.find(option => option.kind === 'overnight')!
+    if (night.kind !== 'overnight') throw new Error('Missing overnight candidate')
+    expect(TripRequestSchema.safeParse({ ...trip, confirmedOptions: [{ ...night, hotel: { ...night.hotel, costs: [] } }] }).success).toBe(false)
+    expect(RecoveryPlanSchema.safeParse({ ...plan(), hotel: { ...hotel(), costs: [] } }).success).toBe(false)
+    const wait = { id: 'wait', kind: 'wait', from: 'North Station', to: 'North Station', startAt: at, endAt: at, vehicleId: null, costs: [], evidence: [evidence()], assumptions: [], handoffId: null }
+    expect(RecoveryPlanSchema.safeParse({ ...plan(), hotel: null, legs: [wait] }).success).toBe(true)
   })
 })
