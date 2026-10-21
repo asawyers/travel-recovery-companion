@@ -25,3 +25,12 @@ supabase/.branches/
 # Browser verification output
 /test-results/
 /playwright-report/
+
+# Local transferred references and session metadata
+/SESSION_HANDOFF.md
+/docs/history/
+/docs/Travel_Recovery_Companion_Spec.docx
+/docs/SPEC.md
+/docs/CASPER_ASSESSMENT_ORIGINAL.md
+/docs/SOURCE_PROVENANCE.md
+/.playwright-mcp/
