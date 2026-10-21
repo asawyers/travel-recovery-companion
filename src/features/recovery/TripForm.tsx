@@ -20,6 +20,8 @@ type Props = {
   busy: boolean;
   configured: boolean;
   investigate: boolean;
+  selectedHotelName?: string;
+  hotelInvestigationNeeded: boolean;
   onInvestigate: (value: boolean) => void;
   onChange: (draft: Draft) => void;
   onSubmit: () => void;
@@ -137,6 +139,8 @@ export function TripForm({
   configured,
   investigate,
   onInvestigate,
+  selectedHotelName,
+  hotelInvestigationNeeded,
   onChange,
   onSubmit,
   onExample,
@@ -303,10 +307,29 @@ export function TripForm({
               "Enter explicitly, for example US. Never inferred.",
             )}
             <p className="text-xs text-muted-foreground">
-              1 adult, 1 room. Live hotel search and traveler-entered hotel
-              packages are not connected yet. Use the overnight fictional
-              example to explore a complete stay and next-day journey.
+              1 adult, 1 room. Choose Investigate available sources to check enabled hotel sources. Returned room rates need complete transfer and next-day transit facts before becoming a recovery journey.
             </p>
+          </fieldset>
+        )}
+        {!synthetic && d.overnightAllowed && d.hotel.hotelId && (
+          <fieldset className="space-y-4 rounded-md border p-3">
+            <legend className="px-1 text-sm font-semibold">Selected hotel journey</legend>
+            <p className="text-sm font-medium">{selectedHotelName ?? `Selected property: ${d.hotel.hotelId}`}</p>
+            <p className="text-xs text-muted-foreground">Enter facts for this exact property. Airport access starts at BOS terminal exit. Hotel access to transit ends at the actual boarding stop in the confirmed train or bus below. No shuttle or timetable is inferred. Blank fees stay unknown.</p>
+            {([
+              ["hotelMinutes", "Airport to hotel minutes", "number"],
+              ["hotelCost", "Airport to hotel cost (USD)", "number"],
+              ["checkinMinutes", "Hotel check-in minutes", "number"],
+              ["leaveHotelAt", "Leave hotel at", "datetime-local"],
+              ["stationMinutes", "Hotel to boarding stop minutes", "number"],
+              ["stationCost", "Hotel to boarding stop cost (USD)", "number"],
+            ] as const).map(([key, label, type]) => <TextField key={key} name={`hotel-${key}`} label={label} type={type} value={d.hotel[key]} onChange={value => update("hotel", { ...d.hotel, [key]: value })} />)}
+            <Choice id="hotel-access-kind" label="Airport to hotel method" value={d.hotel.hotelKind} options={[["transfer", "Vehicle transfer"], ["walk", "Walk"]]} onChange={value => update("hotel", { ...d.hotel, hotelKind: value as "transfer" | "walk" })} />
+            <Choice id="hotel-station-kind" label="Hotel to boarding stop method" value={d.hotel.stationKind} options={[["transfer", "Vehicle transfer"], ["walk", "Walk"]]} onChange={value => update("hotel", { ...d.hotel, stationKind: value as "transfer" | "walk" })} />
+            <p className="break-words text-xs text-muted-foreground">Airport transfer checked {d.hotel.hotelCheckedAt || "when entered"}. Boarding stop transfer checked {d.hotel.stationCheckedAt || "when entered"}.</p>
+            <Button type="button" variant="outline" onClick={() => update("hotel", { ...d.hotel, hotelCheckedAt: new Date().toISOString(), stationCheckedAt: new Date().toISOString() })}>I rechecked both hotel transfers</Button>
+            <p className="text-xs text-muted-foreground">New or changed hotel facts require a fresh investigation of the selected property. Unchanged priority comparisons reuse current facts. If required facts or availability are missing, other supported plans remain available.</p>
+            <Button type="button" variant="outline" onClick={() => update("hotel", { ...d.hotel, hotelId: "" })}>Remove hotel selection</Button>
           </fieldset>
         )}
         {!synthetic && (
@@ -568,7 +591,7 @@ export function TripForm({
           </div>
         )}
         <Button type="submit" disabled={busy} className="w-full">
-          {busy ? "Comparing…" : "Compare recovery options"}
+          {busy ? "Comparing…" : !synthetic && configured && hotelInvestigationNeeded ? "Investigate selected hotel journey" : "Compare recovery options"}
         </Button>
       </form>
       <div className="space-y-3 border-t p-5">

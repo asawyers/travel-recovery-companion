@@ -3,6 +3,7 @@ import {
   TripRequestSchema,
   TransitOptionSchema,
   CarOptionSchema,
+  HotelSelectionSchema,
 } from "@domain/schemas";
 import type {
   TripRequest,
@@ -32,6 +33,11 @@ export const emptyDraft = () => ({
   checkin: "",
   checkout: "",
   guestNationality: "",
+  hotel: {
+    hotelId: "", checkinMinutes: "", leaveHotelAt: "",
+    hotelMinutes: "", hotelCost: "", hotelKind: "transfer" as "walk" | "transfer", hotelCheckedAt: "",
+    stationMinutes: "", stationCost: "", stationKind: "transfer" as "walk" | "transfer", stationCheckedAt: "",
+  },
   transit: {
     enabled: false,
     kind: "bus" as "bus" | "train",
@@ -138,6 +144,14 @@ export function draftFromRequest(r: TripRequest): Draft {
   };
   const usd = (cents: number | null | undefined) =>
     cents == null ? "" : String(cents / 100);
+  if (r.hotelSelection) {
+    const h = r.hotelSelection;
+    draft.hotel = {
+      hotelId: h.hotelId, checkinMinutes: String(h.checkinMinutes), leaveHotelAt: localInput(h.leaveHotelAt),
+      hotelMinutes: String(h.hotelAccess.minutes), hotelCost: usd(h.hotelAccess.costCents), hotelKind: h.hotelAccess.kind, hotelCheckedAt: h.hotelAccess.checkedAt,
+      stationMinutes: String(h.stationAccess.minutes), stationCost: usd(h.stationAccess.costCents), stationKind: h.stationAccess.kind, stationCheckedAt: h.stationAccess.checkedAt,
+    };
+  }
   for (const option of r.mode === "real" ? r.confirmedOptions : []) {
     if (
       (option.kind === "bus" || option.kind === "train") &&
@@ -457,6 +471,25 @@ export function buildRequest(
       );
     }
   }
+  let hotelSelection;
+  if (mode === "real" && d.overnightAllowed && d.hotel.hotelId) {
+    try {
+      const transit = options.find(option => option.id === "manual-transit" && (option.kind === "bus" || option.kind === "train"));
+      if (!transit || (transit.kind !== "bus" && transit.kind !== "train") || toTripLocalTime(transit.departureAt).slice(0, 10) !== d.checkout)
+        throw new OptionalFactError("Add an actual checkout-date train or bus in the confirmed transit editor. Its timetable is never shifted to another date.");
+      const h = d.hotel;
+      const leaveHotelAt = localDateTimeToOffset(h.leaveHotelAt);
+      if (toTripLocalTime(leaveHotelAt).slice(0, 10) !== d.checkout)
+        throw new OptionalFactError("Enter a hotel departure on the checkout date.");
+      hotelSelection = HotelSelectionSchema.parse({
+        hotelId: h.hotelId, nextDayTransitId: "manual-transit", checkinMinutes: minute.parse(h.checkinMinutes), leaveHotelAt,
+        hotelAccess: { minutes: minute.parse(h.hotelMinutes), costCents: cash(h.hotelCost, "Airport to hotel cost"), kind: h.hotelKind, checkedAt: label.parse(h.hotelCheckedAt) },
+        stationAccess: { minutes: minute.parse(h.stationMinutes), costCents: cash(h.stationCost, "Hotel to boarding stop cost"), kind: h.stationKind, checkedAt: label.parse(h.stationCheckedAt) },
+      });
+    } catch (error) {
+      warnings.push(`Hotel journey omitted: ${omissionCause(error, "Enter both property-specific transfer durations, check-in allowance, checkout-date departure and confirmation timestamps. Unknown transfer fees may stay blank.")}`);
+    }
+  }
   const parsed = TripRequestSchema.safeParse({
     mode,
     airport: "BOS",
@@ -480,6 +513,7 @@ export function buildRequest(
     priority: d.priority,
     confirmedOptions: options,
     stay,
+    ...(hotelSelection ? { hotelSelection } : {}),
   });
   if (!parsed.success) {
     for (const issue of parsed.error.issues)

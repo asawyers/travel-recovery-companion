@@ -41,6 +41,7 @@ export function canReuseFacts(
       ...originalExpiries([
         cache.facts.candidates,
         cache.facts.arrivalEvidence,
+        cache.facts.hotelOffers,
       ]).map(toInstantMillis),
     );
     return checked <= now && now < expires;

@@ -102,6 +102,14 @@ function validateEvidenceMode(value: unknown, mode: 'real' | 'synthetic', ctx: z
   }
 }
 
+/** Property-bound traveler transfer facts; no hotel shuttle duration or fare is inferred. */
+export const HotelSelectionSchema = z.strictObject({
+  hotelId: id, nextDayTransitId: id, checkinMinutes: minutes, leaveHotelAt: timestamp,
+  hotelAccess: z.strictObject({ minutes, costCents: cents.nullable(), kind: z.enum(['walk', 'transfer']), checkedAt: timestamp }),
+  stationAccess: z.strictObject({ minutes, costCents: cents.nullable(), kind: z.enum(['walk', 'transfer']), checkedAt: timestamp }),
+})
+export type HotelSelection = z.infer<typeof HotelSelectionSchema>
+
 /** Trusted normalized facts may reveal that the original hard deadline is already unreachable. */
 export const PlanningTripRequestSchema = z.strictObject({
   mode: z.enum(['real', 'synthetic']), airport: z.literal('BOS'),
@@ -114,6 +122,7 @@ export const PlanningTripRequestSchema = z.strictObject({
   deadlineAt: timestamp, budgetCents: cents.nullable(), budgetMode: z.enum(['hard', 'soft']),
   drivingAllowed: z.boolean(), overnightAllowed: z.boolean(), priority: z.enum(['earliest', 'cheapest', 'fewest_transfers']),
   confirmedOptions: z.array(ConfirmedOptionSchema).max(12),
+  hotelSelection: HotelSelectionSchema.nullable().optional(),
   stay: z.strictObject({ ...stayFields, guestNationality: z.string().regex(/^[A-Z]{2}$/) }).refine(orderedStay, 'Stay checkout must follow checkin').nullable(),
 }).superRefine((value, ctx) => {
   validateEvidenceMode(value.confirmedOptions, value.mode, ctx, ['confirmedOptions'])

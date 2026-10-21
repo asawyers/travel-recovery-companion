@@ -30,6 +30,7 @@ async function requestRecovery(
   request: TripRequest,
   investigate: boolean,
   signal: AbortSignal,
+  refinement?: string,
 ): Promise<RecoveryResponse> {
   let response: Response;
   try {
@@ -37,7 +38,7 @@ async function requestRecovery(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "omit",
-      body: JSON.stringify({ request, investigate }),
+      body: JSON.stringify({ request, investigate, ...(refinement?.trim() ? { refinement: refinement.trim() } : {}) }),
       signal,
     });
   } catch (error) {
@@ -65,6 +66,7 @@ export async function comparePublic(
   request: TripRequest,
   investigate: boolean,
   signal: AbortSignal,
+  refinement?: string,
 ): Promise<RecoveryResponse> {
   const controller = new AbortController();
   let timedOut = false;
@@ -92,7 +94,7 @@ export async function comparePublic(
       return await interrupted;
     }
     return await Promise.race([
-      requestRecovery(endpoint, request, investigate, controller.signal),
+      requestRecovery(endpoint, request, investigate, controller.signal, refinement),
       interrupted,
     ]);
   } finally {

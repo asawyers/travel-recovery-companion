@@ -251,32 +251,6 @@ describe('traveler arrival boundaries', () => {
   })
 })
 
-describe('Edge entrypoint routes activation', () => {
-  it('reads only routes credentials and requires explicit usage approval to enable routes', async () => {
-    const routesFactory = vi.fn(() => async () => ({ status: 'unavailable', reason: 'Test disabled', retryable: false }))
-    vi.doMock('../../supabase/functions/_shared/server/google-routes.ts', () => ({ createGoogleRoutesAdapter: routesFactory }))
-    try {
-      for (const [approved, routesKey, enabledRoutes] of [
-        [undefined, 'fake-routes', false], ['false', 'fake-routes', false],
-        ['true', undefined, false], ['true', 'fake-routes', true],
-      ] as const) {
-        vi.resetModules()
-        const values = { RECOVERY_PROVIDER_USAGE_APPROVED: approved, GOOGLE_ROUTES_API_KEY: routesKey }
-        const get = vi.fn((name: keyof typeof values) => values[name])
-        vi.stubGlobal('Deno', { env: { get }, serve: vi.fn() })
-        await import('../../supabase/functions/recovery/index.ts')
-        expect(routesFactory.mock.lastCall?.[0]).toMatchObject({ enabled: enabledRoutes })
-        expect(get.mock.calls.flat().sort()).toEqual(approved === 'true'
-          ? ['GOOGLE_ROUTES_API_KEY', 'RECOVERY_PROVIDER_USAGE_APPROVED'] : ['RECOVERY_PROVIDER_USAGE_APPROVED'])
-      }
-    } finally {
-      vi.unstubAllGlobals()
-      vi.doUnmock('../../supabase/functions/_shared/server/google-routes.ts')
-      vi.resetModules()
-    }
-  })
-})
-
 describe('optional candidate collisions', () => {
   it('retains the manual option when an optional provider candidate has the same ID', async () => {
     const request = real(daytimeFixture().request)

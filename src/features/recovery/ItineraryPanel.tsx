@@ -9,6 +9,7 @@ import {
   directions,
   isAllowedHandoffUrl,
   resolveHandoff,
+  resolveHotelHandoff,
 } from "@domain/handoffs";
 import { ProviderAttribution } from "./ProviderAttribution";
 import { money, time } from "./OptionList";
@@ -19,6 +20,7 @@ export function ItineraryPanel({
   presentation = "current",
   saved = false,
   arrivalEvidence = [],
+  hotelBookingOrigin,
 }: {
   plan: RecoveryPlan | undefined;
   result?: RecoveryResult | null;
@@ -26,6 +28,7 @@ export function ItineraryPanel({
   presentation?: "current" | "historical";
   saved?: boolean;
   arrivalEvidence?: SourceEvidence[];
+  hotelBookingOrigin?: string;
 }) {
   const historical = presentation === "historical";
   const headingId = historical
@@ -262,12 +265,11 @@ export function ItineraryPanel({
               })}
               {hotel &&
                 (() => {
-                  const providerHandoff = resolveHandoff(hotel.handoffId);
-                  const hotelHandoff =
-                    providerHandoff ?? resolveHandoff("hotel-search");
+                  const hotelHandoff = resolveHotelHandoff(hotel, historical ? undefined : hotelBookingOrigin);
+                  const providerHandoff = hotelHandoff.id === "nuitee-hotel";
                   if (
                     !hotelHandoff ||
-                    !isAllowedHandoffUrl(hotelHandoff.id, hotelHandoff.href)
+                    !isAllowedHandoffUrl(hotelHandoff.id, hotelHandoff.href, historical ? undefined : hotelBookingOrigin)
                   )
                     return null;
                   return (

@@ -91,3 +91,28 @@ test('REAL HTTP manual real-mode facts cannot impersonate provider-live provenan
   assert.ok(!JSON.stringify(body).includes('must-disappear'))
   console.info('HTTP gate: manual real-mode POST 200; browser provider claims downgraded; original timestamps preserved')
 })
+
+test('REAL HTTP refinement is separate, bounded, and honestly unavailable without model activation', async () => {
+  const request = payload().request
+  request.mode = 'real'
+  request.confirmedOptions = []
+  const response = await send({ request, investigate: false, refinement: 'No driving, please.' })
+  assert.equal(response.status, 200)
+  const body = RecoveryResponseSchema.parse(await response.json())
+  assert.equal(body.assistance.status, 'unavailable')
+  assert.deepEqual(body.assistance.appliedPreferences, {})
+  assert.equal(body.result.request.drivingAllowed, true)
+  assert.ok(!('refinement' in body.result.request))
+  assert.equal((await send({ request, investigate: false, refinement: 'x'.repeat(501) })).status, 400)
+  console.info('HTTP gate: disabled model keeps original preferences; bounded refinement never enters saved trip facts')
+})
+
+test('REAL HTTP fictional refinement never becomes live model assistance', async () => {
+  const response = await send({ ...payload(), investigate: true, refinement: 'Cheapest please' })
+  assert.equal(response.status, 200)
+  const body = RecoveryResponseSchema.parse(await response.json())
+  assert.equal(body.assistance.status, 'unavailable')
+  assert.ok(body.result.plans.length > 0)
+  assert.ok(!body.facts.hotelOffers?.length)
+  console.info('HTTP gate: fictional comparison remains deterministic; no live hotel or model claim')
+})

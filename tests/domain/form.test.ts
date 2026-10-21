@@ -243,3 +243,20 @@ it("ignores legacy flight lookup fields when comparing a restored trip", () => {
   expect(changed.arrivalBasis).toBe("traveler_confirmed");
   expect(changed.flight).toBeNull();
 });
+
+
+it("binds two explicit hotel transfers to a checkout-date manual service and preserves unknown costs", () => {
+  const d = manual();
+  d.overnightAllowed = true; d.checkin = "2026-11-18"; d.checkout = "2026-11-19"; d.guestNationality = "US";
+  d.deadlineAt = "2026-11-19T14:00";
+  d.transit.departure = "2026-11-19T10:00"; d.transit.arrival = "2026-11-19T12:00";
+  d.hotel = { hotelId: "property-1", checkinMinutes: "20", leaveHotelAt: "2026-11-19T09:00", hotelMinutes: "15", hotelCost: "", hotelKind: "transfer", hotelCheckedAt: now, stationMinutes: "30", stationCost: "0", stationKind: "walk", stationCheckedAt: now };
+  const built = buildRequest(d, "real", [], now);
+  expect(built.request?.hotelSelection).toEqual({ hotelId: "property-1", nextDayTransitId: "manual-transit", checkinMinutes: 20, leaveHotelAt: "2026-11-19T09:00:00-05:00", hotelAccess: { minutes: 15, costCents: null, kind: "transfer", checkedAt: now }, stationAccess: { minutes: 30, costCents: 0, kind: "walk", checkedAt: now } });
+  expect(draftFromRequest(built.request!).hotel).toEqual({ ...d.hotel, leaveHotelAt: "2026-11-19T09:00:00" });
+  d.transit.departure = "2026-11-18T10:00";
+  const invalid = buildRequest(d, "real", [], now);
+  expect(invalid.request?.hotelSelection).toBeUndefined();
+  expect(invalid.warnings.join()).toMatch(/Hotel journey omitted.*checkout-date/);
+  expect(invalid.request?.confirmedOptions).toHaveLength(1);
+});

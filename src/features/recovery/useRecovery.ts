@@ -32,6 +32,7 @@ export function useRecovery() {
   const sequence = useRef(0);
   const pending = useRef<AbortController | null>(null);
   const cache = useRef<TabFactsCache | null>(null);
+  const acceptedInput = useRef<TripRequest | null>(null);
   const cachedWarnings = useRef<string[]>([]);
   const configured = !!import.meta.env.VITE_RECOVERY_API_URL?.trim();
   useEffect(
@@ -55,6 +56,7 @@ export function useRecovery() {
     pending.current = null;
     if (!priorityOnly) {
       cache.current = null;
+      acceptedInput.current = null;
       cachedWarnings.current = [];
     }
   }
@@ -82,6 +84,13 @@ export function useRecovery() {
     );
     return () => window.clearTimeout(timer);
   }, [state.result, state.status, state.stale]);
+  // Offer expiry survives draft edits, which intentionally discard comparison reuse.
+  useEffect(() => {
+    const expiresAt = state.hotelOffersExpiresAt;
+    if (!expiresAt) return;
+    const timer = window.setTimeout(() => dispatch({ type: "HOTEL_OFFERS_EXPIRED", expiresAt }), Math.max(0, toInstantMillis(expiresAt) - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [state.hotelOffersExpiresAt]);
   function expireFacts() {
     invalidate();
     setStorageMessage(null);
@@ -94,10 +103,10 @@ export function useRecovery() {
   function currentFactsExpired() {
     return (
       cache.current !== null &&
-      (!state.request ||
+      (!acceptedInput.current ||
         !canReuseFacts(
           cache.current,
-          state.request,
+          acceptedInput.current,
           Date.now(),
           ADAPTER_REVISION,
         ))
@@ -112,6 +121,7 @@ export function useRecovery() {
     request: TripRequest,
     now: string,
     investigate = false,
+    refinement?: string,
   ) {
     setStorageMessage(null);
     pending.current?.abort();
@@ -126,6 +136,7 @@ export function useRecovery() {
       if (
         endpoint &&
         !investigate &&
+        !refinement?.trim() &&
         canReuseFacts(cache.current, request, Date.now(), ADAPTER_REVISION)
       ) {
         const facts = cache.current!.facts;
@@ -143,6 +154,9 @@ export function useRecovery() {
             sequence: current,
             result,
             arrivalEvidence: facts.arrivalEvidence,
+            hotelOffers: facts.hotelOffers,
+            factsExpiresAt: facts.expiresAt,
+            hotelBookingOrigin: facts.hotelBookingOrigin,
           });
       } else if (endpoint) {
         cache.current = null;
@@ -151,10 +165,13 @@ export function useRecovery() {
           request,
           investigate,
           controller.signal,
+          refinement,
         );
         if (!isCurrent()) return;
+        // Preserve manual/source input identity; provider candidates belong only to normalized facts.
+        acceptedInput.current = { ...request, priority: response.result.request.priority, drivingAllowed: response.result.request.drivingAllowed };
         cache.current = {
-          inputKey: buildReuseKey(request, ADAPTER_REVISION),
+          inputKey: buildReuseKey(acceptedInput.current, ADAPTER_REVISION),
           facts: response.facts,
         };
         cachedWarnings.current = response.result.warnings;
@@ -163,13 +180,19 @@ export function useRecovery() {
           sequence: current,
           result: response.result,
           arrivalEvidence: response.facts.arrivalEvidence,
+          assistance: response.assistance,
+          hotelOffers: response.facts.hotelOffers,
+          factsExpiresAt: response.facts.expiresAt,
+          hotelBookingOrigin: response.facts.hotelBookingOrigin,
         });
       } else {
         const result = await Promise.resolve().then(() =>
           planRecovery(request, request.confirmedOptions, { now }),
         );
         if (isCurrent())
-          dispatch({ type: "RESULT_RECEIVED", sequence: current, result });
+          dispatch({ type: "RESULT_RECEIVED", sequence: current, result,
+            ...(refinement?.trim() ? { assistance: { status: "unavailable", summary: "Assisted refinement is unavailable because the public planner is not configured. Use the priority and driving controls to refine supplied facts.", appliedPreferences: {}, selectedPlanId: null, activity: [] } as const } : {}),
+          });
       }
     } catch (error) {
       if (!isCurrent()) return;
@@ -240,6 +263,9 @@ export function useRecovery() {
     deleteSaved,
     edit,
     compare,
+    expireOffers: () => {
+      if (state.hotelOffersExpiresAt) dispatch({ type: "HOTEL_OFFERS_EXPIRED", expiresAt: state.hotelOffersExpiresAt });
+    },
     reset: () => {
       setStorageMessage(null);
       invalidate();

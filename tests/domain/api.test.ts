@@ -131,3 +131,12 @@ it("caller cancellation settles ignored-abort transport and clears the deadline 
   expect(vi.getTimerCount()).toBe(0);
   await settled;
 });
+
+
+it("posts a trimmed refinement separately from the unchanged canonical trip envelope", async () => {
+  let body: unknown;
+  const handler = createRecoveryHandler({ now: () => "2026-10-21T12:00:00Z", providers: { gatherPermittedFacts: async () => ({ candidates: [], warnings: [] }) } });
+  vi.stubGlobal("fetch", async (url: string, init: RequestInit) => { body = JSON.parse(String(init.body)); return handler(new Request(url, init)); });
+  await comparePublic("https://example.com/recovery", f.request, false, new AbortController().signal, "  avoid driving  ");
+  expect(body).toEqual({ request: f.request, investigate: false, refinement: "avoid driving" });
+});

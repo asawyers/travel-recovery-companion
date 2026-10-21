@@ -1,5 +1,7 @@
+import type { Assistance } from "@domain/assistance";
 import type {
   TripRequest,
+  HotelOption,
   RecoveryResult,
   SourceEvidence,
 } from "@domain/schemas";
@@ -16,6 +18,10 @@ export type RecoveryState = {
   status: RecoveryStatus;
   stale: boolean;
   arrivalEvidence: SourceEvidence[];
+  assistance: Assistance | null;
+  hotelOffers: HotelOption[];
+  hotelOffersExpiresAt: string | null;
+  hotelBookingOrigin?: string;
   request: TripRequest | null;
   sequence: number;
   result: RecoveryResult | null;
@@ -27,6 +33,7 @@ export type RecoveryAction =
   | { type: "PLAN_SAVED"; sequence: number; planId: string }
   | { type: "SAVED_PLAN_DELETED" }
   | { type: "RESET" }
+  | { type: "HOTEL_OFFERS_EXPIRED"; expiresAt: string }
   | { type: "INPUT_EDITED"; reason?: string }
   | { type: "REQUEST_STARTED"; request: TripRequest; sequence: number }
   | {
@@ -34,6 +41,10 @@ export type RecoveryAction =
       sequence: number;
       result: RecoveryResult;
       arrivalEvidence?: SourceEvidence[];
+      assistance?: Assistance;
+      hotelOffers?: HotelOption[];
+      factsExpiresAt?: string;
+      hotelBookingOrigin?: string;
     }
   | { type: "REQUEST_FAILED"; sequence: number; message: string }
   | { type: "PLAN_SELECTED"; planId: string; now: string };
@@ -41,6 +52,9 @@ export const initialRecoveryState: RecoveryState = {
   status: "idle",
   stale: false,
   arrivalEvidence: [],
+  assistance: null,
+  hotelOffers: [],
+  hotelOffersExpiresAt: null,
   request: null,
   sequence: 0,
   result: null,
@@ -53,6 +67,11 @@ export function recoveryReducer(
   action: RecoveryAction,
 ): RecoveryState {
   switch (action.type) {
+    case "HOTEL_OFFERS_EXPIRED":
+      return action.expiresAt === state.hotelOffersExpiresAt
+        ? { ...state, hotelOffers: [], hotelOffersExpiresAt: null, hotelBookingOrigin: undefined,
+            error: state.stale ? "Source checks expired. Compare again before choosing or saving an itinerary." : state.error }
+        : state;
     case "PLAN_SAVED":
       return action.sequence === state.sequence &&
         action.planId === state.selectedPlanId &&
@@ -68,6 +87,8 @@ export function recoveryReducer(
       return {
         ...state,
         status: "idle",
+        assistance: null,
+        ...(action.reason ? { hotelOffers: [], hotelOffersExpiresAt: null, hotelBookingOrigin: undefined } : {}),
         stale: state.result !== null,
         selectedPlanId: null,
         persistence: "unsaved",
@@ -79,6 +100,7 @@ export function recoveryReducer(
       return {
         ...state,
         status: "planning",
+        assistance: null,
         stale: state.result !== null,
         selectedPlanId: null,
         persistence: "unsaved",
@@ -93,6 +115,11 @@ export function recoveryReducer(
         ...state,
         stale: false,
         result: action.result,
+        request: action.result.request,
+        assistance: action.assistance ?? null,
+        hotelOffers: action.hotelOffers ?? [],
+        hotelOffersExpiresAt: action.hotelOffers?.length ? action.factsExpiresAt ?? null : null,
+        hotelBookingOrigin: action.hotelBookingOrigin,
         arrivalEvidence: action.arrivalEvidence ?? [],
         status: !action.result.plans.length
           ? "no_feasible_plan"

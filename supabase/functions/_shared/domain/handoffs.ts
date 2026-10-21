@@ -1,6 +1,9 @@
+import { Temporal } from '@js-temporal/polyfill'
+import type { HotelOption } from './schemas.ts'
+
 export type TravelMode = 'walking' | 'driving' | 'transit'
 
-export type HandoffId = 'amtrak' | 'concord' | 'kayak-bos' | 'hotel-search' | 'maps-directions'
+export type HandoffId = 'amtrak' | 'concord' | 'kayak-bos' | 'hotel-search' | 'nuitee-hotel' | 'maps-directions'
 
 export type ProviderHandoff = {
   id: HandoffId
@@ -9,7 +12,7 @@ export type ProviderHandoff = {
   instructions: string
 }
 
-const registry: Record<Exclude<HandoffId, 'maps-directions'>, ProviderHandoff> = {
+const registry: Record<Exclude<HandoffId, 'maps-directions' | 'nuitee-hotel'>, ProviderHandoff> = {
   amtrak: {
     id: 'amtrak', href: 'https://www.amtrak.com/home.html', label: 'Check train tickets',
     instructions: 'Enter your travel date, Boston origin, Portland, Maine destination, and preferred departure time on Amtrak.',
@@ -26,6 +29,43 @@ const registry: Record<Exclude<HandoffId, 'maps-directions'>, ProviderHandoff> =
     id: 'hotel-search', href: 'https://www.google.com/travel/hotels', label: 'Search hotels',
     instructions: 'Search using the displayed property or area for the stay dates and occupancy. Confirm the property, room, cancellation terms, and total.',
   },
+}
+
+/** One operator-configured origin, never a hostname wildcard or a browser-supplied destination. */
+export function configuredHotelOrigin(value: string | undefined): string | null {
+  if (typeof value !== 'string' || value.length > 261) return null
+  const hostname = /^https:\/\/([a-z0-9.-]+)$/i.exec(value)?.[1]
+  if (!hostname || hostname.length > 253 || !hostname.split('.').every(label => label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label))) return null
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && url.hostname.toLowerCase() === hostname.toLowerCase() ? url.origin : null
+  } catch { return null }
+}
+
+const hotelId = (value: string) => typeof value === 'string' && /^[a-z0-9_-]{1,100}$/i.test(value)
+const occupancy = () => btoa(JSON.stringify([{ adults: 1, children: [] }]))
+function oneNight(checkin: string, checkout: string): boolean {
+  if (typeof checkin !== 'string' || typeof checkout !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(checkin) || !/^\d{4}-\d{2}-\d{2}$/.test(checkout)) return false
+  try {
+    const start = Temporal.PlainDate.from(checkin, { overflow: 'reject' })
+    const end = Temporal.PlainDate.from(checkout, { overflow: 'reject' })
+    return start.add({ days: 1 }).equals(end)
+  } catch { return false }
+}
+
+/** Property discovery only; checkout and prebook identifiers never enter this handoff. */
+export function resolveHotelHandoff(
+  hotel: Pick<HotelOption, 'id' | 'checkin' | 'checkout' | 'adults' | 'rooms' | 'handoffId'>,
+  configuredOrigin?: string,
+): ProviderHandoff {
+  const origin = configuredHotelOrigin(configuredOrigin)
+  if (!origin || hotel.handoffId !== 'nuitee-hotel' || !hotelId(hotel.id) || !oneNight(hotel.checkin, hotel.checkout) || hotel.adults !== 1 || hotel.rooms !== 1) return registry['hotel-search']
+  const url = new URL(`/hotels/${encodeURIComponent(hotel.id)}`, origin)
+  url.search = new URLSearchParams({ checkin: hotel.checkin, checkout: hotel.checkout, occupancies: occupancy() }).toString()
+  return {
+    id: 'nuitee-hotel', href: url.toString(), label: 'Check hotel rooms',
+    instructions: 'Confirm the property, dates, room, cancellation terms and final price on the provider site. Opening this page does not book a room; this app does not book hotels.',
+  }
 }
 
 const mapOrigins = new Set(['https://www.google.com'])
@@ -55,18 +95,29 @@ export function directions(origin: string, destination: string, travelmode: Trav
 
 /** Only fixed registry IDs resolve; arbitrary URL-shaped values are never interpreted as destinations. */
 export function resolveHandoff(id: string | null | undefined): ProviderHandoff | null {
-  if (!id || id === 'maps-directions' || !Object.hasOwn(registry, id)) return null
+  if (!id || id === 'maps-directions' || id === 'nuitee-hotel' || !Object.hasOwn(registry, id)) return null
   return registry[id as keyof typeof registry]
 }
 
 /** Guard anchors at the rendering boundary, including Maps' narrow parameter allowlist. */
-export function isAllowedHandoffUrl(id: string, href: string): boolean {
-  if (href.length > 2048) return false
+export function isAllowedHandoffUrl(id: string, href: string, configuredOrigin?: string): boolean {
+  if (href.length > 2048 || href !== href.trim() || /[\u0000-\u001f\u007f\\#]/.test(href)) return false
   const authority = /^https:\/\/([^/?#]*)/i.exec(href)?.[1]
   if (!authority || authority.includes(':')) return false
   try {
     const url = new URL(href)
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) return false
+    if (id === 'nuitee-hotel') {
+      const origin = configuredHotelOrigin(configuredOrigin)
+      if (!origin || url.origin !== origin || href.split('?')[0] !== `${origin}${url.pathname}`) return false
+      const idMatch = /^\/hotels\/([a-z0-9_-]{1,100})$/i.exec(url.pathname)
+      if (!idMatch || !hotelId(idMatch[1])) return false
+      const keys = [...url.searchParams.keys()]
+      return keys.length === 3 && new Set(keys).size === 3 &&
+        keys.every(key => ['checkin', 'checkout', 'occupancies'].includes(key)) &&
+        oneNight(url.searchParams.get('checkin') ?? '', url.searchParams.get('checkout') ?? '') &&
+        url.searchParams.get('occupancies') === occupancy()
+    }
     if (id === 'maps-directions') {
       if (!mapOrigins.has(url.origin) || url.pathname !== '/maps/dir/') return false
       const entries = [...url.searchParams.entries()]

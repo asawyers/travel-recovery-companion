@@ -48,8 +48,10 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
               public planner when you compare. When you explicitly choose
               “Investigate available sources,” relevant current inputs may be
               sent to Google Maps: route, travel time and relevant transport
-              choices for route estimates and transit schedules. This optional
-              service can be disabled or unavailable.
+              choices for route estimates and transit schedules. Hotel investigations may send stay dates, occupancy and the nationality you enter to the enabled hotel source. Submitting a selected hotel journey explicitly investigates its availability again. Optional sources can be disabled or unavailable.
+            </p>
+            <p>
+              Applying a text refinement sends that text and current trip inputs to the public planner and enabled OpenAI assistance. Only accepted priority and driving preferences change the comparison. Refinement text, assistance summaries and activity are not included in device-saved plans.
             </p>
             <p>
               Traveler-entered and fictional device snapshots are stored in

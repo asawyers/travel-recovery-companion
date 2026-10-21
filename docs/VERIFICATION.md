@@ -1,6 +1,6 @@
 # Verification status
 
-The account-free challenge app is deployed at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app) and connected to its public Supabase recovery function. The revised traveler-arrival flow removes flight-status lookup and accepts the user's stated gate-arrival time. Local verification passes 187 unit tests across 14 files, build, Deno, five real loopback HTTP cases and 29 configured Brave cases. Google live routing previously passed direct API and deployed Brave checks; a fresh deployed check for this removal returned two Google schedule options with traveler-confirmed arrival and no flight fields or warnings. All 29 hosted Brave cases passed in 46.6 seconds. Optional hotel/model setup remains pending. Google schedules do not establish ticket inventory.
+The account-free app remains at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app). The new hotel and OpenAI Agents SDK implementation passes a clean install, 336 unit tests across 22 files, TypeScript/Vite build, Deno checking, seven actual loopback HTTP cases and 35 configured Brave cases. Independent backend and frontend reviews approved their corrected scopes. Publication and hosted checks for this revision are recorded in the latest section below. Hotel/model live activation remains pending separate access/configuration and usage approval. Google Routes remains enabled under the user's existing pay-as-you-go authorization.
 
 ## Earlier core revisions
 
@@ -118,3 +118,29 @@ Published implementation `2c8b7907358439145d12f4927b0ed9c3a92d0a72`: main workfl
 The first full hosted regression run passed 28/29 cases. The remaining older save test assumed refreshed comparisons would contain only the manual candidate; live Google discovery correctly added two routes. The test now waits for and validates the investigation response, requires the manual candidate, derives the expected rendered count from the assessed plans, and still asserts zero extra priority POSTs and unchanged saved JSON. The targeted hosted case passed in 4.1 seconds; independent review approved this test-only correction. Full hosted rerun is recorded below after completion.
 
 Final hosted rerun: all 29 configured Brave cases passed in 46.6 seconds against the stable HTTPS app. The corrected save test kept every manual option, accepted valid live-added routes and verified no extra priority POST and unchanged saved JSON. The live form smoke separately passed with two Google schedule plans and no flight fields/warnings. Root-owned loopback backend and Vite test servers were stopped. Current code is `2c8b790`; this checkpoint changes only the browser test and documentation. Task 10's revised Google-only scope is complete; optional hotel/model work and the author's understanding review remain separate pending items.
+
+
+## Hotels and OpenAI Agents SDK — local acceptance, 2026-10-21
+
+The user chose OpenAI Agents SDK, superseding an earlier Vercel AI SDK preference. Actual `Agent`, `Runner` and schema-defined `tool` calls now drive bounded server orchestration. Pinned SDK 0.20.0 and OpenAI client 7.39.0 work with Deno; newer package versions were not used because of the runtime dependency freshness policy. No freshness protection was disabled.
+
+Hotel discovery uses one LiteAPI rates request and at most one leading missing-details lookup, three offers maximum, production/environment and public-rate safeguards, inclusive/unknown fees, conservative cancellation parsing and an exact configured property handoff. Offers are explicitly rates only. A full overnight journey requires selected-property airport/hotel and hotel/boarding-stop transfers, check-in allowance and actual checkout-date train/bus service; no shuttle or next-day timetable is invented. Shared request-scoped promises memoize provider successes and failures.
+
+The assistant accepts only driving/priority patches and selects from the latest deterministic assessment. It has six model turns, twelve attempted tools, one repair and a 30-second request-wide deadline; a shared 15-second provider window and existing individual HTTP bounds remain. Tracing, Responses storage and automatic OpenAI retries are disabled. The response explains actual plan facts and never renders model-authored prices/times/URLs. Missing/limited assistance retains deterministic original-preference results. Synthetic mode makes zero model/provider calls; `investigate=false` prevents provider discovery.
+
+| Final local check | Result |
+| --- | --- |
+| `npm ci` | Passed, 169 packages installed, zero audit vulnerabilities |
+| `npm test` | 336 tests across 22 files passed |
+| `npm run build` | TypeScript/Vite passed; existing nonblocking >500 kB main-chunk warning |
+| Deno entrypoint check | Passed with pinned SDK/client imports |
+| Real local HTTP | Seven cases passed against restarted SDK-loaded Deno handler, 127.0.0.1:37425; no inherited secrets |
+| Configured Brave | All 35 cases passed in 50.3 seconds on temporary Vite, 127.0.0.1:5173 |
+
+The HTTP tests ran directly using `RECOVERY_API_URL=http://127.0.0.1:37425/functions/v1/recovery node --test tests/integration/core.test.mjs`; the npm integration wrapper was not used. The SDK suite includes 32 scripted actual-runner tests; another integrated test follows actual SDK Runner → memoized adapter → planner → validated API response and proves repeated discovery calls invoke the adapter once. Mocked OpenAI HTTP failure verifies one request, catching and fixing the client's otherwise automatic retries. These are local fixture tests, not live paid model acceptance.
+
+Review findings were reproduced with failing tests before correction: newly collected hotel evidence was assessed at request-start time; a twelfth input displaced the selected hotel journey; refresh could preserve an old same-ID hotel quote; editing could cancel offer expiry; refinement source consent was unreachable; boarding-stop edits reused old hotel transfer facts; and selected hotels prevented ordinary zero-call priority reuse. Independent reviewers approved the corrected backend and frontend paths. Source/candidate timestamps remain original, while planning uses current assessment time. Saved historical records remain unchanged during refresh.
+
+Six new browser cases cover canonical preference application/cache reuse/no persisted prompt, complete hotel input binding, disabled assistance, stale response rejection, handler-backed explicit source consent, and boarding-stop invalidation. Hotel rate expiry is checked after edits and immediately before selection/handoff. The earlier account-free/save/storage/mobile/Google-attribution cases remain passing. Test provider/model responses are fixtures; no new hotel/model API key, account setup, paid call or live property-page acceptance was performed.
+
+Live activation is pending the exact OpenAI model, privately saved key and paid-use decision; hotel activation additionally needs authorized account/key, public-price/SSP/hosted-markup compatibility, usage approval and optional assigned origin. These are pending setup decisions, not denied operations. Google approval does not cover either service. Supabase management-connector access remains unavailable; authorized scoped GitHub CI is the existing deployment route. Author understanding remains a separate human submission check.

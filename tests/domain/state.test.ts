@@ -182,3 +182,15 @@ it("ignores a same-sequence failure after a successful result and after reset", 
     }),
   ).toBe(state);
 });
+
+
+it("accepts canonical preferences and keeps assistance only in the current transient result", () => {
+  const canonical = { ...result, request: { ...result.request, drivingAllowed: false, priority: "cheapest" as const } };
+  const assistance = { status: "completed" as const, summary: "Driving disabled.", appliedPreferences: { drivingAllowed: false }, selectedPlanId: null, activity: [] };
+  let state = recoveryReducer(initialRecoveryState, { type: "REQUEST_STARTED", request: f.request, sequence: 1 });
+  state = recoveryReducer(state, { type: "RESULT_RECEIVED", result: canonical, sequence: 1, assistance });
+  expect(state.request).toEqual(canonical.request);
+  expect(state.assistance).toEqual(assistance);
+  expect(recoveryReducer(state, { type: "INPUT_EDITED" }).assistance).toBeNull();
+  expect(recoveryReducer(state, { type: "RESET" }).hotelOffers).toEqual([]);
+});

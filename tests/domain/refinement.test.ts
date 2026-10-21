@@ -123,3 +123,9 @@ describe("one tab normalized fact reuse", () => {
     ).toBe(false);
   });
 });
+
+
+it("never reuses a hotel offer after its quote expiry", () => {
+  const withOffer = { inputKey: key(), facts: { ...facts, hotelOffers: [{ quoteExpiresAt: "2026-10-21T12:00:01Z" }] } } as unknown as typeof cache;
+  expect(canReuseFacts(withOffer, f.request, Date.parse("2026-10-21T12:00:02Z"), ADAPTER_REVISION)).toBe(false);
+});

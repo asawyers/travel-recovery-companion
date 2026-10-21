@@ -2,11 +2,16 @@ import { ADAPTER_REVISION, MAX_FACT_AGE_MS, RecoveryInputSchema, RecoveryRespons
 import type { RecoveryResponse } from '../domain/api.ts'
 import { normalizeCandidates } from '../domain/candidates.ts'
 import { planRecovery } from '../domain/planner.ts'
-import { PlanningTripRequestSchema, SourceEvidenceSchema, TripRequestSchema } from '../domain/schemas.ts'
-import type { ConfirmedOption, SourceEvidence, TripRequest } from '../domain/schemas.ts'
+import { HotelOptionSchema, PlanningTripRequestSchema, SourceEvidenceSchema, TripRequestSchema } from '../domain/schemas.ts'
+import type { ConfirmedOption, HotelOption, SourceEvidence, TripRequest } from '../domain/schemas.ts'
 import { toInstantMillis, toTripLocalTime } from '../domain/time.ts'
 import { HttpError, corsHeaders, jsonResponse, readJson } from './http.ts'
-import type { ProviderFacts, ProviderRegistry } from './providers.ts'
+import { AssistanceSchema, PreferencePatchSchema } from '../domain/assistance.ts'
+import type { Assistance, PreferencePatch } from '../domain/assistance.ts'
+import { configuredHotelOrigin } from '../domain/handoffs.ts'
+import { buildHotelRecovery } from '../domain/hotel-recovery.ts'
+import type { AgentDiscovery, AgentExecutor, Assessment } from './agent-contracts.ts'
+import type { ProviderFacts, ProviderRegistry, ProviderSession } from './providers.ts'
 
 const PROVIDER_TIMEOUT_MS = 15_000
 const PROVENANCE_WARNING = 'Traveler-supplied facts are not verified by a server provider; confirm availability before booking.'
@@ -52,19 +57,33 @@ function arrivalEvidence(request: TripRequest, checkedAt: string): SourceEvidenc
     warnings: request.mode === 'synthetic' ? ['Fictional arrival; used only for this example.'] : [],
   }]
 }
-async function investigate(providers: ProviderRegistry, request: TripRequest): Promise<ProviderFacts> {
-  const controller = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([providers.gatherPermittedFacts(request, { signal: controller.signal }), new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { controller.abort(); reject(new Error('Provider deadline')) }, PROVIDER_TIMEOUT_MS)
-    })])
-  } finally { if (timer !== undefined) clearTimeout(timer) }
+/** Races even dependencies that ignore cancellation; always removes listeners. */
+function bounded<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new Error('Request deadline or cancellation'))
+    if (signal.aborted) { abort(); return }
+    signal.addEventListener('abort', abort, { once: true })
+    promise.then(value => { signal.removeEventListener('abort', abort); resolve(value) }, error => { signal.removeEventListener('abort', abort); reject(error) })
+  })
 }
+const unavailableAssistance = (): Assistance => ({ status: 'unavailable', summary: 'AI assistance is unavailable. Edit the trip fields to refine the deterministic comparison.', appliedPreferences: {}, selectedPlanId: null, activity: [] })
+const limitedAssistance = (): Assistance => ({ ...unavailableAssistance(), status: 'limited', summary: 'AI assistance could not complete a verified recommendation. Your original preferences were retained; review the deterministic comparison.' })
 
 /** Pure handler assembly; the Edge entrypoint owns all environment access. */
-export function createRecoveryHandler(deps: { now: () => string; providers: ProviderRegistry }): (request: Request) => Promise<Response> {
+export function createRecoveryHandler(deps: { now: () => string; providers: ProviderRegistry; agent?: AgentExecutor; hotelBookingOrigin?: string }): (request: Request) => Promise<Response> {
   return async httpRequest => {
+    // Includes body reading, discovery and model work within the browser's 35s deadline.
+    const controller = new AbortController()
+    const forwardAbort = () => controller.abort()
+    httpRequest.signal.addEventListener('abort', forwardAbort, { once: true })
+    if (httpRequest.signal.aborted) controller.abort()
+    const totalTimer = setTimeout(() => controller.abort(), 30_000)
+    const providerController = new AbortController()
+    const abortProviders = () => providerController.abort()
+    controller.signal.addEventListener('abort', abortProviders, { once: true })
+    let providerTimer: ReturnType<typeof setTimeout> | undefined
+    let open = true
+    const active = () => { if (!open || controller.signal.aborted) throw new Error('Request ended') }
     const headers = corsHeaders()
     try {
       if (httpRequest.method === 'OPTIONS') return new Response(null, { status: 204, headers })
@@ -72,48 +91,128 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
         headers.set('Allow', 'POST, OPTIONS')
         throw new HttpError(405, 'Use POST to request recovery plans.')
       }
-      const parsed = RecoveryInputSchema.safeParse(await readJson(httpRequest))
+      const parsed = RecoveryInputSchema.safeParse(await bounded(readJson(httpRequest), controller.signal))
       if (!parsed.success) throw new HttpError(400, 'Invalid recovery request.')
-      // Collection uses real server time, including explicitly fictional trips.
       const checkedAt = deps.now()
-      let request = sanitizeRequest(parsed.data.request)
+      const request = sanitizeRequest(parsed.data.request)
       const evidence = arrivalEvidence(request, checkedAt)
       const warnings: string[] = []
-      let extraCandidates: unknown[] = []
+      let extraCandidates: ConfirmedOption[] = []
+      let hotelOffers: HotelOption[] = []
+      let latest: Assessment | undefined
+      let assessmentNumber = 0
+      const allowedDiscovery = parsed.data.investigate && request.mode === 'real'
       if (parsed.data.investigate && request.mode === 'synthetic') warnings.push('Optional live investigation is unavailable for synthetic trips; fictional supplied facts were compared.')
-      if (parsed.data.investigate && request.mode === 'real') {
-        try {
-          const extra = await investigate(deps.providers, request)
-          if (!Array.isArray(extra.candidates) || extra.candidates.length > 12 || !Array.isArray(extra.warnings)) throw new Error('Invalid adapter output')
-          const adapted = normalizeCandidates(request, extra.candidates)
-          extraCandidates = adapted.candidates.map(candidate => mapEvidence(candidate, item => safeProviderEvidence(item, request.mode)))
-          warnings.push(...adapted.warnings)
-          warnings.push(...boundedNotes(extra.warnings))
-        } catch { warnings.push('Optional provider investigation is unavailable; supplied manual facts were retained. No live availability was checked.') }
+      // A session owns complete adapter promises, including failures and their HTTP caps.
+      const context = { signal: providerController.signal }
+      const session = deps.providers.createSession?.(request, context)
+      let legacy: Promise<ProviderFacts> | undefined
+      const legacyFacts = () => legacy ??= deps.providers.gatherPermittedFacts(request, context)
+      const source: ProviderSession = session ?? {
+        findTransport: async () => { const facts = await legacyFacts(); return { candidates: facts.candidates, warnings: facts.warnings } },
+        findHotels: async () => { const facts = await legacyFacts(); return { candidates: [], offers: facts.offers, warnings: [] } },
       }
-      // Keep supported manual inputs even when adapters exceed the combined capacity.
-      const manualIds = new Set(request.confirmedOptions.map(candidate => candidate.id))
-      extraCandidates = extraCandidates.filter(candidate => {
-        if (candidate !== null && typeof candidate === 'object' && 'id' in candidate && typeof candidate.id === 'string' && manualIds.has(candidate.id.trim())) {
+      const memo: Partial<Record<'transport' | 'hotels', Promise<AgentDiscovery>>> = {}
+      const discover = (kind: 'transport' | 'hotels'): Promise<AgentDiscovery> => {
+        active()
+        if (memo[kind]) return memo[kind]!
+        memo[kind] = (async () => {
+          if (!allowedDiscovery) return { candidates: [], offers: [], warnings: ['Provider investigation was not enabled; supplied facts were retained.'] }
+          if (kind === 'hotels' && !request.overnightAllowed) return { candidates: [], offers: [], warnings: [] }
+          providerTimer ??= setTimeout(() => providerController.abort(), PROVIDER_TIMEOUT_MS)
+          try {
+            const extra = await bounded(kind === 'transport' ? source.findTransport() : source.findHotels(), providerController.signal)
+            active()
+            if (!Array.isArray(extra.candidates) || extra.candidates.length > 12 || !Array.isArray(extra.warnings)) throw new Error('Invalid adapter output')
+            const adapted = normalizeCandidates(request, extra.candidates)
+            const candidates = adapted.candidates.map(candidate => mapEvidence(candidate, item => safeProviderEvidence(item, request.mode))) as ConfirmedOption[]
+            const offers = (extra.offers ?? []).map(offer => HotelOptionSchema.parse(mapEvidence(offer, item => safeProviderEvidence(item, request.mode))))
+            if (offers.length > 3 || offers.some(offer => offer.evidence.some(item => item.environment !== 'production' || item.type === 'synthetic'))) throw new Error('Invalid hotel evidence')
+            extraCandidates.push(...candidates)
+            hotelOffers.push(...offers)
+            hotelOffers = [...new Map(hotelOffers.map(offer => [offer.id, offer])).values()].slice(0, 3)
+            const notes = boundedNotes([...adapted.warnings, ...extra.warnings])
+            warnings.push(...notes)
+            return { candidates, offers, warnings: notes }
+          } catch {
+            active()
+            const notes = [`Optional ${kind === 'transport' ? 'transport' : 'hotel'} investigation is unavailable; supplied manual facts were retained.`]
+            warnings.push(...notes)
+            return { candidates: [], offers: [], warnings: notes }
+          }
+        })()
+        return memo[kind]!
+      }
+      const assess = (patch: PreferencePatch): Assessment => {
+        const accepted = PreferencePatchSchema.parse(patch)
+        const assessmentAt = deps.now()
+        const manualIds = new Set(request.confirmedOptions.map(candidate => candidate.id))
+        const extras = extraCandidates.filter(candidate => {
+          if (!manualIds.has(candidate.id)) return true
           warnings.push(`Optional provider duplicate ID ${candidate.id.slice(0, 100)} was omitted; the supplied manual option was retained.`)
           return false
+        })
+        const merged = normalizeCandidates(request, [...request.confirmedOptions, ...extras].slice(0, 12))
+        const pairing = request.overnightAllowed && (hotelOffers.length || request.hotelSelection)
+          ? buildHotelRecovery({ ...request, confirmedOptions: merged.candidates }, hotelOffers, assessmentAt)
+          : { candidates: [], warnings: [] }
+        const generated = pairing.candidates.filter(candidate => {
+          const previous = merged.candidates.find(option => option.id === candidate.id)
+          // A historical derived journey may be replaced only by the same explicitly selected property/service.
+          return !previous || (previous.kind === 'overnight' && previous.hotel.id === candidate.hotel.id && previous.nextDayTransit.id === candidate.nextDayTransit.id)
+        })
+        const refreshedIds = new Set(generated.map(candidate => candidate.id))
+        const retained = merged.candidates.filter(candidate => !refreshedIds.has(candidate.id))
+        if (generated.length !== pairing.candidates.length) warnings.push('A generated hotel journey duplicated an unrelated existing option ID and was omitted; refresh the supplied options.')
+        if (retained.length + generated.length > 12) warnings.push('The selected hotel journey was retained within the 12-option comparison limit; the last other option was omitted.')
+        const normalized = normalizeCandidates(request, [...retained.slice(0, 12 - generated.length), ...generated])
+        const plannedRequest = PlanningTripRequestSchema.parse({ ...request, ...accepted, confirmedOptions: normalized.candidates })
+        const result = planRecovery(plannedRequest, normalized.candidates, { now: assessmentAt })
+        result.warnings = boundedNotes([...result.warnings, ...merged.warnings, ...normalized.warnings, ...pairing.warnings, ...warnings])
+        latest = { assessmentId: `assessment-${++assessmentNumber}`, result }
+        return latest
+      }
+      let assistance: Assistance | undefined
+      if (parsed.data.refinement) {
+        if (request.mode !== 'real' || !deps.agent) assistance = unavailableAssistance()
+        else {
+          try {
+            assistance = AssistanceSchema.parse(await bounded(deps.agent({ request: structuredClone(request), refinement: parsed.data.refinement, signal: controller.signal, tools: {
+              findTransport: () => discover('transport'), findHotels: () => discover('hotels'),
+              assess: async patch => { active(); return assess(patch) },
+            } }), controller.signal))
+            if (assistance.status === 'completed') {
+              if (!latest || Object.entries(assistance.appliedPreferences).some(([key, value]) => latest!.result.request[key as keyof PreferencePatch] !== value) ||
+                (assistance.selectedPlanId !== null && !latest.result.plans.some(plan => plan.id === assistance!.selectedPlanId))) throw new Error('Unassessed assistance')
+            }
+          } catch { assistance = limitedAssistance() }
         }
-        return true
-      })
-      const normalized = normalizeCandidates(request, [...request.confirmedOptions, ...extraCandidates].slice(0, 12))
-      const candidates: ConfirmedOption[] = normalized.candidates
-      request = PlanningTripRequestSchema.parse({ ...request, confirmedOptions: candidates })
-      const result = planRecovery(request, candidates, { now: checkedAt })
-      result.warnings = boundedNotes([...result.warnings, ...normalized.warnings, ...warnings])
+      }
+      if (assistance?.status !== 'completed') {
+        if (allowedDiscovery && !controller.signal.aborted) await Promise.all([discover('transport'), discover('hotels')]).catch(() => undefined)
+        assess({})
+        if (assistance) assistance = { ...assistance, appliedPreferences: {}, selectedPlanId: null }
+      } else if (!latest) assess({})
+      const result = latest!.result
+      const candidates = result.request.confirmedOptions
       const expiresAt = [new Date(toInstantMillis(checkedAt) + MAX_FACT_AGE_MS).toISOString(),
-        ...originalExpiries([candidates, evidence])].sort((a, b) => toInstantMillis(a) - toInstantMillis(b))[0]
+        ...originalExpiries([candidates, evidence, hotelOffers])].sort((a, b) => toInstantMillis(a) - toInstantMillis(b))[0]
+      const hotelBookingOrigin = configuredHotelOrigin(deps.hotelBookingOrigin)
       const body: RecoveryResponse = RecoveryResponseSchema.parse({ result, facts: {
-        candidates, arrival: { arrivalAt: request.arrivalAt, arrivalBasis: request.arrivalBasis }, arrivalEvidence: evidence,
+        candidates, arrival: { arrivalAt: result.request.arrivalAt, arrivalBasis: result.request.arrivalBasis }, arrivalEvidence: evidence,
         checkedAt, expiresAt, adapterRevision: ADAPTER_REVISION,
-      } })
+        ...(hotelOffers.length ? { hotelOffers } : {}), ...(hotelBookingOrigin ? { hotelBookingOrigin } : {}),
+      }, ...(assistance ? { assistance } : {}) })
       return jsonResponse(body, 200, headers)
     } catch (error) {
       return jsonResponse({ error: error instanceof HttpError ? error.message : 'Recovery planning is temporarily unavailable.' }, error instanceof HttpError ? error.status : 500, headers)
+    } finally {
+      open = false
+      clearTimeout(totalTimer)
+      if (providerTimer !== undefined) clearTimeout(providerTimer)
+      controller.abort(); providerController.abort()
+      httpRequest.signal.removeEventListener('abort', forwardAbort)
+      controller.signal.removeEventListener('abort', abortProviders)
     }
   }
 }

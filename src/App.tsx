@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ConfirmedOption, TripRequest } from "@domain/schemas";
 import { daytimeFixture, overnightFixture } from "@domain/fixtures";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,8 @@ import {
   GOOGLE_SAVE_MESSAGE,
 } from "@/features/recovery/providerRetention";
 import { LegalPage, LegalFooter } from "@/features/recovery/LegalPage";
+import { AssistancePanel } from "@/features/recovery/AssistancePanel";
+import { HotelOffersPanel } from "@/features/recovery/HotelOffersPanel";
 function RecoveryApp() {
   const [draft, setDraft] = useState(emptyDraft);
   const [mode, setMode] = useState<TripRequest["mode"]>("real");
@@ -32,11 +34,19 @@ function RecoveryApp() {
   const [restoredRequest, setRestoredRequest] = useState<
     TripRequest | undefined
   >();
+  const [refinement, setRefinement] = useState("");
+  const [refinementInvestigate, setRefinementInvestigate] = useState(false);
+  const [hotelInvestigationNeeded, setHotelInvestigationNeeded] = useState(false);
   const [investigate, setInvestigate] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [warnings, setWarnings] = useState<string[]>([]);
   const recovery = useRecovery();
   const { state } = recovery;
+  useEffect(() => {
+    if (!state.result || state.stale) return;
+    setHotelInvestigationNeeded(false);
+    setDraft(current => ({ ...current, priority: state.result!.request.priority, drivingAllowed: state.result!.request.drivingAllowed }));
+  }, [state.result, state.stale]);
   const busy = state.status === "planning" || state.status === "validating";
   const now = () => exampleNow ?? new Date().toISOString();
   function edit(next: Draft) {
@@ -44,12 +54,24 @@ function RecoveryApp() {
     const { priority: _after, ...after } = next;
     const priorityOnly = JSON.stringify(before) === JSON.stringify(after);
     recovery.edit(priorityOnly);
+    if (!priorityOnly) setHotelInvestigationNeeded(!!next.hotel.hotelId);
     const confirmed = { ...next };
     if (next.transit !== draft.transit)
       confirmed.transit = {
         ...next.transit,
         checkedAt: new Date().toISOString(),
       };
+    if (next.hotel !== draft.hotel) {
+      const checkedAt = new Date().toISOString();
+      const h = next.hotel;
+      const before = draft.hotel;
+      confirmed.hotel = { ...h,
+        hotelCheckedAt: h.hotelMinutes !== before.hotelMinutes || h.hotelCost !== before.hotelCost || h.hotelKind !== before.hotelKind ? checkedAt : h.hotelCheckedAt,
+        stationCheckedAt: h.stationMinutes !== before.stationMinutes || h.stationCost !== before.stationCost || h.stationKind !== before.stationKind ? checkedAt : h.stationCheckedAt,
+      };
+    }
+    if (next.transit.departureTerminal !== draft.transit.departureTerminal && confirmed.hotel.hotelId)
+      confirmed.hotel = { ...confirmed.hotel, stationMinutes: "", stationCost: "", stationKind: "transfer", stationCheckedAt: "" };
     if (next.car !== draft.car)
       confirmed.car = { ...next.car, checkedAt: new Date().toISOString() };
     setDraft(confirmed);
@@ -62,6 +84,7 @@ function RecoveryApp() {
     options = exampleOptions,
     clock = now(),
     investigateSources = false,
+    refinementText?: string,
   ) {
     // Confirm once at the input boundary; priority changes retain original timestamps.
     const confirmed = {
@@ -88,12 +111,15 @@ function RecoveryApp() {
     setWarnings(built.warnings);
     if (built.request) {
       setInvestigate(false);
-      void recovery.compare(built.request, clock, investigateSources);
+      void recovery.compare(built.request, clock, investigateSources, refinementText);
     } else recovery.edit();
   }
   function example(kind: "daytime" | "overnight") {
     const f = kind === "daytime" ? daytimeFixture() : overnightFixture();
     recovery.reset();
+    setRefinement("");
+    setRefinementInvestigate(false);
+    setHotelInvestigationNeeded(false);
     setRestoredRequest(undefined);
     setInvestigate(false);
     setMode("synthetic");
@@ -105,6 +131,9 @@ function RecoveryApp() {
   }
   function real() {
     recovery.reset();
+    setRefinement("");
+    setRefinementInvestigate(false);
+    setHotelInvestigationNeeded(false);
     setRestoredRequest(undefined);
     setInvestigate(false);
     setMode("real");
@@ -130,6 +159,9 @@ function RecoveryApp() {
         ? recovery.saved.generatedAt
         : new Date().toISOString();
     recovery.edit();
+    setRefinement("");
+    setRefinementInvestigate(false);
+    setHotelInvestigationNeeded(false);
     setRestoredRequest(request);
     setInvestigate(false);
     setDraft(draftFromRequest(request));
@@ -210,10 +242,12 @@ function RecoveryApp() {
             busy={busy}
             onChange={edit}
             onSubmit={() =>
-              compare(draft, mode, exampleOptions, now(), investigate)
+              compare(draft, mode, exampleOptions, now(), investigate || (recovery.configured && hotelInvestigationNeeded))
             }
             configured={recovery.configured}
             investigate={investigate}
+            hotelInvestigationNeeded={hotelInvestigationNeeded}
+            selectedHotelName={state.hotelOffers.find(hotel => hotel.id === draft.hotel.hotelId)?.name}
             onInvestigate={(value) => {
               recovery.edit();
               setInvestigate(value);
@@ -249,6 +283,14 @@ function RecoveryApp() {
                 </AlertDescription>
               </Alert>
             )}
+            <AssistancePanel assistance={state.assistance} value={refinement} onChange={setRefinement} busy={busy} configured={recovery.configured} hasResult={!!state.result && !state.stale}
+              investigate={refinementInvestigate} onInvestigate={setRefinementInvestigate}
+              onSubmit={() => compare(draft, mode, exampleOptions, now(), refinementInvestigate, refinement)} />
+            <HotelOffersPanel offers={state.hotelOffers} selectedId={draft.hotel.hotelId} busy={busy} bookingOrigin={state.hotelBookingOrigin} expiresAt={state.hotelOffersExpiresAt} onExpired={recovery.expireOffers}
+              onSelect={hotelId => {
+                if (hotelId !== draft.hotel.hotelId) edit({ ...draft, hotel: { ...emptyDraft().hotel, hotelId } });
+                setInvestigate(true);
+              }} />
             <OptionList
               result={state.result}
               selectedId={state.selectedPlanId}
@@ -261,6 +303,7 @@ function RecoveryApp() {
             <ItineraryPanel
               saved={state.persistence === "saved"}
               arrivalEvidence={state.arrivalEvidence}
+              hotelBookingOrigin={state.hotelBookingOrigin}
               result={state.result}
               plan={state.result?.plans.find(
                 (p) => p.id === state.selectedPlanId,
