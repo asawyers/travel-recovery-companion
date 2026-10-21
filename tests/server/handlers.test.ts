@@ -8,7 +8,7 @@ import type { TripRequest } from '../../supabase/functions/_shared/domain/schema
 const now = '2026-10-21T12:00:00Z'
 const origin = 'http://127.0.0.1:5173'
 const input = () => ({ request: daytimeFixture().request, investigate: false })
-const handler = () => createRecoveryHandler({ now: () => now, allowedOrigins: [origin], providers: disabledProviders })
+const handler = () => createRecoveryHandler({ now: () => now, providers: disabledProviders })
 const post = (body: unknown, headers: Record<string, string> = {}) => new Request('http://localhost/recovery', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) })
 function real(request: TripRequest): TripRequest {
   return JSON.parse(JSON.stringify({ ...request, mode: 'real' }).replaceAll('"synthetic"', '"production"').replaceAll('"type":"production"', '"type":"live"'))
@@ -73,13 +73,13 @@ describe('public stateless recovery handler', () => {
 
   it('makes zero provider calls when investigation is off', async () => {
     const gatherPermittedFacts = vi.fn(() => { throw new Error('must not run') })
-    const run = createRecoveryHandler({ now: () => now, allowedOrigins: [origin], providers: { gatherPermittedFacts } })
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts } })
     expect((await run(post(input()))).status).toBe(200)
     expect(gatherPermittedFacts).not.toHaveBeenCalled()
   })
 
   it('keeps useful manual results when optional providers fail, without leaking errors', async () => {
-    const run = createRecoveryHandler({ now: () => now, allowedOrigins: [origin], providers: { gatherPermittedFacts: async () => { throw new Error('SECRET provider payload') } } })
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: async () => { throw new Error('SECRET provider payload') } } })
     const response = await run(post({ ...input(), investigate: true }))
     expect(response.status).toBe(200)
     const body = RecoveryResponseSchema.parse(await response.json())
@@ -112,16 +112,24 @@ describe('public stateless recovery handler', () => {
     expect(body.facts.expiresAt).toBe('2026-10-21T11:50:00Z')
   })
 
-  it('allows only configured browser origins and includes CORS on allowed-origin errors', async () => {
+  it.each([origin, 'https://arbitrary.example', 'null', null])('serves any origin with wildcard CORS and no credentials (%s)', async requestOrigin => {
     const run = handler()
-    const options = await run(new Request('http://localhost/recovery', { method: 'OPTIONS', headers: { Origin: origin } }))
-    expect(options.status).toBe(204); expect(options.headers.get('access-control-allow-origin')).toBe(origin)
-    expect(options.headers.get('access-control-allow-credentials')).toBeNull()
-    expect((await run(post(input(), { Origin: 'https://unlisted.example' }))).status).toBe(403)
-    const wrong = await run(new Request('http://localhost/recovery', { headers: { Origin: origin } }))
-    expect(wrong.status).toBe(405); expect(wrong.headers.get('Allow')).toContain('POST')
-    expect(wrong.headers.get('access-control-allow-origin')).toBe(origin)
-    expect(wrong.headers.get('content-type')).toContain('application/json')
+    const headers = requestOrigin === null ? {} : { Origin: requestOrigin }
+    const options = await run(new Request('http://localhost/recovery', { method: 'OPTIONS', headers }))
+    const success = await run(post(input(), headers))
+    const wrong = await run(new Request('http://localhost/recovery', { headers }))
+    expect(options.status).toBe(204)
+    expect(success.status).toBe(200)
+    expect(wrong.status).toBe(405)
+    expect(wrong.headers.get('Allow')).toContain('POST')
+    for (const response of [options, success, wrong]) {
+      expect(response.headers.get('access-control-allow-origin')).toBe('*')
+      expect(response.headers.get('access-control-allow-methods')).toBe('POST, OPTIONS')
+      expect(response.headers.get('access-control-allow-headers')).toBe('content-type')
+      expect(response.headers.get('access-control-allow-credentials')).toBeNull()
+      expect(response.headers.get('content-type')).toContain('application/json')
+      expect(response.headers.get('cache-control')).toBe('no-store')
+    }
   })
 
   it.each([null, {}, { ...input(), owner: 'forbidden' }, { ...input(), facts: {} }, { ...input(), request: { ...input().request, session: 'x' } }, { ...input(), request: { ...input().request, mode: 'real' } }])('rejects invalid or extra browser fields', async value => {
@@ -135,7 +143,7 @@ describe('public stateless recovery handler', () => {
     const stream = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(' '.repeat(65537))); controller.close() } })
     const streamed = new Request('http://localhost/recovery', { method: 'POST', headers: { 'content-type': 'application/json', Origin: origin }, body: stream, duplex: 'half' } as RequestInit)
     const response = await handler()(streamed)
-    expect(response.status).toBe(413); expect(response.headers.get('access-control-allow-origin')).toBe(origin)
+    expect(response.status).toBe(413); expect(response.headers.get('access-control-allow-origin')).toBe('*')
     expect(await response.text()).not.toContain(' '.repeat(100))
   })
 
@@ -147,7 +155,7 @@ describe('public stateless recovery handler', () => {
       const pending = handler()(stalled)
       await vi.advanceTimersByTimeAsync(10_001)
       expect((await pending).status).toBe(408)
-      const run = createRecoveryHandler({ now: () => now, allowedOrigins: [origin], providers: { gatherPermittedFacts: () => new Promise(() => {}) } })
+      const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: () => new Promise(() => {}) } })
       const providerPending = run(post({ ...input(), investigate: true }))
       await vi.advanceTimersByTimeAsync(10_001)
       expect((await providerPending).status).toBe(200)
@@ -172,7 +180,7 @@ describe('public stateless recovery handler', () => {
     }
     const arrival = { arrivalAt: request.arrivalAt, arrivalBasis: 'actual_gate' as const }
     const providerEvidence = { ...candidate.evidence[0], provider: 'Injected test provider' }
-    const run = createRecoveryHandler({ now: () => now, allowedOrigins: [origin], providers: { gatherPermittedFacts: async () => ({ candidates: [candidate], arrival, arrivalEvidence: [providerEvidence], warnings: [] }) } })
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: async () => ({ candidates: [candidate], arrival, arrivalEvidence: [providerEvidence], warnings: [] }) } })
     const response = await run(post({ request, investigate: true }))
     expect(response.status).toBe(200)
     const body = RecoveryResponseSchema.parse(await response.json())
@@ -188,7 +196,7 @@ describe('public stateless recovery handler', () => {
     const request = real(daytimeFixture().request)
     const candidate = request.confirmedOptions[0]
     request.confirmedOptions = []
-    const run = createRecoveryHandler({ now: () => now, allowedOrigins: [origin], providers: { gatherPermittedFacts: async () => ({ candidates: [candidate], arrival: { arrivalAt: request.arrivalAt, arrivalBasis: 'actual_gate' }, arrivalEvidence: [], warnings: [] }) } })
+    const run = createRecoveryHandler({ now: () => now, providers: { gatherPermittedFacts: async () => ({ candidates: [candidate], arrival: { arrivalAt: request.arrivalAt, arrivalBasis: 'actual_gate' }, arrivalEvidence: [], warnings: [] }) } })
     const body = RecoveryResponseSchema.parse(await (await run(post({ request, investigate: true }))).json())
     expect(body.facts.candidates).toHaveLength(1)
     expect(body.facts.arrival.arrivalBasis).toBe('estimated_gate')

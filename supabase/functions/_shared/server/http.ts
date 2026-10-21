@@ -4,15 +4,15 @@ export class HttpError extends Error {
   constructor(readonly status: number, message: string) { super(message) }
 }
 
-/** CORS controls browser access, not authentication. Direct HTTP callers are public. */
-export function corsHeaders(origin: string | null): Headers {
-  const headers = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', Vary: 'Origin' })
-  if (origin) {
-    headers.set('Access-Control-Allow-Origin', origin)
-    headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
-    headers.set('Access-Control-Allow-Headers', 'content-type')
-  }
-  return headers
+/** Public browser access without credentials or origin-specific configuration. */
+export function corsHeaders(): Headers {
+  return new Headers({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  })
 }
 
 export function jsonResponse(body: unknown, status: number, headers: Headers): Response {

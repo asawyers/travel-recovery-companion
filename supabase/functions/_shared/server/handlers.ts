@@ -63,13 +63,10 @@ async function investigate(providers: ProviderRegistry, request: TripRequest): P
 }
 
 /** Pure handler assembly; the Edge entrypoint owns all environment access. */
-export function createRecoveryHandler(deps: { now: () => string; allowedOrigins: string[]; providers: ProviderRegistry }): (request: Request) => Promise<Response> {
+export function createRecoveryHandler(deps: { now: () => string; providers: ProviderRegistry }): (request: Request) => Promise<Response> {
   return async httpRequest => {
-    const origin = httpRequest.headers.get('origin')
-    const allowed = origin === null || deps.allowedOrigins.includes(origin)
-    const headers = corsHeaders(allowed ? origin : null)
+    const headers = corsHeaders()
     try {
-      if (!allowed) throw new HttpError(403, 'Origin is not allowed.')
       if (httpRequest.method === 'OPTIONS') return new Response(null, { status: 204, headers })
       if (httpRequest.method !== 'POST') {
         headers.set('Allow', 'POST, OPTIONS')

@@ -24,20 +24,21 @@ test('REAL HTTP public recovery: no authorization, apikey, users or rows', async
   console.info(`HTTP gate: POST 200; ${body.result.plans.length} plans; ${body.facts.candidates.length} normalized candidates; revision ${body.facts.adapterRevision}; no credentials`)
 })
 
-test('REAL HTTP origin and method contract: 204/403/405', async () => {
-  const preflight = await fetch(endpoint, { method: 'OPTIONS', headers: { origin } })
-  assert.equal(preflight.status, 204)
-  // Supabase CLI's local Kong cors plugin overwrites the handler's exact origin.
-  // Unit tests verify the handler's allowlist; these requests verify gateway-visible statuses.
-  const gatewayOrigin = preflight.headers.get('access-control-allow-origin')
-  assert.ok(gatewayOrigin === origin || gatewayOrigin === '*')
-  if (gatewayOrigin === '*') console.info('Local gateway limit: Kong rewrites Access-Control-Allow-Origin to *; handler exact-origin unit checks pass and unlisted requests still return 403')
-  assert.equal((await fetch(endpoint, { method: 'OPTIONS', headers: { origin: 'https://unlisted.example' } })).status, 403)
-  assert.equal((await send(payload(), { origin: 'https://unlisted.example' })).status, 403)
-  const wrong = await fetch(endpoint, { headers: { origin } })
-  assert.equal(wrong.status, 405)
-  assert.ok([origin, '*'].includes(wrong.headers.get('access-control-allow-origin')))
-  console.info('HTTP gate: OPTIONS 204; unlisted Origin 403; GET 405')
+test('REAL HTTP wildcard origin and method contract: 204/200/405', async () => {
+  for (const requestOrigin of [origin, 'https://arbitrary.example', 'null', null]) {
+    const headers = requestOrigin === null ? {} : { origin: requestOrigin }
+    const preflight = await fetch(endpoint, { method: 'OPTIONS', headers })
+    const response = await send(payload(), headers)
+    const wrong = await fetch(endpoint, { headers })
+    assert.equal(preflight.status, 204)
+    assert.equal(response.status, 200)
+    assert.equal(wrong.status, 405)
+    for (const result of [preflight, response, wrong]) {
+      assert.equal(result.headers.get('access-control-allow-origin'), '*')
+      assert.equal(result.headers.get('access-control-allow-credentials'), null)
+    }
+  }
+  console.info('HTTP gate: any Origin or no Origin; OPTIONS 204; POST 200; GET 405; wildcard CORS without credentials')
 })
 
 test('REAL HTTP invalid JSON, strict fields and oversized body: 400/413', async () => {
