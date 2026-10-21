@@ -1,0 +1,23 @@
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+
+# Dependencies, generated output, caches and local service state
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.vercel/
+supabase/.temp/
+supabase/.branches/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Local Superpowers planning documents
+/docs/superpowers/
