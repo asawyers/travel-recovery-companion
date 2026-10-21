@@ -349,7 +349,20 @@ test("investigation is consumed once and a priority form submit reuses the check
   await page.goto("/");
   await daytime(page);
   await page.getByLabel("Investigate available sources").check();
+  const investigationResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/functions/v1/recovery") &&
+      response.request().method() === "POST" &&
+      response.request().postDataJSON().investigate === true,
+  );
   await compare(page);
+  const response = await investigationResponse;
+  expect(response.ok()).toBe(true);
+  await response.finished();
+  // Previous cards remain visible while the new source facts are being checked.
+  await expect(
+    page.getByRole("button", { name: "Compare recovery options", exact: true }),
+  ).toBeEnabled();
   await expect(page.getByTestId("option-card")).toHaveCount(3);
   expect(posts[1].investigate).toBe(true);
   await expect(
