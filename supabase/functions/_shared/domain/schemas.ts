@@ -136,9 +136,6 @@ export const RecoveryPlanSchema = z.strictObject({
 })
 export type RecoveryPlan = z.infer<typeof RecoveryPlanSchema>
 
-export const SaveSelectionSchema = z.strictObject({ runId: id, version: z.number().int().min(1).max(1_000_000), planId: id })
-export type SaveSelection = z.infer<typeof SaveSelectionSchema>
-
 export const RecoveryResultSchema = z.strictObject({
   request: TripRequestSchema, generatedAt: timestamp,
   originalConnection: z.strictObject({ readyAt: timestamp, requiredReadyAt: timestamp, marginMinutes: z.number().min(-10_080).max(10_080), shortfallMinutes: z.number().min(0).max(10_080), missed: z.boolean() }),

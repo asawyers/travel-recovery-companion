@@ -3,20 +3,15 @@ import type { ConfirmedOption, TripRequest } from "@domain/schemas";
 import { daytimeFixture, overnightFixture } from "@domain/fixtures";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { TripForm } from "@/features/recovery/TripForm";
 import { OptionList } from "@/features/recovery/OptionList";
 import { ItineraryPanel } from "@/features/recovery/ItineraryPanel";
+import { SavedPlanPanel } from "@/features/recovery/SavedPlanPanel";
+import {
+  selectionSnapshot,
+  refreshRequest,
+} from "@/features/recovery/savedSelection";
 import { useRecovery } from "@/features/recovery/useRecovery";
 import {
   buildRequest,
@@ -71,6 +66,30 @@ function App() {
     setErrors({});
     setWarnings([]);
   }
+  function refreshSaved() {
+    if (!recovery.saved) return;
+    const request = refreshRequest(recovery.saved);
+    const clock =
+      request.mode === "synthetic"
+        ? recovery.saved.generatedAt
+        : new Date().toISOString();
+    recovery.edit();
+    setDraft(draftFromRequest(request));
+    setMode(request.mode);
+    setExampleOptions(
+      request.mode === "synthetic" ? request.confirmedOptions : [],
+    );
+    setExampleNow(request.mode === "synthetic" ? clock : null);
+    setErrors({});
+    setWarnings(
+      request.mode === "real"
+        ? [
+            "This comparison retains original source timestamps. Reconfirm provider facts and re-enter any changed onward options before choosing.",
+          ]
+        : [],
+    );
+    void recovery.compare(request, clock);
+  }
   function refine(change: "cheapest" | "no-driving") {
     const next: Draft = {
       ...draft,
@@ -94,28 +113,8 @@ function App() {
           <p className="font-semibold">Travel recovery companion</p>
           <div className="flex items-center gap-3">
             <Badge variant="secondary" className="text-green-800">
-              Guest mode
+              Device-local saving
             </Badge>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline">Sign in to save</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Saving trips is not available yet</DialogTitle>
-                  <DialogDescription>
-                    Accounts and durable saving are not connected. You can
-                    compare and select itineraries as a guest. Your selection is
-                    only held in this page.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <DialogClose asChild>
-                    <Button>Continue as guest</Button>
-                  </DialogClose>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
           </div>
         </div>
       </header>
@@ -192,15 +191,53 @@ function App() {
               stale={state.stale}
             />
             <ItineraryPanel
+              saved={state.persistence === "saved"}
               result={state.result}
               plan={state.result?.plans.find(
                 (p) => p.id === state.selectedPlanId,
               )}
             />
+            <Button
+              disabled={
+                !selectionSnapshot(state, now(), new Date().toISOString()).ok
+              }
+              onClick={() => recovery.save(now())}
+            >
+              Save on this device
+            </Button>
+            {recovery.storageMessage && (
+              <p role="status" className="text-sm text-green-800">
+                {recovery.storageMessage}
+              </p>
+            )}
+            {recovery.storageError && (
+              <Alert role="alert">
+                <AlertTitle>Device storage unavailable</AlertTitle>
+                <AlertDescription>{recovery.storageError}</AlertDescription>
+                {!recovery.saved && (
+                  <Button
+                    className="mt-3"
+                    variant="outline"
+                    onClick={recovery.deleteSaved}
+                  >
+                    Delete saved plan
+                  </Button>
+                )}
+              </Alert>
+            )}
+            {recovery.saved && (
+              <SavedPlanPanel
+                saved={recovery.saved}
+                busy={busy}
+                onDelete={recovery.deleteSaved}
+                onRefresh={refreshSaved}
+              />
+            )}
             <p className="text-xs leading-relaxed text-muted-foreground">
               Confirm current schedules, prices, pickup hours and availability
-              with the operator before booking. This guest planner cannot make
-              purchases or persist your trip.
+              with the operator before booking. Saving keeps one itinerary in
+              this browser on this device. No tickets or reservations are
+              purchased.
             </p>
           </div>
         </div>

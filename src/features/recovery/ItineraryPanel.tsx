@@ -1,13 +1,32 @@
-import type { RecoveryPlan, RecoveryResult, JourneyLeg } from "@domain/schemas";
-import { directions, isAllowedHandoffUrl, resolveHandoff } from "@domain/handoffs";
+import type {
+  RecoveryPlan,
+  RecoveryResult,
+  JourneyLeg,
+  TripRequest,
+} from "@domain/schemas";
+import {
+  directions,
+  isAllowedHandoffUrl,
+  resolveHandoff,
+} from "@domain/handoffs";
 import { money, time } from "./OptionList";
 export function ItineraryPanel({
   plan,
   result,
+  request = result?.request,
+  presentation = "current",
+  saved = false,
 }: {
   plan: RecoveryPlan | undefined;
-  result: RecoveryResult | null;
+  result?: RecoveryResult | null;
+  request?: TripRequest;
+  presentation?: "current" | "historical";
+  saved?: boolean;
 }) {
+  const historical = presentation === "historical";
+  const headingId = historical
+    ? "saved-itinerary-heading"
+    : "itinerary-heading";
   const hotel = plan?.hotel;
   const handoffForLeg = (leg: JourneyLeg) => {
     if (leg.kind === "train") return resolveHandoff("amtrak");
@@ -17,12 +36,12 @@ export function ItineraryPanel({
   };
   return (
     <section
-      data-testid="itinerary"
-      aria-labelledby="itinerary-heading"
+      data-testid={historical ? "saved-itinerary" : "itinerary"}
+      aria-labelledby={headingId}
       className="rounded-lg border bg-white p-5"
     >
-      <h2 id="itinerary-heading" className="text-lg font-semibold">
-        Selected itinerary
+      <h2 id={headingId} className="text-lg font-semibold">
+        {historical ? "Saved itinerary details" : "Selected itinerary"}
       </h2>
       {!plan ? (
         <p className="mt-3 text-sm text-muted-foreground">
@@ -31,7 +50,11 @@ export function ItineraryPanel({
       ) : (
         <>
           <p className="mt-3 text-sm font-semibold text-green-800">
-            Selected for review · Not booked or saved
+            {historical
+              ? "Historical snapshot · Not a current availability check · Not booked"
+              : saved
+                ? "Selected for review · Saved on this device · Not booked"
+                : "Selected for review · Not booked or saved"}
           </p>
           <h3 className="mt-3 font-semibold">{plan.title}</h3>
           <p className="mt-2 text-sm tabular-nums">
@@ -41,7 +64,7 @@ export function ItineraryPanel({
           </p>
           <p className="mt-2 text-sm">
             Final arrival {time(plan.finalArrivalAt)}. Deadline{" "}
-            {result && time(result.request.deadlineAt)}.
+            {request && time(request.deadlineAt)}.
           </p>
           {hotel && (
             <div className="mt-4 rounded-md bg-slate-100 p-4 text-sm">
@@ -65,6 +88,35 @@ export function ItineraryPanel({
               <p>
                 {hotel.cancellation?.text ?? "Cancellation terms unconfirmed."}
               </p>
+              {hotel.costs.map((cost, i) => (
+                <p key={i}>
+                  {cost.label}:{" "}
+                  {cost.cents === null ? "unknown" : `${money(cost.cents)} USD`}
+                  {cost.includedInOtherCharge ? " (included elsewhere)" : ""}
+                </p>
+              ))}
+              {hotel.cancellation?.deadlineAt && (
+                <p>
+                  Cancellation deadline {time(hotel.cancellation.deadlineAt)}.
+                </p>
+              )}
+              {hotel.cancellation?.penalty && (
+                <p>Cancellation penalty: {hotel.cancellation.penalty}</p>
+              )}
+              {hotel.evidence.map((e, i) => (
+                <p
+                  key={i}
+                  className="mt-2 break-words text-xs text-muted-foreground"
+                >
+                  {e.type === "synthetic" ? "Synthetic / fictional" : e.type} ·{" "}
+                  {e.provider} · checked{" "}
+                  {historical ? e.checkedAt : time(e.checkedAt)} · service{" "}
+                  {e.serviceDate}
+                  {e.expiresAt
+                    ? ` · expires ${historical ? e.expiresAt : time(e.expiresAt)}`
+                    : " · expiry not supplied"}
+                </p>
+              ))}
               {hotel.quoteExpiresAt && (
                 <p>Quote expires {time(hotel.quoteExpiresAt)}.</p>
               )}
@@ -104,10 +156,11 @@ export function ItineraryPanel({
                       : e.type === "traveler_confirmed"
                         ? "Traveler confirmed"
                         : e.type}{" "}
-                    · {e.provider} · checked {time(e.checkedAt)} · service{" "}
+                    · {e.provider} · checked{" "}
+                    {historical ? e.checkedAt : time(e.checkedAt)} · service{" "}
                     {e.serviceDate}
                     {e.expiresAt
-                      ? ` · expires ${time(e.expiresAt)}`
+                      ? ` · expires ${historical ? e.expiresAt : time(e.expiresAt)}`
                       : " · expiry not supplied"}
                   </p>
                 ))}
@@ -120,36 +173,55 @@ export function ItineraryPanel({
           >
             <h4 className="font-semibold">Check options with operators</h4>
             <p className="mt-1 text-sm text-muted-foreground">
-              These links open provider entry pages. Enter the route and dates shown below; the itinerary is not a live inventory check.
+              These links open provider entry pages. Enter the route and dates
+              shown below; the itinerary is not a live inventory check.
             </p>
-            {result?.request.mode === "synthetic" && (
+            {request?.mode === "synthetic" && (
               <p className="mt-2 text-sm font-medium text-amber-900">
-                This fictional itinerary is an example only. The links do not verify its schedule, prices, or availability.
+                This fictional itinerary is an example only. The links do not
+                verify its schedule, prices, or availability.
               </p>
             )}
             <ul className="mt-3 space-y-4">
               {plan.legs.map((leg) => {
                 const handoff = handoffForLeg(leg);
-                if (!handoff || !isAllowedHandoffUrl(handoff.id, handoff.href)) return null;
-                const pickup = leg.kind === "car" ? plan.legs.find((item) => item.kind === "pickup") : undefined;
-                const rentalReturn = leg.kind === "car" ? plan.legs.find((item) => item.kind === "return") : undefined;
+                if (!handoff || !isAllowedHandoffUrl(handoff.id, handoff.href))
+                  return null;
+                const pickup =
+                  leg.kind === "car"
+                    ? plan.legs.find((item) => item.kind === "pickup")
+                    : undefined;
+                const rentalReturn =
+                  leg.kind === "car"
+                    ? plan.legs.find((item) => item.kind === "return")
+                    : undefined;
                 return (
                   <li key={`handoff-${leg.id}`} className="text-sm">
                     <p className="font-medium">
-                      {leg.kind === "car"
-                        ? "One-way rental: Boston Logan (BOS) pickup → Portland, Maine return"
-                        : <>{leg.kind === "train" ? "Train" : "Bus"}: {leg.from} → {leg.to}</>}
+                      {leg.kind === "car" ? (
+                        "One-way rental: Boston Logan (BOS) pickup → Portland, Maine return"
+                      ) : (
+                        <>
+                          {leg.kind === "train" ? "Train" : "Bus"}: {leg.from} →{" "}
+                          {leg.to}
+                        </>
+                      )}
                     </p>
                     {leg.kind === "car" && pickup && rentalReturn ? (
                       <p className="mt-1 text-muted-foreground">
-                        America/New_York · pickup {time(pickup.startAt)} · return window {time(rentalReturn.startAt)} to {time(rentalReturn.endAt)}
+                        America/New_York · pickup {time(pickup.startAt)} ·
+                        return window {time(rentalReturn.startAt)} to{" "}
+                        {time(rentalReturn.endAt)}
                       </p>
                     ) : (
                       <p className="mt-1 text-muted-foreground">
-                        America/New_York · {time(leg.startAt)} to {time(leg.endAt)}
+                        America/New_York · {time(leg.startAt)} to{" "}
+                        {time(leg.endAt)}
                       </p>
                     )}
-                    <p className="mt-1 text-muted-foreground">{handoff.instructions}</p>
+                    <p className="mt-1 text-muted-foreground">
+                      {handoff.instructions}
+                    </p>
                     <a
                       className="mt-2 inline-flex min-h-10 items-center rounded-md border px-3 py-2 text-sm font-medium underline"
                       href={handoff.href}
@@ -162,53 +234,74 @@ export function ItineraryPanel({
                   </li>
                 );
               })}
-              {hotel && (() => {
-                const providerHandoff = resolveHandoff(hotel.handoffId);
-                const hotelHandoff = providerHandoff ?? resolveHandoff("hotel-search");
-                if (!hotelHandoff || !isAllowedHandoffUrl(hotelHandoff.id, hotelHandoff.href)) return null;
-                return (
-                  <li key="handoff-hotel" className="text-sm">
-                    <p className="font-medium">Hotel: {hotel.name}</p>
-                    <p className="mt-1 text-muted-foreground">{hotel.address}</p>
-                    <p className="mt-1 text-muted-foreground">
-                      {hotel.checkin} to {hotel.checkout} · {hotel.adults} adult · {hotel.rooms} room · America/New_York
-                    </p>
-                    {!providerHandoff && (
-                      <p className="mt-1 text-amber-900">Provider hotel booking link unavailable. Use a general hotel search and confirm the property and total.</p>
-                    )}
-                    <p className="mt-1 text-muted-foreground">{hotelHandoff.instructions}</p>
+              {hotel &&
+                (() => {
+                  const providerHandoff = resolveHandoff(hotel.handoffId);
+                  const hotelHandoff =
+                    providerHandoff ?? resolveHandoff("hotel-search");
+                  if (
+                    !hotelHandoff ||
+                    !isAllowedHandoffUrl(hotelHandoff.id, hotelHandoff.href)
+                  )
+                    return null;
+                  return (
+                    <li key="handoff-hotel" className="text-sm">
+                      <p className="font-medium">Hotel: {hotel.name}</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {hotel.address}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        {hotel.checkin} to {hotel.checkout} · {hotel.adults}{" "}
+                        adult · {hotel.rooms} room · America/New_York
+                      </p>
+                      {!providerHandoff && (
+                        <p className="mt-1 text-amber-900">
+                          Provider hotel booking link unavailable. Use a general
+                          hotel search and confirm the property and total.
+                        </p>
+                      )}
+                      <p className="mt-1 text-muted-foreground">
+                        {hotelHandoff.instructions}
+                      </p>
+                      <a
+                        className="mt-2 inline-flex min-h-10 items-center rounded-md border px-3 py-2 text-sm font-medium underline"
+                        href={hotelHandoff.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`${hotelHandoff.label}. ${hotelHandoff.instructions}`}
+                      >
+                        {hotelHandoff.label}
+                      </a>
+                    </li>
+                  );
+                })()}
+            </ul>
+            {request?.mode === "real" &&
+              (() => {
+                const corridor = directions(
+                  "Boston Logan International Airport (BOS)",
+                  "Portland, Maine",
+                  "driving",
+                );
+                const href = corridor.toString();
+                return isAllowedHandoffUrl("maps-directions", href) ? (
+                  <p className="mt-4 text-sm">
                     <a
-                      className="mt-2 inline-flex min-h-10 items-center rounded-md border px-3 py-2 text-sm font-medium underline"
-                      href={hotelHandoff.href}
+                      className="underline"
+                      href={href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      aria-label={`${hotelHandoff.label}. ${hotelHandoff.instructions}`}
+                      aria-label="Open Boston Logan to Portland, Maine corridor directions in Google Maps"
                     >
-                      {hotelHandoff.label}
+                      Open Boston Logan to Portland, Maine corridor directions
+                      in Google Maps
                     </a>
-                  </li>
-                );
+                  </p>
+                ) : null;
               })()}
-            </ul>
-            {result?.request.mode === "real" && (() => {
-              const corridor = directions("Boston Logan International Airport (BOS)", "Portland, Maine", "driving");
-              const href = corridor.toString();
-              return isAllowedHandoffUrl("maps-directions", href) ? (
-                <p className="mt-4 text-sm">
-                  <a
-                    className="underline"
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Open Boston Logan to Portland, Maine corridor directions in Google Maps"
-                  >
-                    Open Boston Logan to Portland, Maine corridor directions in Google Maps
-                  </a>
-                </p>
-              ) : null;
-            })()}
             <p className="mt-4 text-xs text-muted-foreground">
-              Confirm final availability and total on the provider site. Opening a link does not book, reserve, or save this itinerary.
+              Confirm final availability and total on the provider site. Opening
+              a link does not book, reserve, or save this itinerary.
             </p>
           </section>
           <ul className="mt-4 space-y-2 text-sm text-amber-900">

@@ -7,8 +7,6 @@ export type RecoveryStatus =
   | "results"
   | "no_feasible_plan"
   | "partial_results"
-  | "saving"
-  | "saved"
   | "error";
 export type RecoveryState = {
   status: RecoveryStatus;
@@ -17,10 +15,12 @@ export type RecoveryState = {
   sequence: number;
   result: RecoveryResult | null;
   selectedPlanId: string | null;
-  persistence: "unsaved" | "saving" | "saved";
+  persistence: "unsaved" | "saved";
   error: string | null;
 };
 export type RecoveryAction =
+  | { type: "PLAN_SAVED"; sequence: number; planId: string }
+  | { type: "SAVED_PLAN_DELETED" }
   | { type: "RESET" }
   | { type: "INPUT_EDITED" }
   | { type: "REQUEST_STARTED"; request: TripRequest; sequence: number }
@@ -42,6 +42,15 @@ export function recoveryReducer(
   action: RecoveryAction,
 ): RecoveryState {
   switch (action.type) {
+    case "PLAN_SAVED":
+      return action.sequence === state.sequence &&
+        action.planId === state.selectedPlanId &&
+        !state.stale &&
+        ["results", "partial_results"].includes(state.status)
+        ? { ...state, persistence: "saved" }
+        : state;
+    case "SAVED_PLAN_DELETED":
+      return { ...state, persistence: "unsaved" };
     case "RESET":
       return { ...initialRecoveryState, sequence: state.sequence + 1 };
     case "INPUT_EDITED":
@@ -87,6 +96,7 @@ export function recoveryReducer(
       const plan = state.result?.plans.find((p) => p.id === action.planId);
       if (
         state.stale ||
+        !["results", "partial_results"].includes(state.status) ||
         !plan?.selectable ||
         (plan.evidenceExpiresAt &&
           toInstantMillis(plan.evidenceExpiresAt) <=

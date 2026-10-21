@@ -121,3 +121,36 @@ it("keeps the last comparison visibly stale and unselectable after a failed repl
   s = recoveryReducer(s, { type: "RESET" });
   expect(s.result).toBeNull();
 });
+
+it("marks only the same current selection saved and clears its badge on edits or replanning", () => {
+  let s = recoveryReducer(initialRecoveryState, {
+    type: "REQUEST_STARTED",
+    request: f.request,
+    sequence: 1,
+  });
+  s = recoveryReducer(s, { type: "RESULT_RECEIVED", sequence: 1, result });
+  s = recoveryReducer(s, { type: "PLAN_SELECTED", planId: "bus", now: f.now });
+  expect(
+    recoveryReducer(s, { type: "PLAN_SAVED", sequence: 0, planId: "bus" })
+      .persistence,
+  ).toBe("unsaved");
+  expect(
+    recoveryReducer(s, { type: "PLAN_SAVED", sequence: 1, planId: "car" })
+      .persistence,
+  ).toBe("unsaved");
+  s = recoveryReducer(s, { type: "PLAN_SAVED", sequence: 1, planId: "bus" });
+  expect(s.persistence).toBe("saved");
+  expect(recoveryReducer(s, { type: "INPUT_EDITED" }).persistence).toBe(
+    "unsaved",
+  );
+  expect(
+    recoveryReducer(s, {
+      type: "REQUEST_STARTED",
+      sequence: 2,
+      request: f.request,
+    }).persistence,
+  ).toBe("unsaved");
+  expect(recoveryReducer(s, { type: "SAVED_PLAN_DELETED" }).persistence).toBe(
+    "unsaved",
+  );
+});
