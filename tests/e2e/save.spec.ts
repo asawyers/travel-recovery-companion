@@ -409,16 +409,41 @@ test("refreshed manual trip retains editable inputs and priority reranks without
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
   const saved = await page.evaluate((k) => localStorage.getItem(k), key);
+  const refreshResponse = configured
+    ? page.waitForResponse(
+        (response) =>
+          response.url().includes("/functions/v1/recovery") &&
+          response.request().method() === "POST" &&
+          response.request().postDataJSON().investigate === true,
+      )
+    : null;
   await page
     .getByRole("button", { name: "Refresh this plan", exact: true })
     .click();
-  await expect(page.getByTestId("option-card")).toHaveCount(1);
+  let expectedCards = 1;
+  if (refreshResponse) {
+    const response = await refreshResponse;
+    expect(response.ok()).toBe(true);
+    const refreshed = RecoveryResponseSchema.parse(await response.json());
+    await response.finished();
+    expectedCards = refreshed.result.plans.length;
+    expect(expectedCards).toBeGreaterThanOrEqual(1);
+    expect(refreshed.facts.candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "manual-transit", title: "Refresh manual bus" }),
+      ]),
+    );
+  }
+  await expect(
+    page.getByRole("button", { name: "Compare recovery options", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByTestId("option-card")).toHaveCount(expectedCards);
   await expect(page.getByLabel("Operator / service name")).toHaveValue(
     "Refresh manual bus",
   );
   const count = posts.length;
   await page.getByRole("button", { name: "Cheapest", exact: true }).click();
-  await expect(page.getByTestId("option-card")).toHaveCount(1);
+  await expect(page.getByTestId("option-card")).toHaveCount(expectedCards);
   await page
     .getByRole("button", { name: "Choose Refresh manual bus", exact: true })
     .click();

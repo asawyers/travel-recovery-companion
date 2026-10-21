@@ -29,7 +29,7 @@ npm run build
 npm run test:e2e -- tests/e2e/guest.spec.ts
 ```
 
-The revised app passes 187 unit tests across 14 files, TypeScript/Vite build, Deno checks and 29 configured local Brave cases. Flight-specific tests were removed alongside the retired feature. Prior verification includes five real HTTP integration tests, 32 hosted configured-backend Brave cases (also passed locally), 25 earlier hosted core cases and 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
+The revised app passes 187 unit tests across 14 files, TypeScript/Vite build, Deno checks, five real HTTP integration cases, and 29 configured Brave cases both locally and on the deployed app. Flight-specific tests were removed alongside the retired feature. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for another Brave installation. See [verification status](docs/VERIFICATION.md) for current evidence and historical runs.
 
 ## Stack and backend direction
 
@@ -71,7 +71,7 @@ The browser endpoint setting is optional: set `VITE_RECOVERY_API_URL=http://127.
 
 ## Deployment status and setup
 
-[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. GitHub checks and functions-only backend deployment passed. All 32 configured Brave cases passed against the stable HTTPS frontend, including real backend comparison and device save/reload/delete. Native main/branch Git deployments were observed; the author confirmed Production / Ready and Preview / Ready labels. The deployed public API uses wildcard CORS without an origin allowlist. No core hosting blocker remains.
+[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. GitHub checks and functions-only backend deployment passed. All 29 current configured Brave cases passed against the stable HTTPS frontend, including real backend comparison and device save/reload/delete. Native main/branch Git deployments were observed; the author confirmed Production / Ready and Preview / Ready labels. The deployed public API uses wildcard CORS without an origin allowlist. No core hosting blocker remains.
 
 This repository is connected to its dedicated Vercel project using [Vercel’s native GitHub integration](https://vercel.com/docs/git/vercel-for-github). Use the Vite preset, repository root, Node 24, `npm ci`, `npm run build`, `dist` and production branch `main`. Main pushes should produce production deployments; branch/PR pushes should produce previews and GitHub deployment status. Verify both deployed commit SHAs. No Vercel token or custom deploy Action is needed.
 
