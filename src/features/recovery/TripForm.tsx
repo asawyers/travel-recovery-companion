@@ -213,35 +213,6 @@ export function TripForm({
           time is added once.
         </p>
         {text("arrivalAt", "Revised gate arrival", "datetime-local")}
-        {!synthetic && (
-          <>
-            <Choice
-              id="arrivalChoice"
-              label="Arrival time source"
-              value={d.arrivalChoice}
-              onChange={(v) =>
-                update("arrivalChoice", v as Draft["arrivalChoice"])
-              }
-              options={[
-                ["manual", "Use my confirmed gate time"],
-                ["flight-status", "Use flight status when available"],
-              ]}
-            />
-            <p className="text-xs text-muted-foreground">
-              Your confirmed gate time overrides provider arrival. With flight
-              status selected, your entered time is an estimated fallback.
-              Flight lookup is only attempted when you explicitly investigate
-              available sources.
-            </p>
-            {text(
-              "flightIdent",
-              "Flight identifier",
-              "text",
-              "Optional San Diego–Boston flight, for example ASA123.",
-            )}
-            {text("flightDepartureDate", "San Diego departure date", "date")}
-          </>
-        )}
         {text(
           "originalDepartureAt",
           "Original onward departure",

@@ -6,9 +6,9 @@ The motivation is the author's San Diego → Portland journey: a delay on the Sa
 
 ## Current state
 
-[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend is connected to the deployed backend, and the provider-adapter build passes all 32 hosted Brave acceptance cases, including explicitly provider-shaped fixtures. A real Google Routes investigation now passes both direct API and deployed Brave form checks, returning two bus plans with schedule evidence; FlightAware setup remains pending.
+[Open the deployed app](https://travel-recovery-companion.vercel.app). The hosted frontend is connected to the deployed backend, and the traveler-arrival flow passes the configured Brave regression checks, including explicit Google-shaped fixtures. A real Google Routes investigation now passes both direct API and deployed Brave form checks, returning two bus plans with schedule evidence. The traveler supplies their revised gate-arrival time; no flight lookup or delay verification is required.
 
-The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion are verified on the deployed app. Public server comparison and current-tab priority reuse are implemented. The backend is deployed through GitHub Actions and the production frontend is connected. Google Routes is enabled and verified against the live API. The implemented FlightAware adapter remains inactive pending its account/key/usage authorization. Optional hotels and the model agent remain pending.
+The local planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Device-local save, historical restore and explicit deletion are verified on the deployed app. Public server comparison and current-tab priority reuse are implemented. The backend is deployed through GitHub Actions and the production frontend is connected. Google Routes is enabled and verified against the live API. Optional hotels and the model agent remain pending.
 
 There is no sign-in or email workflow. Saving keeps one chosen itinerary on this device's browser profile, with original evidence timestamps and an explicit delete action. It does not sync across devices or purchase tickets/reservations. A restored itinerary is historical until explicitly refreshed.
 
@@ -29,7 +29,7 @@ npm run build
 npm run test:e2e -- tests/e2e/guest.spec.ts
 ```
 
-The latest backend correction passes 225 unit tests, TypeScript/Vite build and Deno entrypoint check. Prior verification includes five real HTTP integration tests, 32 hosted configured-backend Brave cases (also passed locally), 25 earlier hosted core cases and 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
+The revised app passes 187 unit tests across 14 files, TypeScript/Vite build, Deno checks and 29 configured local Brave cases. Flight-specific tests were removed alongside the retired feature. Prior verification includes five real HTTP integration tests, 32 hosted configured-backend Brave cases (also passed locally), 25 earlier hosted core cases and 14 earlier local-only Brave cases, and a TypeScript/Vite production build. Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for a different Brave installation. The final reviewed revision and counts are recorded in the verification status. See [verification status](docs/VERIFICATION.md) for evidence and pending work.
 
 ## Stack and backend direction
 
@@ -39,19 +39,19 @@ The backend validates bounded requests, sanitizes traveler-provided evidence and
 
 Live/schedule/traveler-confirmed/estimated/synthetic facts remain distinct. Unknown charges remain unknown. Optional provider/model access requires explicit usage authorization. Google pay-as-you-go requests without a daily cap have been authorized; other provider setup remains pending. No purchases or reservations are made. This is a challenge prototype. Two hours is an effort estimate, not a hard timer.
 
-## Flight and route providers
+## Arrival input and route discovery
 
-Optional flight input covers a San Diego → Boston flight number and San Diego departure date. Keep the entered gate time as a confirmed override, or choose a flight-status lookup with that time as fallback. Reports keep scheduled, estimated and actual gate times separate from runway touchdown. A verified arrival at/after the destination deadline produces no feasible plan; the deadline is never moved to make it fit.
+Enter the revised gate-arrival time you expect or have confirmed. Asking for recovery options is sufficient; the app does not verify a flight delay or require a flight number, departure date, flight API account or flight-status lookup. It labels that time as traveler-provided and adds airport exit, access, boarding and final-mile time when comparing complete journeys.
 
 Google Routes can supply supported Concord bus and Amtrak/Downeaster rail schedules, including estimated North Station access and final walking. Unsupported multi-vehicle journeys are omitted. Missing fares stay unknown. These schedules/estimates do not establish seats or vehicle inventory. Google-sourced plans remain transient: they can be compared and opened, while device-save is refused with an explanation. Manual saves filter Google alternatives from the stored request.
 
-Live calls default off. Backend-only `FLIGHTAWARE_API_KEY` / `GOOGLE_ROUTES_API_KEY` plus `RECOVERY_PROVIDER_USAGE_APPROVED=true` are required; that switch is not an enforced spending cap. One investigation is bounded to one FlightAware and at most three Google requests. No credentials, provider accounts, paid calls or actual provider coverage were established by fixture tests. Follow the [post-build setup walkthrough](docs/PROVIDER_SETUP.md) before activation. Public [terms](https://travel-recovery-companion.vercel.app/terms) and [privacy](https://travel-recovery-companion.vercel.app/privacy) pages accompany provider content.
+Live calls default off. Backend-only `GOOGLE_ROUTES_API_KEY` plus `RECOVERY_PROVIDER_USAGE_APPROVED=true` are required; that switch is not an enforced spending cap. One investigation is bounded to at most three Google requests. No credentials, provider accounts, paid calls or actual provider coverage were established by fixture tests. Follow the [post-build setup walkthrough](docs/PROVIDER_SETUP.md) before activation. Public [terms](https://travel-recovery-companion.vercel.app/terms) and [privacy](https://travel-recovery-companion.vercel.app/privacy) pages accompany provider content.
 
 ## How a comparison works
 
 The form sends validated trip facts to the public Edge Function. The function limits request size, validates the envelope and relabels browser-supplied provider claims as traveler-confirmed or estimated facts. The shared pure planner builds complete journeys, checks boarding cutoffs and constraints, and ranks them using timestamps and integer USD cents.
 
-The browser validates the response and keeps fresh facts in the current tab. A priority-only change reranks those facts without another request. Saving writes one selected itinerary and its original evidence timestamps to this browser’s local storage; reloading restores a historical snapshot without fetching or booking anything.
+The browser validates the response and keeps fresh route facts in the current tab. Legacy saved flight metadata remains readable as history, but new comparisons discard it and use traveler-confirmed arrival. A priority-only change reranks those facts without another request. Saving writes one selected itinerary and its original evidence timestamps to this browser’s local storage; reloading restores a historical snapshot without fetching or booking anything.
 
 The hosted browser regression checks this complete flow: compare over real HTTP, change priority with zero extra requests, change a factual constraint with a new request, select/save, reload without HTTP, and explicitly delete. Provider-shaped test fixtures are labeled test evidence, not live inventory.
 
@@ -65,7 +65,7 @@ cp .env.integration.example .env.integration.local
 supabase functions serve recovery
 ```
 
-In another terminal, run `npm run test:integration`. The recovery endpoint is `http://127.0.0.1:54321/functions/v1/recovery`. It is intentionally public; no user token or Supabase client key is needed, and it creates no application database rows. Provider/model calls remain disabled until configured; the FlightAware and Google Routes code is fixture-tested.
+In another terminal, run `npm run test:integration`. The recovery endpoint is `http://127.0.0.1:54321/functions/v1/recovery`. It is intentionally public; no user token or Supabase client key is needed, and it creates no application database rows. Provider/model calls remain disabled until configured; Google Routes has fixture and deployed live coverage.
 
 The browser endpoint setting is optional: set `VITE_RECOVERY_API_URL=http://127.0.0.1:54321/functions/v1/recovery` in ignored `.env.local`, then restart Vite. Leaving the setting empty uses the local planner; frontend-only previews need no backend credentials. Never put provider credentials in frontend environment variables.
 

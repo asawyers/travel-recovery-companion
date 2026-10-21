@@ -154,7 +154,12 @@ it("restores manual controls and preserves exact untouched request facts and pro
       "2026-10-22T12:00:00Z",
       original,
     ).request,
-  ).toEqual({ ...original, priority: "cheapest" });
+  ).toEqual({
+    ...original,
+    priority: "cheapest",
+    flight: null,
+    arrivalBasis: "traveler_confirmed",
+  });
   const repriced = buildRequest(
     {
       ...draft,
@@ -204,53 +209,37 @@ it("restores manual rental controls while retaining original options for factual
   ]);
 });
 
-it("keeps an explicit manual gate override and accepts an optional flight lookup", () => {
-  const d = {
-    ...manual(),
-    flightIdent: "ASA123",
-    flightDepartureDate: "2026-11-18",
-  };
+it("accepts the traveler gate arrival without flight details or onward facts", () => {
+  const d = { ...manual(), transit: { ...manual().transit, enabled: false } };
   expect(buildRequest(d, "real", [], now).request).toMatchObject({
+    arrivalAt: "2026-11-18T08:00:30-05:00",
     arrivalBasis: "traveler_confirmed",
-    flight: { ident: "ASA123", departureDate: "2026-11-18" },
+    flight: null,
+    confirmedOptions: [],
   });
 });
-it("uses entered gate time as estimated fallback only when flight status is chosen", () => {
-  const d = {
-    ...manual(),
-    arrivalChoice: "flight-status" as const,
-    flightIdent: "ASA123",
-    flightDepartureDate: "2026-11-18",
-  };
-  expect(buildRequest(d, "real", [], now).request?.arrivalBasis).toBe(
-    "estimated_gate",
-  );
-  expect(
-    buildRequest({ ...d, flightDepartureDate: "" }, "real", [], now).errors
-      .flightDepartureDate,
-  ).toBeTruthy();
-});
-it("restores flight controls, preserves untouched original timestamps and replaces edited lookup fields", () => {
+it("ignores legacy flight lookup fields when comparing a restored trip", () => {
   const original = buildRequest(manual(), "real", [], now).request!;
+  original.arrivalAt = "2026-11-18T13:00:30Z";
   original.arrivalBasis = "actual_gate";
   original.flight = { ident: "ASA123", departureDate: "2026-11-18" };
-  const d = draftFromRequest(original);
-  expect(d).toMatchObject({
-    arrivalChoice: "flight-status",
-    flightIdent: "ASA123",
-    flightDepartureDate: "2026-11-18",
+  const draft = draftFromRequest(original);
+  expect(draft).not.toHaveProperty("arrivalChoice");
+  expect(draft).not.toHaveProperty("flightIdent");
+  expect(draft).not.toHaveProperty("flightDepartureDate");
+  const compared = buildRequest(draft, "real", [], now, original).request!;
+  expect(compared).toMatchObject({
+    arrivalAt: original.arrivalAt,
+    arrivalBasis: "traveler_confirmed",
+    flight: null,
+    confirmedOptions: original.confirmedOptions,
   });
+  expect(original.flight).toEqual({ ident: "ASA123", departureDate: "2026-11-18" });
+  expect(original.arrivalBasis).toBe("actual_gate");
   const changed = buildRequest(
-    { ...d, flightIdent: "ASA456" },
-    "real",
-    [],
-    now,
-    original,
+    { ...draft, arrivalAt: "2026-11-18T08:15:30" }, "real", [], now, original,
   ).request!;
-  expect(changed.flight?.ident).toBe("ASA456");
-  expect(changed.arrivalBasis).toBe("estimated_gate");
-  expect(
-    buildRequest({ ...d, arrivalChoice: "manual" }, "real", [], now, original)
-      .request?.arrivalBasis,
-  ).toBe("traveler_confirmed");
+  expect(changed.arrivalAt).toBe("2026-11-18T08:15:30-05:00");
+  expect(changed.arrivalBasis).toBe("traveler_confirmed");
+  expect(changed.flight).toBeNull();
 });

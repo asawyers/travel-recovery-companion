@@ -47,10 +47,9 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
               Your trip inputs are compared locally or sent to the configured
               public planner when you compare. When you explicitly choose
               “Investigate available sources,” relevant current inputs may be
-              sent to available third-party services: flight identifier and San
-              Diego departure date for flight status, and route, travel time and
-              relevant transport choices for route estimates. Optional services
-              can be disabled or unavailable.
+              sent to Google Maps: route, travel time and relevant transport
+              choices for route estimates and transit schedules. This optional
+              service can be disabled or unavailable.
             </p>
             <p>
               Traveler-entered and fictional device snapshots are stored in

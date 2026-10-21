@@ -2,8 +2,8 @@ import { ADAPTER_REVISION, MAX_FACT_AGE_MS, RecoveryInputSchema, RecoveryRespons
 import type { RecoveryResponse } from '../domain/api.ts'
 import { normalizeCandidates } from '../domain/candidates.ts'
 import { planRecovery } from '../domain/planner.ts'
-import { FlightStatusReportSchema, PlanningTripRequestSchema, SourceEvidenceSchema, TripRequestSchema } from '../domain/schemas.ts'
-import type { ConfirmedOption, FlightStatusReport, SourceEvidence, TripRequest } from '../domain/schemas.ts'
+import { PlanningTripRequestSchema, SourceEvidenceSchema, TripRequestSchema } from '../domain/schemas.ts'
+import type { ConfirmedOption, SourceEvidence, TripRequest } from '../domain/schemas.ts'
 import { toInstantMillis, toTripLocalTime } from '../domain/time.ts'
 import { HttpError, corsHeaders, jsonResponse, readJson } from './http.ts'
 import type { ProviderFacts, ProviderRegistry } from './providers.ts'
@@ -39,17 +39,17 @@ function safeProviderEvidence(evidence: SourceEvidence, mode: TripRequest['mode'
 }
 function sanitizeRequest(request: TripRequest): TripRequest {
   return TripRequestSchema.parse({
-    ...request, arrivalBasis: request.arrivalBasis === 'actual_gate' ? 'traveler_confirmed' : request.arrivalBasis === 'scheduled_gate' ? 'estimated_gate' : request.arrivalBasis,
+    ...request, flight: null, arrivalBasis: request.mode === 'real' ? 'traveler_confirmed' : request.arrivalBasis === 'actual_gate' ? 'traveler_confirmed' : request.arrivalBasis === 'scheduled_gate' ? 'estimated_gate' : request.arrivalBasis,
     confirmedOptions: mapEvidence(request.confirmedOptions, evidence => sanitizeEvidence(evidence, request.mode)),
   })
 }
 function arrivalEvidence(request: TripRequest, checkedAt: string): SourceEvidence[] {
   return [{
     type: request.mode === 'synthetic' ? 'synthetic' : request.arrivalBasis === 'traveler_confirmed' ? 'traveler_confirmed' : 'estimated',
-    environment: request.mode === 'synthetic' ? 'synthetic' : 'production', provider: request.mode === 'synthetic' ? 'Fictional traveler arrival' : 'Traveler arrival input (not server verified)',
+    environment: request.mode === 'synthetic' ? 'synthetic' : 'production', provider: request.mode === 'synthetic' ? 'Fictional traveler arrival' : 'Traveler arrival input',
     sourceUrl: null, checkedAt, serviceDate: toTripLocalTime(request.arrivalAt).slice(0, 10), providerUpdatedAt: null,
     expiresAt: new Date(toInstantMillis(checkedAt) + MAX_FACT_AGE_MS).toISOString(),
-    warnings: [request.mode === 'synthetic' ? 'Fictional arrival; no actual flight status was checked.' : PROVENANCE_WARNING],
+    warnings: request.mode === 'synthetic' ? ['Fictional arrival; used only for this example.'] : [],
   }]
 }
 async function investigate(providers: ProviderRegistry, request: TripRequest): Promise<ProviderFacts> {
@@ -77,10 +77,9 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
       // Collection uses real server time, including explicitly fictional trips.
       const checkedAt = deps.now()
       let request = sanitizeRequest(parsed.data.request)
-      let evidence = arrivalEvidence(request, checkedAt)
+      const evidence = arrivalEvidence(request, checkedAt)
       const warnings: string[] = []
       let extraCandidates: unknown[] = []
-      let flightStatus: FlightStatusReport | undefined
       if (parsed.data.investigate && request.mode === 'synthetic') warnings.push('Optional live investigation is unavailable for synthetic trips; fictional supplied facts were compared.')
       if (parsed.data.investigate && request.mode === 'real') {
         try {
@@ -89,24 +88,6 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
           const adapted = normalizeCandidates(request, extra.candidates)
           extraCandidates = adapted.candidates.map(candidate => mapEvidence(candidate, item => safeProviderEvidence(item, request.mode)))
           warnings.push(...adapted.warnings)
-          if (extra.flightStatus !== undefined) {
-            const report = FlightStatusReportSchema.safeParse(extra.flightStatus)
-            if (report.success) flightStatus = report.data
-            else warnings.push('Optional flight status investigation is unavailable; the report failed validation.')
-          }
-          if (extra.arrival && request.arrivalBasis !== 'traveler_confirmed') {
-            try {
-              if (!extra.arrivalEvidence?.length || extra.arrivalEvidence.length > 16) throw new Error('Missing arrival provenance')
-              const enriched = PlanningTripRequestSchema.parse({ ...request, ...extra.arrival })
-              const enrichedEvidence = extra.arrivalEvidence.map(item => SourceEvidenceSchema.parse(item))
-              const consistent = enrichedEvidence.every(item => request.mode === 'synthetic'
-                ? item.type === 'synthetic' && item.environment === 'synthetic'
-                : item.environment === 'production' && item.type !== 'synthetic' && (enriched.arrivalBasis !== 'actual_gate' || item.type === 'live'))
-              if (!consistent) throw new Error('Invalid arrival mode')
-              request = enriched
-              evidence = enrichedEvidence.map(item => safeProviderEvidence(item, request.mode))
-            } catch { warnings.push('Optional arrival investigation is unavailable; traveler arrival input was retained.') }
-          }
           warnings.push(...boundedNotes(extra.warnings))
         } catch { warnings.push('Optional provider investigation is unavailable; supplied manual facts were retained. No live availability was checked.') }
       }
@@ -123,12 +104,10 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
       const candidates: ConfirmedOption[] = normalized.candidates
       request = PlanningTripRequestSchema.parse({ ...request, confirmedOptions: candidates })
       const result = planRecovery(request, candidates, { now: checkedAt })
-      if (flightStatus) result.flightStatus = flightStatus
       result.warnings = boundedNotes([...result.warnings, ...normalized.warnings, ...warnings])
       const expiresAt = [new Date(toInstantMillis(checkedAt) + MAX_FACT_AGE_MS).toISOString(),
         ...originalExpiries([candidates, evidence])].sort((a, b) => toInstantMillis(a) - toInstantMillis(b))[0]
       const body: RecoveryResponse = RecoveryResponseSchema.parse({ result, facts: {
-        ...(flightStatus ? { flightStatus } : {}),
         candidates, arrival: { arrivalAt: request.arrivalAt, arrivalBasis: request.arrivalBasis }, arrivalEvidence: evidence,
         checkedAt, expiresAt, adapterRevision: ADAPTER_REVISION,
       } })

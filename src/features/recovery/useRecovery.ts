@@ -134,7 +134,6 @@ export function useRecovery() {
           facts.candidates,
           { now },
         );
-        if (facts.flightStatus) result.flightStatus = facts.flightStatus;
         result.warnings = [
           ...new Set([...result.warnings, ...cachedWarnings.current]),
         ];

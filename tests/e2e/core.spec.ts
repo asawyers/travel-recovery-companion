@@ -154,7 +154,7 @@ for (const outcome of ["result", "failure"]) {
     expect(count).toBe(2);
   });
 }
-test("validated provider-shaped TEST FIXTURE retains enriched arrival and source timestamps on zero-call priority reranking", async ({
+test("validated provider-shaped TEST FIXTURE retains traveler arrival and source timestamps on zero-call priority reranking", async ({
   page,
 }) => {
   let posts = 0;
@@ -188,7 +188,7 @@ test("validated provider-shaped TEST FIXTURE retains enriched arrival and source
   const candidates = convert(f.candidates);
   const arrival = {
     arrivalAt: "2026-11-18T08:05:00-05:00",
-    arrivalBasis: "actual_gate" as const,
+    arrivalBasis: "traveler_confirmed" as const,
   };
   const request = {
     ...f.request,
@@ -215,7 +215,7 @@ test("validated provider-shaped TEST FIXTURE retains enriched arrival and source
     await route.fulfill({ json: body });
   });
   await page.goto("/");
-  await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
+  await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:05");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
   await page.getByLabel("Final destination deadline").fill("2026-11-18T14:00");
   await compare(page);
@@ -238,7 +238,8 @@ test("validated provider-shaped TEST FIXTURE retains enriched arrival and source
     JSON.parse(localStorage.getItem("travel-recovery:selected:v1")!),
   );
   expect(saved.request.arrivalAt).toBe(arrival.arrivalAt);
-  expect(saved.request.arrivalBasis).toBe("actual_gate");
+  expect(saved.request.arrivalBasis).toBe("traveler_confirmed");
+  expect(saved.request.flight).toBeNull();
   expect(saved.request.confirmedOptions).toEqual(candidates);
   expect(posts).toBe(1);
   expect(providerCalls).toBe(1);

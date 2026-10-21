@@ -108,6 +108,7 @@ export const PlanningTripRequestSchema = z.strictObject({
   destination: text.refine(value => /\bPortland\s*,?\s*(?:ME|Maine)\b/i.test(value) && !/\b(?:Oregon|OR)\b/i.test(value), 'Supported coverage is BOS to a public destination in Portland, Maine (Portland, ME)'),
   timeZone: z.literal('America/New_York'), arrivalAt: timestamp,
   arrivalBasis: z.enum(['actual_gate', 'estimated_gate', 'scheduled_gate', 'traveler_confirmed']),
+  // Retain metadata from saved itineraries; recovery planning does not look up flights.
   flight: z.strictObject({ ident: id, departureDate: dateOnly }).nullable(), originalDepartureAt: timestamp,
   originalAccessMinutes: minutes, originalBoardingMinutes: minutes, airportExitMinutes: minutes,
   deadlineAt: timestamp, budgetCents: cents.nullable(), budgetMode: z.enum(['hard', 'soft']),
@@ -140,15 +141,7 @@ export const RecoveryPlanSchema = z.strictObject({
 })
 export type RecoveryPlan = z.infer<typeof RecoveryPlanSchema>
 
-export const FlightStatusReportSchema = z.strictObject({
-  ident: id, faFlightId: id, scheduledIn: timestamp.nullable(), estimatedIn: timestamp.nullable(),
-  actualIn: timestamp.nullable(), actualOn: timestamp.nullable(),
-  outcome: z.enum(['gate_available', 'runway_only', 'cancelled', 'diverted', 'position_only']),
-})
-export type FlightStatusReport = z.infer<typeof FlightStatusReportSchema>
-
 export const RecoveryResultSchema = z.strictObject({
-  flightStatus: FlightStatusReportSchema.optional(),
   request: PlanningTripRequestSchema, generatedAt: timestamp,
   originalConnection: z.strictObject({ readyAt: timestamp, requiredReadyAt: timestamp, marginMinutes: z.number().min(-10_080).max(10_080), shortfallMinutes: z.number().min(0).max(10_080), missed: z.boolean() }),
   plans: z.array(RecoveryPlanSchema).max(12), rejected: z.array(RecoveryPlanSchema).max(12), warnings: notes,

@@ -19,7 +19,6 @@ import {
   emptyDraft,
 } from "@/features/recovery/formModel";
 import type { Draft, FormErrors } from "@/features/recovery/formModel";
-import { FlightStatusPanel } from "@/features/recovery/FlightStatusPanel";
 import {
   containsGoogleRoutes,
   GOOGLE_SAVE_MESSAGE,
@@ -117,7 +116,15 @@ function RecoveryApp() {
   }
   function refreshSaved() {
     if (!recovery.saved) return;
-    const request = refreshRequest(recovery.saved);
+    const historical = refreshRequest(recovery.saved);
+    const request: TripRequest = {
+      ...historical,
+      flight: null,
+      arrivalBasis:
+        historical.mode === "real"
+          ? "traveler_confirmed"
+          : historical.arrivalBasis,
+    };
     const clock =
       request.mode === "synthetic"
         ? recovery.saved.generatedAt
@@ -242,7 +249,6 @@ function RecoveryApp() {
                 </AlertDescription>
               </Alert>
             )}
-            <FlightStatusPanel report={state.result?.flightStatus} />
             <OptionList
               result={state.result}
               selectedId={state.selectedPlanId}
