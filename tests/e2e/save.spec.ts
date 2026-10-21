@@ -365,3 +365,72 @@ test("API-created hotel absent from original input saves and restores every deta
   ).toEqual(stored.plan.hotel);
   expect(posts).toBe(1);
 });
+
+test("refreshed manual trip retains editable inputs and priority reranks without another request", async ({
+  page,
+}) => {
+  const posts: any[] = [];
+  page.on("request", (request) => {
+    if (
+      request.url().includes("/functions/v1/recovery") &&
+      request.method() === "POST"
+    )
+      posts.push(request.postDataJSON());
+  });
+  await page.goto("/");
+  const configured = !(
+    await page.getByTestId("provenance-banner").textContent()
+  )?.includes("compared locally");
+  await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
+  await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
+  await page.getByLabel("Final destination deadline").fill("2026-11-18T14:00");
+  await page.getByText("Add a confirmed train or bus", { exact: true }).click();
+  await page.getByLabel("Include this transit option").check();
+  for (const [label, value] of [
+    ["Operator / service name", "Refresh manual bus"],
+    ["Transit departure", "2026-11-18T10:00"],
+    ["Transit arrival", "2026-11-18T12:00"],
+    ["Departure terminal", "Boston terminal"],
+    ["Arrival terminal", "Portland terminal"],
+    ["Access minutes", "15"],
+    ["Final transfer minutes", "20"],
+    ["Fare (USD)", "35"],
+    ["Access cost (USD)", "0"],
+    ["Final transfer cost (USD)", "0"],
+  ])
+    await page.getByLabel(label, { exact: true }).fill(value);
+  await page
+    .getByRole("button", { name: "Compare recovery options", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Choose Refresh manual bus", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Save on this device", exact: true })
+    .click();
+  const saved = await page.evaluate((k) => localStorage.getItem(k), key);
+  await page
+    .getByRole("button", { name: "Refresh this plan", exact: true })
+    .click();
+  await expect(page.getByTestId("option-card")).toHaveCount(1);
+  await expect(page.getByLabel("Operator / service name")).toHaveValue(
+    "Refresh manual bus",
+  );
+  const count = posts.length;
+  await page.getByRole("button", { name: "Cheapest", exact: true }).click();
+  await expect(page.getByTestId("option-card")).toHaveCount(1);
+  await page
+    .getByRole("button", { name: "Choose Refresh manual bus", exact: true })
+    .click();
+  expect(posts).toHaveLength(count);
+  expect(posts).toHaveLength(configured ? 2 : 0);
+  if (configured)
+    expect(posts.map((post) => post.request.confirmedOptions.length)).toEqual([
+      1, 1,
+    ]);
+  else
+    await expect(page.getByTestId("saved-plan")).toContainText(
+      "new local comparison",
+    );
+  expect(await page.evaluate((k) => localStorage.getItem(k), key)).toBe(saved);
+});

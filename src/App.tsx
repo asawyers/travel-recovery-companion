@@ -24,6 +24,9 @@ function App() {
   const [mode, setMode] = useState<TripRequest["mode"]>("real");
   const [exampleOptions, setExampleOptions] = useState<ConfirmedOption[]>([]);
   const [exampleNow, setExampleNow] = useState<string | null>(null);
+  const [restoredRequest, setRestoredRequest] = useState<
+    TripRequest | undefined
+  >();
   const [investigate, setInvestigate] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -69,16 +72,24 @@ function App() {
     };
     if (confirmed.transit !== next.transit || confirmed.car !== next.car)
       setDraft(confirmed);
-    const built = buildRequest(confirmed, nextMode, options, clock);
+    const built = buildRequest(
+      confirmed,
+      nextMode,
+      options,
+      clock,
+      restoredRequest,
+    );
     setErrors(built.errors);
     setWarnings(built.warnings);
-    if (built.request)
+    if (built.request) {
+      setInvestigate(false);
       void recovery.compare(built.request, clock, investigateSources);
-    else recovery.edit();
+    } else recovery.edit();
   }
   function example(kind: "daytime" | "overnight") {
     const f = kind === "daytime" ? daytimeFixture() : overnightFixture();
     recovery.reset();
+    setRestoredRequest(undefined);
     setInvestigate(false);
     setMode("synthetic");
     setExampleOptions(f.candidates);
@@ -89,6 +100,7 @@ function App() {
   }
   function real() {
     recovery.reset();
+    setRestoredRequest(undefined);
     setInvestigate(false);
     setMode("real");
     setDraft(emptyDraft());
@@ -105,6 +117,8 @@ function App() {
         ? recovery.saved.generatedAt
         : new Date().toISOString();
     recovery.edit();
+    setRestoredRequest(request);
+    setInvestigate(false);
     setDraft(draftFromRequest(request));
     setMode(request.mode);
     setExampleOptions(
@@ -119,7 +133,7 @@ function App() {
           ]
         : [],
     );
-    void recovery.compare(request, clock);
+    void recovery.compare(request, clock, recovery.configured);
   }
   function refine(change: "cheapest" | "no-driving") {
     const next: Draft = {
@@ -271,6 +285,7 @@ function App() {
               <SavedPlanPanel
                 saved={recovery.saved}
                 busy={busy}
+                configured={recovery.configured}
                 onDelete={recovery.deleteSaved}
                 onRefresh={refreshSaved}
               />

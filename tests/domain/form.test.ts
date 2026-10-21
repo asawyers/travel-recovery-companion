@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRequest,
+  draftFromRequest,
   emptyDraft,
 } from "../../src/features/recovery/formModel";
 import { planRecovery } from "@domain/planner";
@@ -133,4 +134,72 @@ it("explains invalid transit chronology while retaining a supported rental and e
     "manual-car",
   ]);
   expect(d.transit.arrival).toBe("2026-11-18T09:00");
+});
+
+it("restores manual controls and preserves exact untouched request facts and provenance", () => {
+  const original = buildRequest(manual(), "real", [], now).request!;
+  original.arrivalAt = "2026-11-18T13:00:30Z";
+  original.arrivalBasis = "actual_gate";
+  original.flight = { ident: "TEST123", departureDate: "2026-11-18" };
+  original.confirmedOptions[0].evidence[0].provider =
+    "Previously sanitized source";
+  const draft = draftFromRequest(original);
+  expect(draft.transit.enabled).toBe(true);
+  expect(draft.transit.title).toBe("Traveler bus");
+  expect(
+    buildRequest(
+      { ...draft, priority: "cheapest" },
+      "real",
+      [],
+      "2026-10-22T12:00:00Z",
+      original,
+    ).request,
+  ).toEqual({ ...original, priority: "cheapest" });
+  const repriced = buildRequest(
+    {
+      ...draft,
+      transit: {
+        ...draft.transit,
+        fare: "42",
+        checkedAt: "2026-10-22T12:00:00Z",
+      },
+    },
+    "real",
+    [],
+    now,
+    original,
+  ).request!;
+  expect(repriced.confirmedOptions).toHaveLength(1);
+  expect(repriced.confirmedOptions[0]).toMatchObject({
+    fareCents: 4200,
+    evidence: [{ checkedAt: "2026-10-22T12:00:00Z" }],
+  });
+  expect(original.confirmedOptions[0]).toMatchObject({ fareCents: 3500 });
+});
+
+it("restores manual rental controls while retaining original options for factual constraint edits", () => {
+  const input = manual();
+  input.car = enteredCar();
+  const original = buildRequest(input, "real", [], now).request!;
+  const restored = draftFromRequest(original);
+  expect(restored.car).toEqual(input.car);
+  const budgetChange = buildRequest(
+    { ...restored, budget: "200" },
+    "real",
+    [],
+    now,
+    original,
+  ).request!;
+  expect(budgetChange.budgetCents).toBe(20000);
+  expect(budgetChange.confirmedOptions).toEqual(original.confirmedOptions);
+  const removedCar = buildRequest(
+    { ...restored, car: { ...restored.car, enabled: false } },
+    "real",
+    [],
+    now,
+    original,
+  ).request!;
+  expect(removedCar.confirmedOptions.map((option) => option.id)).toEqual([
+    "manual-transit",
+  ]);
 });

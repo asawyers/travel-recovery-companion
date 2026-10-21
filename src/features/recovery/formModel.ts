@@ -119,7 +119,7 @@ function omissionCause(error: unknown, fallback: string): string {
 export const localInput = (at: string) =>
   toTripLocalTime(at).replace(/(?:Z|[+-]\d{2}:\d{2})$/, "");
 export function draftFromRequest(r: TripRequest): Draft {
-  return {
+  const draft: Draft = {
     ...emptyDraft(),
     arrivalAt: localInput(r.arrivalAt),
     originalDepartureAt: localInput(r.originalDepartureAt),
@@ -136,15 +136,81 @@ export function draftFromRequest(r: TripRequest): Draft {
     checkout: r.stay?.checkout ?? "",
     guestNationality: r.stay?.guestNationality ?? "",
   };
+  const usd = (cents: number | null | undefined) =>
+    cents == null ? "" : String(cents / 100);
+  for (const option of r.mode === "real" ? r.confirmedOptions : []) {
+    if (
+      (option.kind === "bus" || option.kind === "train") &&
+      option.id === "manual-transit"
+    )
+      draft.transit = {
+        ...draft.transit,
+        enabled: true,
+        kind: option.kind,
+        title: option.title,
+        departure: localInput(option.departureAt),
+        arrival: localInput(option.arrivalAt),
+        fare: usd(option.fareCents),
+        departureTerminal: option.access.to,
+        arrivalTerminal: option.finalTransfer.from,
+        accessMinutes: String(option.access.minutes),
+        accessCost: usd(option.access.costCents),
+        finalMinutes: String(option.finalTransfer.minutes),
+        finalCost: usd(option.finalTransfer.costCents),
+        boardingMinutes: String(option.boardingMinutes),
+        accessKind: option.access.kind,
+        finalKind: option.finalTransfer.kind,
+        accessVehicle: option.access.vehicleId ?? "",
+        finalVehicle: option.finalTransfer.vehicleId ?? "",
+        estimated: option.evidence.some((item) => item.type === "estimated"),
+        checkedAt: option.evidence[0].checkedAt,
+      };
+    if (option.kind === "car" && option.id === "manual-car") {
+      const charge = (label: string) =>
+        usd(option.costs.find((cost) => cost.label === label)?.cents);
+      draft.car = {
+        ...draft.car,
+        enabled: true,
+        title: option.title,
+        pickup: option.access.to,
+        dropoff: option.finalTransfer.from,
+        accessMinutes: String(option.access.minutes),
+        accessCost: usd(option.access.costCents),
+        pickupMinutes: String(option.pickupMinutes),
+        driveMinutes: String(option.driveMinutes),
+        returnMinutes: String(option.returnMinutes),
+        walkMinutes: String(option.finalTransfer.minutes),
+        rental: charge("Rental"),
+        fees: charge("Tax / one-way fees"),
+        fuel: charge("Fuel"),
+        tolls: charge("Tolls"),
+        other: charge("Other charges"),
+        pickupConfirmed: option.pickupHoursConfirmed,
+        returnConfirmed: option.returnLocationConfirmed,
+        checkedAt: option.evidence[0].checkedAt,
+      };
+    }
+  }
+  return draft;
 }
 export function buildRequest(
   d: Draft,
   mode: TripRequest["mode"],
   exampleOptions: ConfirmedOption[],
   now: string,
+  restoredRequest?: TripRequest,
 ): { request: TripRequest | null; errors: FormErrors; warnings: string[] } {
   const errors: FormErrors = {};
   const warnings: string[] = [];
+  // Restored inputs are historical source data, never a seed for the facts cache.
+  const original = restoredRequest?.mode === mode ? restoredRequest : undefined;
+  const originalDraft = original ? draftFromRequest(original) : undefined;
+  const unchangedTransit =
+    !!originalDraft &&
+    JSON.stringify(d.transit) === JSON.stringify(originalDraft.transit);
+  const unchangedCar =
+    !!originalDraft &&
+    JSON.stringify(d.car) === JSON.stringify(originalDraft.car);
   function parse<T>(
     key: string,
     schema: z.ZodType<T>,
@@ -155,8 +221,13 @@ export function buildRequest(
     errors[key] = r.error.issues[0]?.message ?? "Check this value";
     return undefined;
   }
-  function date(key: string, value: string): string | undefined {
+  function date(
+    key: "arrivalAt" | "originalDepartureAt" | "deadlineAt",
+    value: string,
+  ): string | undefined {
     try {
+      if (original && originalDraft && value === originalDraft[key])
+        return original[key];
       return localDateTimeToOffset(value);
     } catch {
       errors[key] =
@@ -202,7 +273,14 @@ export function buildRequest(
         errors[String(issue.path[0] ?? "checkin")] = issue.message;
   }
   if (Object.keys(errors).length) return { request: null, errors, warnings };
-  const options = mode === "synthetic" ? exampleOptions : [];
+  const options =
+    mode === "synthetic"
+      ? [...exampleOptions]
+      : (original?.confirmedOptions ?? []).filter(
+          (option) =>
+            (option.id !== "manual-transit" || unchangedTransit) &&
+            (option.id !== "manual-car" || unchangedCar),
+        );
   const evidence = (
     provider: string,
     at: string,
@@ -258,7 +336,7 @@ export function buildRequest(
         : "Traveler-supplied transfer duration; an unspecified vehicle counts as a separate vehicle.",
     ],
   });
-  if (mode === "real" && d.transit.enabled) {
+  if (mode === "real" && d.transit.enabled && !unchangedTransit) {
     try {
       const t = d.transit;
       const departureAt = localDateTimeToOffset(t.departure);
@@ -310,7 +388,7 @@ export function buildRequest(
       );
     }
   }
-  if (mode === "real" && d.car.enabled) {
+  if (mode === "real" && d.car.enabled && !unchangedCar) {
     try {
       const c = d.car;
       const exitAt = addMinutes(arrivalAt!, airportExitMinutes!);
@@ -385,8 +463,11 @@ export function buildRequest(
     destination: "Portland, ME",
     timeZone: "America/New_York",
     arrivalAt,
-    arrivalBasis: "traveler_confirmed",
-    flight: null,
+    arrivalBasis:
+      original && d.arrivalAt === originalDraft?.arrivalAt
+        ? original.arrivalBasis
+        : "traveler_confirmed",
+    flight: original?.flight ?? null,
     originalDepartureAt,
     originalAccessMinutes,
     originalBoardingMinutes,

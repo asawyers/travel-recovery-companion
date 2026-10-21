@@ -7,11 +7,13 @@ export function SavedPlanPanel({
   onDelete,
   onRefresh,
   busy,
+  configured,
 }: {
   saved: SavedSelection;
   onDelete: () => void;
   onRefresh: () => void;
   busy: boolean;
+  configured: boolean;
 }) {
   const expired =
     saved.plan.evidenceExpiresAt &&
@@ -49,9 +51,9 @@ export function SavedPlanPanel({
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Refresh starts a new local comparison with the original source
-        timestamps. Previous provider checks need manual reconfirmation; no live
-        availability is fetched.
+        {configured
+          ? "Refresh asks the public planner to investigate available sources and compare the original inputs. Sources may be unavailable; warnings report what was checked. Original source timestamps are retained."
+          : "Refresh starts a new local comparison with the original source timestamps. Previous provider checks need manual reconfirmation; no live availability is fetched."}
       </p>
       <ItineraryPanel
         plan={saved.plan}

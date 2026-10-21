@@ -334,3 +334,83 @@ test("manual confirmation timestamps survive priority-only input edits without a
   );
   expect(posts).toHaveLength(1);
 });
+
+test("investigation is consumed once and a priority form submit reuses the checked facts", async ({
+  page,
+}) => {
+  const posts: any[] = [];
+  page.on("request", (request) => {
+    if (
+      request.url().includes("/functions/v1/recovery") &&
+      request.method() === "POST"
+    )
+      posts.push(request.postDataJSON());
+  });
+  await page.goto("/");
+  await daytime(page);
+  await page.getByLabel("Investigate available sources").check();
+  await compare(page);
+  await expect(page.getByTestId("option-card")).toHaveCount(3);
+  expect(posts[1].investigate).toBe(true);
+  await expect(
+    page.getByLabel("Investigate available sources"),
+  ).not.toBeChecked();
+  await page.getByLabel("Priority", { exact: true }).selectOption("cheapest");
+  await compare(page);
+  await expect(page.getByTestId("option-card").first()).toContainText(
+    "intercity bus",
+  );
+  expect(posts).toHaveLength(2);
+});
+test("configured saved-plan refresh explicitly investigates", async ({
+  page,
+}) => {
+  const posts: any[] = [];
+  page.on("request", (request) => {
+    if (
+      request.url().includes("/functions/v1/recovery") &&
+      request.method() === "POST"
+    )
+      posts.push(request.postDataJSON());
+  });
+  await page.goto("/");
+  await daytime(page);
+  await page
+    .getByRole("button", {
+      name: "Choose Fictional intercity bus",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Save on this device", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Refresh this plan", exact: true })
+    .click();
+  await expect(page.getByTestId("option-card")).toHaveCount(3);
+  expect(posts.map((post) => post.investigate)).toEqual([false, true]);
+});
+test("configured saved-plan wording describes public investigation without promising live results", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await daytime(page);
+  await page
+    .getByRole("button", {
+      name: "Choose Fictional intercity bus",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Save on this device", exact: true })
+    .click();
+  await expect(page.getByTestId("saved-plan")).toContainText(
+    "Refresh asks the public planner",
+  );
+  await expect(page.getByTestId("saved-plan")).toContainText(
+    "may be unavailable",
+  );
+  await expect(page.getByTestId("saved-plan")).not.toContainText(
+    "new local comparison",
+  );
+});
