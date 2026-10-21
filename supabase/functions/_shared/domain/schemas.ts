@@ -128,7 +128,8 @@ export type JourneyLeg = z.infer<typeof JourneyLegSchema>
 
 export const RecoveryPlanSchema = z.strictObject({
   id, title: text, legs: z.array(JourneyLegSchema).max(96), finalArrivalAt: timestamp,
-  hotel: HotelOptionSchema.nullable(), durationMinutes: minutes, knownCostCents: cents,
+  // Elapsed timestamps can carry seconds; traveler-supplied minute allowances remain integers.
+  hotel: HotelOptionSchema.nullable(), durationMinutes: z.number().finite().min(0).max(10_080), knownCostCents: cents,
   priceComplete: z.boolean(), transfers: z.number().int().min(0).max(96),
   feasibility: z.enum(['schedule_feasible', 'requires_confirmation', 'infeasible']),
   violations: notes, warnings: notes, selectable: z.boolean(), evidenceExpiresAt: timestamp.nullable(),

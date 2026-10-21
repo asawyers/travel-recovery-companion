@@ -129,11 +129,11 @@ describe('planner boundary invariants', () => {
     expect(run(f).plans.find(p => p.id === 'bus')?.transfers).toBe(1)
   })
   it('uses elapsed minutes across an explicit-offset DST jump', () => {
-    const f = day(); f.request.arrivalAt = '2026-03-08T01:00:00-05:00'; f.request.deadlineAt = '2026-03-08T12:00:00-04:00'; f.request.originalDepartureAt = '2026-03-08T03:00:00-04:00'
+    const f = day(); f.request.arrivalAt = '2026-03-08T01:00:30-05:00'; f.request.deadlineAt = '2026-03-08T12:00:00-04:00'; f.request.originalDepartureAt = '2026-03-08T03:00:00-04:00'
     const b = busOf(f); b.departureAt = '2026-03-08T03:30:00-04:00'; b.arrivalAt = '2026-03-08T05:50:00-04:00'
     b.evidence[0].serviceDate = '2026-03-08'; b.access.evidence[0].serviceDate = '2026-03-08'; b.finalTransfer.evidence[0].serviceDate = '2026-03-08'
     f.candidates = [b]
-    expect(run(f).plans[0]).toMatchObject({ finalArrivalAt: '2026-03-08T06:10:00-04:00', durationMinutes: 250 })
+    expect(run(f).plans[0]).toMatchObject({ finalArrivalAt: '2026-03-08T06:10:00-04:00', durationMinutes: 249.5 })
   })
   it('returns at most three choices and rejects malformed requests or clock inputs', () => {
     const f = day(); const b = busOf(f); f.candidates = ['d', 'c', 'b', 'a'].map(id => ({ ...structuredClone(b), id }))
@@ -150,6 +150,18 @@ describe('bounded diagnostics', () => {
     expect(b?.selectable).toBe(true)
     expect(b?.warnings.length).toBeLessThanOrEqual(32)
     expect(b?.warnings.join()).toMatch(/additional.*notes/i)
+    expect(RecoveryResultSchema.safeParse(r).success).toBe(true)
+  })
+})
+
+describe('precise gate-arrival timestamps', () => {
+  it('preserves second-level elapsed durations without discarding scheduled journeys', () => {
+    const f = day(); f.request.arrivalAt = '2026-11-18T08:00:30-05:00'
+    const r = run(f)
+    expect(r.plans.map(p => p.id)).toEqual(['car', 'bus', 'train'])
+    expect(r.plans.find(p => p.id === 'train')).toMatchObject({ durationMinutes: 289.5, finalArrivalAt: '2026-11-18T12:50:00-05:00' })
+    expect(r.plans.find(p => p.id === 'bus')).toMatchObject({ durationMinutes: 249.5, finalArrivalAt: '2026-11-18T12:10:00-05:00' })
+    expect(r.originalConnection).toMatchObject({ marginMinutes: -15.5, shortfallMinutes: 15.5, readyAt: '2026-11-18T09:15:30-05:00' })
     expect(RecoveryResultSchema.safeParse(r).success).toBe(true)
   })
 })
