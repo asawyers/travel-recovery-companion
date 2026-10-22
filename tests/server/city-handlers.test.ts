@@ -182,6 +182,36 @@ describe('city HTTP boundary', () => {
     expect(body.facts.candidates[0].evidence[0]).toMatchObject({ checkedAt: evidence.checkedAt, expiresAt: evidence.expiresAt })
     expect(Date.parse(body.facts.expiresAt)).toBe(Date.parse(evidence.expiresAt))
   })
+  it('refreshes collection expiry for old manual checks without inventing a source expiry', async () => {
+    const input = realRequest()
+    const originalCheck = new Date(Date.parse(now()) - 6 * 60_000).toISOString()
+    const evidence = input.confirmedOptions[0].evidence[0]
+    evidence.type = 'traveler_confirmed'; evidence.checkedAt = originalCheck; evidence.expiresAt = null
+    const response = await setup().handler(post({ request: input, investigate: false }))
+    expect(response.status).toBe(200)
+    const body = CityRecoveryResponseSchema.parse(await response.json())
+    expect(body.result.plans[0]).toMatchObject({ selectable: true, evidenceExpiresAt: null })
+    expect(body.facts.candidates[0].evidence[0]).toMatchObject({ checkedAt: originalCheck, expiresAt: null })
+    expect(Date.parse(body.facts.checkedAt)).toBe(Date.parse(now()))
+    expect(Date.parse(body.facts.expiresAt)).toBe(Date.parse(now()) + 300_000)
+  })
+  it('bounds refreshed old manual facts by fresh provider explicit expiry without renewing either source', async () => {
+    const input = realRequest()
+    const originalCheck = new Date(Date.parse(now()) - 6 * 60_000).toISOString()
+    const manualEvidence = input.confirmedOptions[0].evidence[0]
+    manualEvidence.type = 'traveler_confirmed'; manualEvidence.checkedAt = originalCheck; manualEvidence.expiresAt = null
+    const candidate = { ...structuredClone(request.confirmedOptions[0]), id: 'fresh-provider' }
+    const providerExpiry = new Date(Date.parse(now()) + 120_000).toISOString()
+    candidate.evidence[0] = { ...candidate.evidence[0], provider: 'Google Maps Routes API', sourceUrl: 'https://routes.googleapis.com/', checkedAt: now(), expiresAt: providerExpiry }
+    const provider = vi.fn(async () => ({ candidates: [candidate], warnings: [] }))
+    const response = await setup({ provider }).handler(post({ request: input, investigate: true }))
+    expect(response.status).toBe(200)
+    const body = CityRecoveryResponseSchema.parse(await response.json())
+    expect(body.facts.candidates[0].evidence[0]).toMatchObject({ checkedAt: originalCheck, expiresAt: null })
+    expect(body.facts.candidates[1].evidence[0]).toMatchObject({ checkedAt: now(), expiresAt: providerExpiry })
+    expect(Date.parse(body.facts.expiresAt)).toBe(Date.parse(providerExpiry))
+    expect(Date.parse(body.facts.expiresAt)).toBeGreaterThan(Date.parse(now()))
+  })
   it('rejects unrequested preference mutations even from an injected agent', async () => {
     const agent: CityAgentExecutor = async ({ tools }) => {
       const assessed = await tools.assess({ priority: 'cheapest' })

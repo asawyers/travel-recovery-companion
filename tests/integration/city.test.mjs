@@ -34,8 +34,17 @@ const cors = response => {
   assert.equal(response.headers.get('cache-control'), 'no-store')
 }
 
-test('REAL HTTP city v2 uses authoritative city metadata and canonical supplied facts without credentials', async () => {
+test('REAL HTTP city v2 preserves older manual checks with fresh collection expiry and authoritative metadata', async () => {
   const input = payload()
+  input.request.mode = 'real'
+  const originalCheckedAt = new Date(Date.now() - 6 * 60_000).toISOString()
+  for (const candidate of input.request.confirmedOptions) for (const evidence of candidate.evidence) {
+    evidence.type = 'traveler_confirmed'
+    evidence.environment = 'production'
+    evidence.provider = 'Traveler-confirmed fictional HTTP test input'
+    evidence.checkedAt = originalCheckedAt
+    evidence.expiresAt = null
+  }
   const response = await send(input)
   cors(response)
   const body = await parse(response)
@@ -52,10 +61,13 @@ test('REAL HTTP city v2 uses authoritative city metadata and canonical supplied 
   assert.ok(body.result.plans.length > 0)
   assert.equal(body.facts.candidates.length, 1)
   assert.deepEqual(body.facts.candidates, body.result.request.confirmedOptions)
-  assert.equal(body.facts.candidates[0].evidence[0].checkedAt, input.request.confirmedOptions[0].evidence[0].checkedAt)
+  assert.ok(body.result.plans.every(plan => plan.selectable))
+  assert.equal(body.facts.candidates[0].evidence[0].type, 'traveler_confirmed')
+  assert.equal(body.facts.candidates[0].evidence[0].checkedAt, originalCheckedAt)
+  assert.equal(body.facts.candidates[0].evidence[0].expiresAt, null)
+  assert.ok(Date.parse(body.facts.expiresAt) > Date.parse(body.facts.checkedAt))
   assert.ok(Date.parse(body.facts.expiresAt) <= Date.parse(body.facts.checkedAt) + 300_000)
-  assert.ok(Date.parse(body.facts.expiresAt) <= Date.parse(input.request.confirmedOptions[0].evidence[0].checkedAt) + 300_000)
-  console.info('City HTTP gate: public POST 200; v2 schema; authoritative Boston/Portland metadata; canonical supplied facts and bounded original evidence lifetime')
+  console.info('City HTTP gate: public POST 200; authoritative city metadata; usable manual plan preserves six-minute-old check and receives fresh bounded collection expiry')
 })
 
 test('REAL HTTP city sanitizes synthetic and real manual provenance while preserving original checks', async () => {

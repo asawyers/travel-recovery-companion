@@ -160,7 +160,7 @@ export function createCityRecoveryHandler(deps: { now: () => string; findCity?: 
       const result = latest!.result, candidates = result.request.confirmedOptions
       const evidence = candidates.flatMap(candidate => candidate.evidence)
       const checkedMs = Math.max(toInstantMillis(deps.now()), ...evidence.map(item => toInstantMillis(item.checkedAt)))
-      const expiresMs = Math.min(checkedMs + CITY_MAX_FACT_AGE_MS, ...evidence.map(item => toInstantMillis(item.checkedAt) + CITY_MAX_FACT_AGE_MS), ...evidence.flatMap(item => item.expiresAt === null ? [] : [toInstantMillis(item.expiresAt)]))
+      const expiresMs = Math.min(checkedMs + CITY_MAX_FACT_AGE_MS, ...evidence.flatMap(item => item.expiresAt === null ? [] : [toInstantMillis(item.expiresAt)]))
       const body: CityRecoveryResponse = CityRecoveryResponseSchema.parse({ version: 2, result, facts: { candidates, checkedAt: new Date(checkedMs).toISOString(), expiresAt: new Date(expiresMs).toISOString(), adapterRevision: CITY_ADAPTER_REVISION },
         ...(assistance ? { assistance } : {}), ...(parsed.data.conversation ? { conversation: { turnId: parsed.data.conversation.turnId, baseRevision: parsed.data.conversation.baseRevision } } : {}),
       })
