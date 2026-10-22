@@ -138,3 +138,16 @@ test('REAL HTTP travel wildcard CORS supports OPTIONS 204, POST 200 and GET 405'
     for (const response of [preflight, post, wrong]) cors(response)
   }
 })
+
+test('REAL HTTP onward lookup stays empty without trusted live flight evidence', async () => {
+  const { flight } = travelFixture()
+  const input = payload()
+  input.destinationAirportIata = 'BOS'
+  input.onwardFlight = { flightOfferId: flight.id, flightFingerprint: flight.fingerprint, arrivalProcessingMinutes: 45 }
+  const body = await parse(await send(input))
+  assert.deepEqual(body.request.onwardFlight, input.onwardFlight)
+  assert.equal(body.request.destinationAirportIata, 'BOS')
+  assert.equal(body.request.trip.destinationCityId, input.trip.destinationCityId)
+  assert.deepEqual(body.onwardOffers, [])
+  assert.equal(body.journey, null)
+})

@@ -293,3 +293,55 @@ describe('flight overview dates', () => {
     expect(html).toContain('2026-11-20 21:30 -05:00 · America/New_York')
   })
 })
+
+describe('nearby onward planning presentation', () => {
+  it('uses the explicit onward arrival allowance and omits an invented final city transfer', async () => {
+    const ui = await factsUI(); expect(ui).not.toBeNull()
+    const f = travelFixture()
+    const onward = { arrivalProcessingMinutes: 45, destinationName: 'Portland, ME', kind: 'transit' as const }
+    const draft = ui!.createJourneyFactsDraft(f.flight, null, null, onward)
+    expect(draft.arrivalProcessingMinutes).toBe('45')
+    expect(draft.destinationMinutes).toBe('1')
+    const html = renderToStaticMarkup(createElement(ui!.JourneyFactsForm, { flight: f.flight, onward, onConfirm: () => {} }))
+    expect(html).toContain('45-minute arrival allowance')
+    expect(html).toContain('Portland, ME')
+    expect(html).not.toContain('Destination transfer minutes')
+  })
+  it('shows actual onward legs, final city arrival and gated drive estimates', async () => {
+    const ui = await import('../../src/features/travel/OnwardOffers').catch(() => null); expect(ui).not.toBeNull()
+    const f = travelFixture()
+    const offer = { id: 'route', flightOfferId: f.flight.id, flightFingerprint: f.flight.fingerprint, arrivalAirportIata: 'BOS', destinationCityId: f.destination.id, airportReadyAt: f.now, kind: 'drive' as const,
+      legs: [{ id: 'leg', mode: 'drive' as const, from: { name: 'Boston Logan', latitude: null, longitude: null }, to: { name: 'Portland, ME', latitude: null, longitude: null }, startAt: f.now, endAt: '2026-11-18T17:00:00Z', departureTimeZone: 'America/New_York', arrivalTimeZone: 'America/New_York', operator: null, service: 'Road route estimate', vehicleId: null, assumptions: [] }], costs: f.flight.costs, evidence: f.flight.evidence, confirmations: [] }
+    const html = renderToStaticMarkup(createElement(ui!.OnwardOffers, { offers: [offer], onChoose: () => {} }))
+    expect(html).toContain('Final city arrival')
+    expect(html).toContain('Portland, ME')
+    expect(html).toContain('Driving estimate')
+    expect(html).toContain('I have confirmed a vehicle and driver')
+    expect(html).toMatch(/<button[^>]*disabled/)
+  })
+})
+
+it('attributes Google onward content visibly and builds a canonical airport-to-city handoff with its actual travel mode', async () => {
+  const ui = await import('../../src/features/travel/OnwardOffers')
+  const origin = { latitude: 42.3656, longitude: -71.0096 }, destination = { latitude: 43.6591, longitude: -70.2568 }
+  const href = ui.mapsRouteLink(origin, destination, 'transit')
+  const url = new URL(href!)
+  expect(url.origin).toBe('https://www.google.com')
+  expect(url.searchParams.get('origin')).toBe('42.3656,-71.0096')
+  expect(url.searchParams.get('destination')).toBe('43.6591,-70.2568')
+  expect(url.searchParams.get('travelmode')).toBe('transit')
+  expect(ui.mapsRouteLink({ latitude: null, longitude: null }, destination, 'drive')).toBeNull()
+  const html = renderToStaticMarkup(createElement(ui.GoogleRouteAttribution, { href, fresh: () => true }))
+  for (const text of ['Google Maps', 'Current tab only', 'Maps terms', 'Privacy', 'Open onward route in Google Maps']) expect(html).toContain(text)
+  expect(html).toContain('rel="noopener noreferrer"')
+})
+
+it('offers BOS alongside the nearest Portland airports and retains it after explicit selection', async () => {
+  const ui = await import('../../src/features/travel/TravelRecoveryPanel')
+  const f = travelFixture()
+  for (const to of ['PWM', 'BOS']) {
+    const html = renderToStaticMarkup(createElement(ui.AirportChoices, { origin: f.origin, destination: f.destination, from: 'SAN', to, onChange: () => {} }))
+    for (const airport of ['PWM', 'PSM', 'AUG', 'BOS']) expect(html).toContain(`value="${airport}"`)
+    if (to === 'BOS') expect(html).toContain('value="BOS" selected=""')
+  }
+})

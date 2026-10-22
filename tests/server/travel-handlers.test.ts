@@ -23,6 +23,7 @@ const post = (input: unknown, signal?: AbortSignal) =>
 function setup(
   options: {
     provider?: TravelProvider
+    onward?: Parameters<typeof createTravelRecoveryHandler>[0]['onward']
     agent?: TravelAgentExecutor
     now?: () => string
     findCity?: Parameters<typeof createTravelRecoveryHandler>[0]['findCity']
@@ -583,5 +584,84 @@ describe('final travel response freshness', () => {
     })
     expect(Date.parse(body.expiresAt)).toBeLessThanOrEqual(Date.parse(f.flight.evidence[0].expiresAt!))
     expect(provider.flights).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('selected-flight onward route discovery boundary', () => {
+  async function scenario() {
+    const f = travelFixture(), { onwardOfferId } = await import('../../supabase/functions/_shared/domain/travel-contracts.ts')
+    const airport = f.flight.segments.at(-1)!.destinationAirport
+    const airportReadyAt = new Date(Date.parse(f.flight.segments.at(-1)!.arrivalAt) + f.input.selection!.facts.arrivalProcessingMinutes * 60000).toISOString()
+    const data = { flightOfferId: f.flight.id, flightFingerprint: f.flight.fingerprint, arrivalAirportIata: airport.iata, destinationCityId: f.destination.id, airportReadyAt, kind: 'transit' as const,
+      legs: [{ id: 'onward', mode: 'bus' as const, from: { name: airport.name, latitude: airport.latitude, longitude: airport.longitude }, to: { name: f.destination.name, latitude: f.destination.latitude, longitude: f.destination.longitude }, startAt: airportReadyAt, endAt: new Date(Date.parse(airportReadyAt) + 3600000).toISOString(), departureTimeZone: airport.timeZone, arrivalTimeZone: f.destination.timeZone, operator: 'Test Coach', service: 'Portland', vehicleId: 'bus-1', assumptions: [] }],
+      costs: [{ label: 'Onward bus fare', cents: 2000, currency: 'USD', includedInOtherCharge: false }], evidence: [{ ...f.flight.evidence[0], provider: 'Google Maps Routes API', type: 'schedule' as const }], confirmations: [] }
+    const offer = { ...data, id: onwardOfferId(data) }
+    f.input.onwardFlight = { flightOfferId: f.flight.id, flightFingerprint: f.flight.fingerprint, arrivalProcessingMinutes: f.input.selection!.facts.arrivalProcessingMinutes }
+    f.input.selection!.onwardOfferId = offer.id
+    const onward = vi.fn(async () => ({ offers: [structuredClone(offer)], warnings: [] }))
+    return { ...f, offer, onward }
+  }
+  it('does not perform paid onward calls unless a selected-flight binding is supplied', async () => {
+    const f = await scenario(), { input, handler } = setup({ onward: f.onward }, f)
+    delete input.onwardFlight
+    delete input.selection!.onwardOfferId
+    const body = await bodyOf(await handler(post(input)))
+    expect(body.onwardOffers).toBeUndefined()
+    expect(f.onward).not.toHaveBeenCalled()
+  })
+  it('discovers onward routes before facts selection without creating a complete journey', async () => {
+    const f = await scenario(), { input, handler } = setup({ onward: f.onward }, f)
+    input.selection = null
+    const body = await bodyOf(await handler(post(input)))
+    expect(body.journey).toBeNull()
+    expect(body.onwardOffers?.[0].id).toBe(f.offer.id)
+    expect(f.onward).toHaveBeenCalledTimes(1)
+    expect(f.onward.mock.calls[0][0]).toMatchObject({ flight: f.flight, destination: f.destination, arrivalProcessingMinutes: f.input.onwardFlight!.arrivalProcessingMinutes })
+  })
+  it('reacquires a selected onward route and binds the complete payable ledger', async () => {
+    const f = await scenario(), { input, handler } = setup({ onward: f.onward }, f)
+    const body = await bodyOf(await handler(post(input)))
+    expect(body.journey?.selectable).toBe(true)
+    expect(body.journey?.legs.at(-1)?.kind).toBe('bus')
+    expect(body.journey?.costs.at(-1)?.cents).toBe(2000)
+    const forged = structuredClone(body)
+    forged.journey!.legs.at(-1)!.service = 'Invented train'
+    expect(TravelRecoveryResponseSchema.safeParse(forged).success).toBe(false)
+  })
+  it('does not query onward routes for a missing or changed flight quote', async () => {
+    const f = await scenario(), { input, handler } = setup({ onward: f.onward }, f)
+    input.onwardFlight!.flightFingerprint = 'changed'
+    const body = await bodyOf(await handler(post(input)))
+    expect(f.onward).not.toHaveBeenCalled()
+    expect(body.journey).toBeNull()
+    expect(body.selectionIssue).toBe('onward_missing')
+  })
+  it('keeps unavailable onward service honest and cannot select a forged route ID', async () => {
+    const f = await scenario(), { input, handler } = setup({ onward: async () => { throw Error('private provider failure') } }, f)
+    const body = await bodyOf(await handler(post(input)))
+    expect(body.onwardOffers).toEqual([])
+    expect(body.selectionIssue).toBe('onward_missing')
+    expect(body.journey).toBeNull()
+    expect(JSON.stringify(body)).not.toContain('private provider failure')
+  })
+  it('rejects stale onward evidence and destinations outside the canonical binding', async () => {
+    for (const mutation of ['stale', 'city', 'endpoint', 'zone'] as const) {
+      const f = await scenario()
+      if (mutation === 'stale') f.offer.evidence[0].expiresAt = f.now
+      else if (mutation === 'city') f.offer.destinationCityId = f.origin.id
+      else if (mutation === 'endpoint') {
+        f.offer.legs[0].from.latitude += 1
+        const { onwardOfferId } = await import('../../supabase/functions/_shared/domain/travel-contracts.ts')
+        f.offer.id = onwardOfferId(f.offer)
+      } else {
+        f.offer.legs[0].departureTimeZone = 'America/Chicago'
+        const { onwardOfferId } = await import('../../supabase/functions/_shared/domain/travel-contracts.ts')
+        f.offer.id = onwardOfferId(f.offer)
+      }
+      const { input, handler } = setup({ onward: f.onward }, f)
+      const body = await bodyOf(await handler(post(input)))
+      expect(body.onwardOffers).toEqual([])
+      expect(body.journey).toBeNull()
+    }
   })
 })

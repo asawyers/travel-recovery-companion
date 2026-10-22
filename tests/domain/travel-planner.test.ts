@@ -330,3 +330,75 @@ it('rejects prospective origin hotel access that already started without rewriti
   expect(JSON.stringify(f)).toBe(before)
   expect(journey.evidenceExpiresAt).toBe('2026-11-18T16:05:00-08:00')
 })
+
+describe('nearby-airport onward composition', () => {
+  async function example(kind: 'transit' | 'drive' = 'transit') {
+    const { findAirport } = await import('@domain/airport-metadata')
+    const { onwardOfferId } = await import('@domain/travel-contracts')
+    const f = travelFixture(), airport = findAirport('BOS')!
+    f.flight.destinationAirportIata = 'BOS'
+    f.flight.segments.at(-1)!.destinationAirport = airport
+    f.input.destinationAirportIata = 'BOS'
+    bind(f)
+    const airportReadyAt = new Date(Date.parse(f.flight.segments.at(-1)!.arrivalAt) + f.input.selection!.facts.arrivalProcessingMinutes * 60000).toISOString()
+    const data = {
+      flightOfferId: f.flight.id, flightFingerprint: f.flight.fingerprint, arrivalAirportIata: 'BOS', destinationCityId: f.destination.id, airportReadyAt, kind,
+      legs: [{ id: 'onward-bus-leg', mode: kind === 'drive' ? 'drive' as const : 'bus' as const, from: { name: airport.name, latitude: airport.latitude, longitude: airport.longitude }, to: { name: f.destination.name, latitude: f.destination.latitude, longitude: f.destination.longitude }, startAt: airportReadyAt, endAt: new Date(Date.parse(airportReadyAt) + 180 * 60000).toISOString(), departureTimeZone: airport.timeZone, arrivalTimeZone: f.destination.timeZone, operator: kind === 'drive' ? null : 'Concord Coach', service: kind === 'drive' ? null : 'Portland', vehicleId: kind === 'drive' ? null : 'coach-1', assumptions: ['Schedule estimate; confirm tickets.'] }],
+      costs: [{ label: 'Onward transit fare', cents: kind === 'drive' ? null : 3500, currency: 'USD', includedInOtherCharge: false }], evidence: [{ ...f.flight.evidence[0], provider: 'Google Maps Routes API', type: 'schedule' as const }], confirmations: ['Check onward transport.'],
+    }
+    const offer = { ...data, id: onwardOfferId(data) }
+    f.input.onwardFlight = { flightOfferId: f.flight.id, flightFingerprint: f.flight.fingerprint, arrivalProcessingMinutes: f.input.selection!.facts.arrivalProcessingMinutes }
+    f.input.selection!.onwardOfferId = offer.id
+    return { ...f, onwardOffers: [offer] }
+  }
+  it('composes SAN to BOS plus scheduled onward bus to the original Portland destination', async () => {
+    const f = await example(), p = await implementation(), j = p!.composeTravelJourney(f.input, f.flight, null, f)
+    expect(j.selectable).toBe(true)
+    expect(j.destinationCityId).toBe(f.destination.id)
+    expect(j.legs.at(-1)!.kind).toBe('bus')
+    expect(j.boardings).toBe(3)
+    expect(j.transfers).toBe(2)
+    expect(j.legs.at(-1)!.to.name).toBe('Portland')
+    expect(j.finalArrivalAt).toBe(f.onwardOffers[0].legs[0].endAt)
+    expect(j.costs.at(-1)!.cents).toBe(3500)
+    expect(j.costs.some(c => c.label === 'Destination airport to city transfer')).toBe(false)
+    expect(TravelJourneySchema.safeParse(j).success).toBe(true)
+  })
+  it('rejects a missing or changed onward selection instead of inventing destination access', async () => {
+    const f = await example(), p = await implementation()
+    expect(p!.assessTravelSelection(f.input, { ...f, onwardOffers: [] }).selectionIssue).toBe('onward_missing')
+    f.onwardOffers[0].flightFingerprint = 'changed'
+    expect(p!.assessTravelSelection(f.input, f).selectionIssue).toBe('onward_changed')
+  })
+  it('requires the arrival-processing allowance used by the ground search', async () => {
+    const f = await example(), p = await implementation()
+    f.input.selection!.facts.arrivalProcessingMinutes += 15
+    expect(p!.composeTravelJourney(f.input, f.flight, null, f).selectable).toBe(false)
+  })
+  it('enforces the deadline at Portland after the complete ground journey', async () => {
+    const f = await example(), p = await implementation()
+    f.input.trip.deadlineAt = new Date(Date.parse(f.onwardOffers[0].airportReadyAt) + 60000).toISOString()
+    expect(p!.composeTravelJourney(f.input, f.flight, null, f).violations.join(' ')).toMatch(/destination deadline/)
+  })
+  it('permits scoped onward driving only after vehicle confirmation and keeps its costs unknown', async () => {
+    const f = await example('drive'), p = await implementation()
+    expect(f.input.trip.drivingAllowed).toBe(false)
+    expect(p!.composeTravelJourney(f.input, f.flight, null, f).selectable).toBe(false)
+    f.input.selection!.onwardVehicleConfirmed = true
+    const journey = p!.composeTravelJourney(f.input, f.flight, null, f)
+    expect(journey.selectable).toBe(true)
+    expect(journey.priceComplete).toBe(false)
+    f.input.trip.budgetMode = 'hard'
+    f.input.trip.budgetCents = 100000
+    expect(p!.composeTravelJourney(f.input, f.flight, null, f).selectable).toBe(false)
+  })
+  it('keeps route identity stable when observation freshness changes', async () => {
+    const f = await example(), { onwardOfferId } = await import('@domain/travel-contracts'), offer = structuredClone(f.onwardOffers[0])
+    offer.evidence[0].checkedAt = new Date(Date.parse(offer.evidence[0].checkedAt) + 1000).toISOString()
+    expect(onwardOfferId(offer)).toBe(offer.id)
+    offer.legs[0].id = 'provider-reordered-option-17'
+    expect(onwardOfferId(offer)).toBe(offer.id)
+    offer.legs[0].endAt = new Date(Date.parse(offer.legs[0].endAt) + 1000).toISOString()
+    expect(onwardOfferId(offer)).not.toBe(offer.id)
+  })
+})

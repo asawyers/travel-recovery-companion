@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { Temporal } from '@js-temporal/polyfill'
 import { sumCosts, toInstantMillis } from './time.ts'
 import { CostLineSchema, SourceEvidenceSchema } from './schemas.ts'
-import { CitySchema } from './city-contracts.ts'
+import { CitySchema, CityLegSchema } from './city-contracts.ts'
 import { AgentActivitySchema, PreferencePatchSchema } from './assistance.ts'
 import { ConversationContextSchema, ConversationEchoSchema } from './conversation.ts'
 export type { City } from './city-types.ts'
@@ -225,6 +225,8 @@ export const TravelSelectionSchema = z
     hotelOfferId: id.nullable(),
     hotelFingerprint: id.nullable(),
     facts: TravelJourneyFactsSchema,
+    onwardOfferId: id.optional(),
+    onwardVehicleConfirmed: z.boolean().optional(),
   })
   .refine(
     (v) => (v.hotelOfferId === null) === (v.hotelFingerprint === null),
@@ -239,6 +241,7 @@ const inputFields = {
   overnight: TravelOvernightSchema.nullable(),
   selection: TravelSelectionSchema.nullable(),
   investigate: z.boolean(),
+  onwardFlight: z.strictObject({ flightOfferId: id, flightFingerprint: id, arrivalProcessingMinutes: minutes }).optional(),
 }
 export const TravelRequestBindingSchema = z.strictObject(inputFields)
 export type TravelRequestBinding = z.infer<typeof TravelRequestBindingSchema>
@@ -254,9 +257,31 @@ export function travelRequestBinding(input: TravelRecoveryInput): TravelRequestB
 }
 export const TravelPlaceSchema = z.strictObject({ name: text, latitude, longitude, timeZone: zone })
 export type TravelPlace = z.infer<typeof TravelPlaceSchema>
+export const TravelOnwardOfferSchema = z.strictObject({
+  id, flightOfferId: id, flightFingerprint: id, arrivalAirportIata: iata,
+  destinationCityId: cityId, airportReadyAt: timestamp, kind: z.enum(['transit', 'drive']),
+  legs: z.array(CityLegSchema).min(1).max(96), costs, evidence, confirmations: notes,
+}).superRefine((v, ctx) => {
+  const issue = (message: string) => ctx.addIssue({ code: 'custom', message })
+  if (!v.legs.length) { issue('Onward route requires legs'); return }
+  if (v.id !== onwardOfferId(v)) issue('Onward identity must match its route facts')
+  if (v.legs[0].startAt !== v.airportReadyAt) issue('Onward route must begin at airport readiness')
+  if (v.kind === 'drive' ? v.legs.some(l => l.mode !== 'drive') : v.legs.some(l => l.mode === 'drive') || !v.legs.some(l => ['bus', 'rail', 'subway', 'tram', 'ferry'].includes(l.mode))) issue('Onward mode must match its legs')
+  try { for (const [index, leg] of v.legs.entries()) {
+    if (leg.from.latitude === null || leg.from.longitude === null || leg.to.latitude === null || leg.to.longitude === null) issue('Onward places require coordinates')
+    if (leg.mode === 'wait' && JSON.stringify(leg.from) !== JSON.stringify(leg.to)) issue('Onward waiting cannot move the traveler')
+    if (toInstantMillis(leg.endAt) < toInstantMillis(leg.startAt)) issue('Onward chronology is inverted')
+    const prior = v.legs[index - 1]
+    if (prior && (toInstantMillis(prior.endAt) !== toInstantMillis(leg.startAt) || JSON.stringify(prior.to) !== JSON.stringify(leg.from))) issue('Onward route must be connected and chronological')
+  } } catch { issue('Onward timestamps must be valid') }
+})
+export type TravelOnwardOffer = z.infer<typeof TravelOnwardOfferSchema>
+export function onwardOfferId(offer: Omit<TravelOnwardOffer, 'id'>): string {
+  return 'onward-' + digest({ ...offer, legs: offer.legs.map(({ id: _id, ...leg }) => leg) })
+}
 export const TravelLegSchema = z.strictObject({
   id,
-  kind: z.enum(['transfer', 'wait', 'processing', 'flight', 'hotel', 'checkin']),
+  kind: z.enum(['transfer', 'wait', 'processing', 'flight', 'hotel', 'checkin', 'walk', 'bus', 'rail', 'subway', 'tram', 'ferry', 'drive']),
   from: TravelPlaceSchema,
   to: TravelPlaceSchema,
   startAt: timestamp,
@@ -278,13 +303,13 @@ export const TravelJourneySchema = z
     destinationCityId: cityId,
     flightOfferId: id,
     hotelOfferId: id.nullable(),
-    legs: z.array(TravelLegSchema).max(64),
+    legs: z.array(TravelLegSchema).max(160),
     costs: z.array(CostLineSchema).max(128),
     evidence: z.array(SourceEvidenceSchema).min(1).max(161),
     finalArrivalAt: timestamp,
     durationMinutes: z.number().nonnegative(),
-    boardings: z.number().int().min(0).max(8),
-    transfers: z.number().int().min(0).max(7),
+    boardings: z.number().int().min(0).max(104),
+    transfers: z.number().int().min(0).max(103),
     knownCostCents: z.number().int().nonnegative(),
     priceComplete: z.boolean(),
     feasibility: z.enum(['requires_confirmation', 'infeasible']),
@@ -311,9 +336,9 @@ export const TravelJourneySchema = z
     } catch {
       issue('Journey costs must contain valid nonnegative integer amounts')
     }
-    const flights = v.legs.filter((l) => l.kind === 'flight')
+    const flights = v.legs.filter((l) => ['flight', 'bus', 'rail', 'subway', 'tram', 'ferry'].includes(l.kind))
     if (flights.length !== v.boardings || v.transfers !== Math.max(0, flights.length - 1))
-      issue('Flight and transfer counts must match the legs')
+      issue('Boarding and transfer counts must match all flight and public transit legs')
     if (v.selectable) {
       try {
         if (
@@ -358,6 +383,8 @@ export const TravelSelectionIssueSchema = z.enum([
   'hotel_missing',
   'hotel_changed',
   'expired',
+  'onward_missing',
+  'onward_changed',
 ])
 export type TravelSelectionIssue = z.infer<typeof TravelSelectionIssueSchema>
 export const TravelAssistanceSchema = z
@@ -395,6 +422,7 @@ export const TravelRecoveryResponseSchema = z
     expiresAt: timestamp,
     flightOffers: z.array(FlightOfferSchema).max(3),
     hotelOffers: z.array(NationalHotelOfferSchema).max(3),
+    onwardOffers: z.array(TravelOnwardOfferSchema).max(3).optional(),
     sourceStatuses: z.array(TravelSourceStatusSchema).max(2),
     journey: TravelJourneySchema.nullable(),
     selectionIssue: TravelSelectionIssueSchema.nullable(),
@@ -412,6 +440,7 @@ export const TravelRecoveryResponseSchema = z
       const ev = [
         ...v.flightOffers.flatMap((f) => [...f.evidence, ...f.segments.flatMap((s) => s.evidence)]),
         ...v.hotelOffers.flatMap((h) => h.evidence),
+        ...(v.onwardOffers ?? []).flatMap(o => o.evidence),
       ]
       if (
         expiry > generated + TRAVEL_MAX_FACT_AGE_MS ||
@@ -437,6 +466,20 @@ export const TravelRecoveryResponseSchema = z
         issue('Flight offer must match the exact request binding')
       if (flight.id !== flightOfferId(flight) || flight.fingerprint !== flightOfferFingerprint(flight))
         issue('Flight identity and fingerprint must match its original quote')
+    }
+    for (const onward of v.onwardOffers ?? []) {
+      if (!onward.legs.length) { issue('Onward route requires legs'); continue }
+      const flight = v.flightOffers.find(f => f.id === onward.flightOfferId)
+      const binding = v.request.onwardFlight
+      if (!flight || !binding || flight.fingerprint !== onward.flightFingerprint || binding.flightOfferId !== flight.id || binding.flightFingerprint !== flight.fingerprint || onward.arrivalAirportIata !== flight.destinationAirportIata || onward.destinationCityId !== v.destination.id) issue('Onward route must match the selected canonical flight and destination')
+      if (flight) {
+        const last = flight.segments.at(-1)!
+        try {
+          if (toInstantMillis(onward.airportReadyAt) !== toInstantMillis(last.arrivalAt) + (binding?.arrivalProcessingMinutes ?? -1) * 60000) issue('Onward readiness must include the bound arrival allowance')
+        } catch { issue('Onward readiness must contain valid timestamps') }
+        const first = onward.legs[0].from, end = onward.legs.at(-1)!.to
+        if (first.latitude !== last.destinationAirport.latitude || first.longitude !== last.destinationAirport.longitude || end.latitude !== v.destination.latitude || end.longitude !== v.destination.longitude) issue('Onward endpoints must be the actual airport and final destination')
+      }
     }
     for (const hotel of v.hotelOffers) {
       if (
@@ -543,7 +586,21 @@ export const TravelRecoveryResponseSchema = z
           )
             expectedCosts.push(extraCost('Connection airport transfer', connection.airportTransfer.costCents))
         })
-        expectedCosts.push(extraCost('Destination airport to city transfer', facts.destinationTransfer.costCents))
+        const onward = v.onwardOffers?.find(o => o.id === selection.onwardOfferId)
+        if (selection.onwardOfferId && !onward) issue('Selected onward route must be present')
+        if (onward) expectedCosts.push(...onward.costs)
+        else expectedCosts.push(extraCost('Destination airport to city transfer', facts.destinationTransfer.costCents))
+        if (onward) {
+          const groundLegs = journey.legs.slice(-onward.legs.length)
+          onward.legs.forEach((source, index) => {
+            const leg = groundLegs[index]
+            const from = index === 0 ? place(flight.segments.at(-1)!.destinationAirport) : { ...source.from, timeZone: source.departureTimeZone }
+            const to = index === onward.legs.length - 1 ? place(v.destination) : { ...source.to, timeZone: source.arrivalTimeZone }
+            if (!leg || leg.kind !== source.mode || !same(leg.from, from) || !same(leg.to, to) || leg.startAt !== source.startAt || leg.endAt !== source.endAt || leg.boardingId !== source.vehicleId || leg.operator !== source.operator || leg.service !== source.service || !same(leg.evidence, onward.evidence) || !same(leg.costs, index === 0 ? onward.costs : []) || !same(leg.assumptions, source.assumptions)) issue('Journey must preserve the complete selected onward route and original evidence')
+          })
+          if (onward.kind === 'drive' && selection.onwardVehicleConfirmed !== true && journey.selectable) issue('Onward driving requires vehicle and driver confirmation')
+          if (v.request.onwardFlight?.arrivalProcessingMinutes !== facts.arrivalProcessingMinutes) issue('Onward arrival allowance must match confirmed facts')
+        }
         if (!same(journey.costs, expectedCosts))
           issue('Journey charges must preserve the selected source totals and bound traveler costs exactly once')
       }

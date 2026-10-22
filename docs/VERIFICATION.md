@@ -1,5 +1,20 @@
 # Verification status
 
+## Nearby arrival airport and onward recovery — 2026-10-22
+
+The app searches the selected arrival airport and one alternate large airport within 200 km of the final city, with independent exact airport-pair and quote bindings. SAN → Portland, Maine includes BOS when matching observations are returned. The airport selector also exposes and retains that nearby airport. The final destination remains Portland. A selected airport more than 50 km from the destination requires sourced onward planning in either panel, including when BOS is chosen directly.
+
+After the traveler confirms an arrival-processing allowance, the server reacquires the selected flight and checks actual airport-to-city transit plus a scoped onward driving estimate. Transit retains walking, scheduled vehicles and waits; driving requires explicit vehicle/driver confirmation and omits estimates over eight hours. Standalone driving stays excluded. Complete assessment uses final-city arrival, all known/unknown charges, original evidence, the actual deadline and hard-budget rules. Reordered provider alternatives and refreshed source check times preserve route identity; changed flight/route facts require reselection. Google content remains current-tab-only with visible attribution and fresh external route handoffs.
+
+Airport coordinates represent an approximate airport access point within 2 km; city endpoints and internal joins keep 250 m limits. The original provider endpoint coordinates remain disclosed in assumptions, and the explicit arrival allowance must cover baggage and actual terminal/pickup access. No additional walking time or connection is invented. Onward discovery makes at most two Google calls for the selected flight and returns at most two transit routes plus one drive; provider/model deadlines and five-minute evidence expiry remain enforced. Existing keys and usage approvals are reused.
+
+Independent backend and frontend reviews found and corrected route identity, complete boarding counts, nearby clarification/chat routing, direct BOS selection and an empty-alternate retry diversion. Initial broad browser failures also exposed old single-pair fixtures; their added alternate responses are exact-binding and explicitly empty. Existing primary assertions and the new full query-count assertions remain intact.
+
+Final local verification passed **1,028 tests across 51 files**, production TypeScript/Vite build, Deno recovery entrypoint checking, **26 real provider-disabled loopback HTTP tests**, and **52 Brave end-to-end tests in 1.9 minutes**, with zero failures/retries. Seven new browser cases cover primary PWM plus nearby BOS discovery, a complete onward train journey, mobile vehicle gating, changed flight rejection, the actual final-city deadline, empty sources and direct BOS selection followed by a real-shaped bus itinerary. Existing city, flight/overnight, save, loading, mobile, standalone-driving removal and independent-scroll cases pass. Four normal turns still fit the 522 px desktop history region. These browser provider responses are intercepted fixtures, distinct from actual-provider acceptance.
+
+Evidence: `/tmp/travel-nearby-final-unit.log`, `/tmp/travel-nearby-final-build.log`, `/tmp/travel-nearby-final-deno.log`, `/tmp/travel-nearby-final-http.log`, `/tmp/travel-nearby-final-local-brave.log`, `/tmp/travel-nearby-final-local-results/.last-run.json`. Publication and actual hosted provider results will be recorded after deployment. The existing bundle-size warning remains nonblocking.
+
+
 ## Independent scrolling and expanded conversation — 2026-10-22 (Pacific)
 
 The started desktop workspace uses the viewport for two independent panes: a focusable **Conversation history** region on the left, preserving the **Recovery conversation** live log, and focusable **Travel options** on the right. The heading/composer take less vertical space while keeping labels, quick replies, input, Send and privacy help accessible. Demo, source attribution and legal links remain reachable at the bottom of the options pane. The initial starter and narrow mobile screens retain ordinary page flow.

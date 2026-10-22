@@ -5,8 +5,10 @@ import { toInstantMillis } from '../domain/time.ts'
 import { providerJson } from './provider-http.ts'
 
 export type CityProviderFacts = { candidates: CityCandidate[]; warnings: string[] }
-type Context = { signal: AbortSignal; origin: City; destination: City }
-type Options = { enabled: boolean; apiKey?: string; now: () => string; fetch?: typeof fetch }
+export type RoutesEndpoint = { name: string; latitude: number; longitude: number; timeZone: string }
+export type PointRoutesContext = { signal: AbortSignal; origin: RoutesEndpoint; destination: RoutesEndpoint; originToleranceMeters?: number; destinationToleranceMeters?: number }
+type Context = PointRoutesContext
+type Options = { enabled: boolean; apiKey?: string; now: () => string; fetch?: typeof fetch; fewerTransfersAlternative?: boolean; maxTransitCandidates?: number }
 const ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRoutes'
 // Zones are localizedValues fields, not fields of TransitStopDetails. No URLs or instructions are requested.
 const TRANSIT_MASK = [
@@ -23,7 +25,7 @@ const AVAILABILITY = 'Google Maps transit times are schedule estimates; confirm 
 const DRIVE_CONFIRMATION = 'Driving is an estimated duration without traffic. Confirm vehicle access and a rest plan, fuel, tolls, parking and any rental charges; no pickup, return or inventory is confirmed.'
 const OMITTED = 'Unsupported or invalid Google Routes journey omitted; complete coordinates, supported modes and connected chronological steps are required.'
 const ASAP_COVERAGE = 'ASAP lookup covers complete journeys within seven-day search coverage after readiness; this is not a traveler destination deadline.'
-const ZONE_ESTIMATE = 'Stop time zone is estimated from the nearest selected endpoint city when the provider omits its stop time zone; timestamp instants are preserved.'
+const ZONE_ESTIMATE = 'Stop time zone is estimated from the nearest selected endpoint when the provider omits its stop time zone; timestamp instants are preserved.'
 const WALK_ESTIMATE = 'Walking duration and its start/end times are estimated from provider step duration; confirm pedestrian access and transfer time.'
 const BOARDING_ID = 'Boarding identity uses the operator, service and scheduled trip/departure; this is not a confirmed physical vehicle ID.'
 const bounded = (values: string[]) => [...new Set(values)].slice(0, 32)
@@ -94,10 +96,10 @@ function normalizeTransit(input: unknown, request: CityTripRequest, context: Con
   const parsed = route.safeParse(input)
   if (!parsed.success) return null
   const value = parsed.data, source = value.legs[0], duration = seconds(value.duration)
-  if (duration === null || duration <= 0 || distance(source.startLocation.latLng, context.origin) > 5_000 || distance(source.endLocation.latLng, context.destination) > 5_000) return null
+  if (duration === null || duration <= 0 || distance(source.startLocation.latLng, context.origin) > (context.originToleranceMeters ?? 5_000) || distance(source.endLocation.latLng, context.destination) > (context.destinationToleranceMeters ?? 5_000)) return null
   if (distance(source.startLocation.latLng, source.steps[0].startLocation.latLng) > 250 || distance(source.endLocation.latLng, source.steps.at(-1)!.endLocation.latLng) > 250) return null
   const legs: CityLeg[] = []
-  let cursor = toInstantMillis(request.readyAt), previous = place(source.startLocation, `${context.origin.name} city center`), travelMilliseconds = 0, rides = 0
+  let cursor = toInstantMillis(request.readyAt), previous = place(source.startLocation, context.origin.name), travelMilliseconds = 0, rides = 0
   const push = (leg: Omit<CityLeg, 'id'>) => { legs.push({ id: `${id}-leg-${legs.length + 1}`, ...leg }) }
   try {
     for (const item of source.steps) {
@@ -129,7 +131,7 @@ function normalizeTransit(input: unknown, request: CityTripRequest, context: Con
       travelMilliseconds += length * 1000
       if (legs.length > 96) return null
     }
-    if (!rides || distance(legs[0].from as CityPlace & Point, context.origin) > 5_000 || distance(previous, context.destination) > 5_000) return null
+    if (!rides || distance(legs[0].from as CityPlace & Point, context.origin) > (context.originToleranceMeters ?? 5_000) || distance(previous, context.destination) > (context.destinationToleranceMeters ?? 5_000)) return null
     // A route duration may omit initial waiting, but cannot omit travel or exceed the whole journey.
     if (duration * 1000 + 1000 < travelMilliseconds || duration * 1000 > cursor - toInstantMillis(request.readyAt) + 1000) return null
     const candidate = CityCandidateSchema.safeParse({ id, title: 'Google Maps city transit schedule', kind: 'transit', originCityId: request.originCityId, destinationCityId: request.destinationCityId,
@@ -141,20 +143,21 @@ function normalizeDrive(input: unknown, request: CityTripRequest, context: Conte
   const parsed = driveRoute.safeParse(input)
   if (!parsed.success) return null
   const duration = seconds(parsed.data.duration), source = parsed.data.legs[0]
-  if (duration === null || duration <= 0 || distance(source.startLocation.latLng, context.origin) > 5_000 || distance(source.endLocation.latLng, context.destination) > 5_000) return null
+  if (duration === null || duration <= 0 || distance(source.startLocation.latLng, context.origin) > (context.originToleranceMeters ?? 5_000) || distance(source.endLocation.latLng, context.destination) > (context.destinationToleranceMeters ?? 5_000)) return null
   const candidate = CityCandidateSchema.safeParse({ id, title: 'Google Maps driving duration estimate', kind: 'driving_estimate', originCityId: request.originCityId, destinationCityId: request.destinationCityId,
-    legs: [{ id: `${id}-drive`, mode: 'drive', from: place(source.startLocation, `${context.origin.name} city center`), to: place(source.endLocation, `${context.destination.name} city center`), startAt: iso(toInstantMillis(request.readyAt)), endAt: iso(toInstantMillis(request.readyAt) + duration * 1000), departureTimeZone: context.origin.timeZone, arrivalTimeZone: context.destination.timeZone, operator: null, service: null, vehicleId: null, assumptions: [DRIVE_CONFIRMATION] }],
+    legs: [{ id: `${id}-drive`, mode: 'drive', from: place(source.startLocation, context.origin.name), to: place(source.endLocation, context.destination.name), startAt: iso(toInstantMillis(request.readyAt)), endAt: iso(toInstantMillis(request.readyAt) + duration * 1000), departureTimeZone: context.origin.timeZone, arrivalTimeZone: context.destination.timeZone, operator: null, service: null, vehicleId: null, assumptions: [DRIVE_CONFIRMATION] }],
     costs: [{ label: 'Vehicle, fuel, tolls, parking and rental charges unconfirmed', cents: null, currency: 'USD', includedInOtherCharge: false }], evidence: evidence('estimated', request, context, checkedAt), confirmations: [DRIVE_CONFIRMATION] })
   return candidate.success ? candidate.data : null
 }
 
-/** Explicit, bounded investigation. City centers come from the trusted resolver; no catalog or fixture fallback. */
-export function createCityGoogleRoutesAdapter(options: Options) {
+/** Explicit, bounded investigation of trusted coordinate endpoints; no catalog or fixture fallback. */
+export function createPointGoogleRoutesAdapter(options: Options) {
   return async (input: CityTripRequest, context: Context): Promise<CityProviderFacts> => {
     const unavailable = (warning: string): CityProviderFacts => ({ candidates: [], warnings: [warning] })
     if (!options.enabled || !options.apiKey?.trim() || input.mode !== 'real') return unavailable('Google Routes city investigation is unavailable; no live route facts were invented.')
-    const parsed = CityTripRequestSchema.safeParse(input), origin = CitySchema.safeParse(context.origin), destination = CitySchema.safeParse(context.destination)
-    if (!parsed.success || !origin.success || !destination.success || origin.data.id !== input.originCityId || destination.data.id !== input.destinationCityId) return unavailable('Invalid city request or mismatched city metadata; lookup was not performed.')
+    const endpoint = z.object({ name: text, latitude: z.number().finite().min(-90).max(90), longitude: z.number().finite().min(-180).max(180), timeZone: zone })
+    const parsed = CityTripRequestSchema.safeParse(input), origin = endpoint.safeParse(context.origin), destination = endpoint.safeParse(context.destination)
+    if (!parsed.success || !origin.success || !destination.success) return unavailable('Invalid route request or endpoint metadata; lookup was not performed.')
     if (context.signal.aborted) return unavailable('Google Routes city investigation was cancelled.')
     const request = parsed.data
     let checkedAt: string, now: number, ready: number
@@ -190,13 +193,13 @@ export function createCityGoogleRoutesAdapter(options: Options) {
     const transitBody = { ...base, travelMode: 'TRANSIT', departureTime: iso(ready), computeAlternativeRoutes: true }
     const addTransit = (raw: unknown[], queryId: number) => {
       for (const [index, item] of raw.entries()) {
-        if (candidates.length >= 12) break
+        if (candidates.length >= 12 || candidates.filter(candidate => candidate.kind === 'transit').length >= (options.maxTransitCandidates ?? 12)) break
         const candidate = normalizeTransit(item, request, context, checkedAt, `google-city-transit-${queryId}-${index + 1}`)
         if (candidate) addCandidate(candidate); else warnings.push(OMITTED)
       }
     }
     addTransit(await query(transitBody, TRANSIT_MASK), 1)
-    if (request.priority === 'fewest_transfers') addTransit(await query({ ...transitBody, transitPreferences: { routingPreference: 'FEWER_TRANSFERS' } }, TRANSIT_MASK), 2)
+    if (options.fewerTransfersAlternative !== false && request.priority === 'fewest_transfers') addTransit(await query({ ...transitBody, transitPreferences: { routingPreference: 'FEWER_TRANSFERS' } }, TRANSIT_MASK), 2)
     if (request.drivingAllowed && !context.signal.aborted && candidates.length < 12) {
       for (const [index, item] of (await query({ ...base, travelMode: 'DRIVE', routingPreference: 'TRAFFIC_UNAWARE' }, DRIVE_MASK)).entries()) {
         if (candidates.length >= 12) break
@@ -207,5 +210,17 @@ export function createCityGoogleRoutesAdapter(options: Options) {
     if (context.signal.aborted) warnings.push('Google Routes city investigation was cancelled; no further requests were made.')
     if (!candidates.length) warnings.push('No supported complete Google Maps city route was found; coverage does not establish that no transportation exists.')
     return { candidates, warnings: bounded(warnings) }
+  }
+}
+
+/** City searches retain strict canonical city bindings; point searches never impersonate a city. */
+export function createCityGoogleRoutesAdapter(options: Options) {
+  const routePoints = createPointGoogleRoutesAdapter(options)
+  return async (input: CityTripRequest, context: { signal: AbortSignal; origin: City; destination: City }): Promise<CityProviderFacts> => {
+    const origin = CitySchema.safeParse(context.origin), destination = CitySchema.safeParse(context.destination)
+    if (!origin.success || !destination.success || origin.data.id !== input.originCityId || destination.data.id !== input.destinationCityId) {
+      return { candidates: [], warnings: ['Invalid city request or mismatched city metadata; lookup was not performed.'] }
+    }
+    return routePoints(input, { signal: context.signal, origin: { ...origin.data, name: `${origin.data.name} city center` }, destination: { ...destination.data, name: `${destination.data.name} city center` } })
   }
 }

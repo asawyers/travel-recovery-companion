@@ -127,6 +127,20 @@ async function setup(
   });
   await page.route("**/functions/v1/recovery/travel", async (route) => {
     const input = route.request().postDataJSON() as TravelRecoveryInput;
+    // This suite exercises the primary SAN–PWM flow. The automatic alternate
+    // search receives an honest empty response and is tested in nearby-airport.spec.
+    if (input.originAirportIata !== "SAN" || input.destinationAirportIata !== "PWM") {
+      const origin = findCity(input.trip.originCityId)!, destination = findCity(input.trip.destinationCityId)!;
+      await route.fulfill({ json: TravelRecoveryResponseSchema.parse({
+        version: 3, request: travelRequestBinding(input), origin, destination,
+        generatedAt: now, expiresAt: expiry, flightOffers: [], hotelOffers: [], journey: null, selectionIssue: null,
+        sourceStatuses: [{ source: "flights", status: "empty", message: "No quotes from this airport pair in the scoped fixture.", checkedAt: now, expiresAt: expiry }],
+        warnings: ["Deterministic empty alternate response; no live inventory requested."],
+        ...(input.conversation ? { conversation: { turnId: input.conversation.turnId, baseRevision: input.conversation.baseRevision } } : {}),
+      }) });
+      return;
+    }
+
     posts.push(input);
     if (options.initialTravelDown && posts.length === 1) {
       await route.fulfill({

@@ -4,9 +4,10 @@ import type { City } from "@domain/city-contracts";
 import { nearestAirports } from "@domain/airport-metadata";
 import { FlightOffers } from "./FlightOffers";
 import { HotelOffers } from "./HotelOffers";
+import { ArrivalAllowanceForm, OnwardOffers } from "./OnwardOffers";
 import { JourneyFactsForm } from "./JourneyFactsForm";
 import { TravelJourneyCard } from "./TravelJourneyCard";
-import type { TravelController } from "./useTravelRecovery";
+import { nearbyArrivalAirport, requiresOnwardTravel, type TravelController } from "./useTravelRecovery";
 export function AirportChoices({
   origin,
   destination,
@@ -25,6 +26,12 @@ export function AirportChoices({
   if (!origin || !destination) return null;
   const origins = nearestAirports(origin),
     destinations = nearestAirports(destination);
+  const alternative = nearbyArrivalAirport(destination, from, to);
+  const selected = nearestAirports(destination, { limit: Number.MAX_SAFE_INTEGER, radiusKm: 200 })
+    .find(({ airport }) => airport.iata === to);
+  for (const choice of [alternative, selected]) {
+    if (choice && !destinations.some(({ airport }) => airport.iata === choice.airport.iata)) destinations.push(choice);
+  }
   const name = (items: typeof origins, code: string) => {
     const item = items.find((i) => i.airport.iata === code);
     return item
@@ -84,20 +91,26 @@ export function AirportChoices({
 export function TravelRecoveryPanel({
   controller,
   onChoose,
+  onActivate,
+  nearby = false,
+  destination,
 }: {
   controller: TravelController;
+  nearby?: boolean;
   origin?: City | null;
   destination?: City | null;
   onChoose: () => void;
+  onActivate?: () => void;
 }) {
   const { state, session } = controller,
     r = state.result,
     busy = !session.usable();
   return (
     <section
-      aria-label="Flight and overnight planning"
+      aria-label={nearby ? "Nearby airport flight and onward planning" : "Flight and overnight planning"}
       className="my-5 min-w-0 space-y-4"
     >
+      {nearby && <div className="space-y-1"><h2 className="companion-heading text-xl font-semibold">Nearby airport + onward travel</h2><p className="text-sm text-muted-foreground">Fly to {r?.request.destinationAirportIata ?? 'a nearby airport'}, then continue to {destination ? `${destination.name}, ${destination.stateCode}` : 'your final city'} by bus, rail or a confirmed onward drive. Airport arrival is not final city arrival.</p></div>}
       {state.busy && (
         <div className="space-y-3 rounded-2xl border border-[var(--companion-border)] bg-white p-4">
           <CompanionStatus label="Checking flight and overnight sources…" detail="I’m checking the available quotes and journey information." />
@@ -135,9 +148,12 @@ export function TravelRecoveryPanel({
             offers={r.flightOffers}
             busy={busy}
             expiresAt={r.expiresAt}
-            onPlan={(f) => session.planFlight(f)}
+            onPlan={(f) => { onActivate?.(); session.planFlight(f, requiresOnwardTravel(f.destinationAirportIata, r.destination)); }}
             onExpired={() => session.expire()}
           />
+          {nearby && !r.flightOffers.length && !state.busy && <p role="status">No flight quotes are available for this nearby airport from the checked sources.</p>}
+          {state.flight && state.needsOnward && !r.request.onwardFlight && <ArrivalAllowanceForm key={state.flight.fingerprint} busy={busy} onSearch={minutes => void session.searchOnward(minutes)} onCancel={() => session.cancel()} />}
+          {state.flight && state.needsOnward && r.request.onwardFlight && !state.onward && <OnwardOffers key={`${state.flight.fingerprint}:${r.request.onwardFlight.arrivalProcessingMinutes}:${state.sequence}`} offers={r.onwardOffers ?? []} busy={busy} expiresAt={r.expiresAt} onChoose={(offer, confirmed) => session.planOnward(offer, confirmed)} onExpired={() => session.expire()} />}
           {state.flight && r.request.overnight && (
             <HotelOffers
               offers={r.hotelOffers}
@@ -156,7 +172,8 @@ export function TravelRecoveryPanel({
           )}
           {state.editingFacts &&
             state.flight &&
-            (!r.request.overnight || state.hotel) && (
+            (!r.request.overnight || state.hotel) &&
+            (!state.needsOnward || state.onward) && (
               <JourneyFactsForm
                 key={`${state.flight.fingerprint}:${
                   state.hotel?.fingerprint ?? ""
@@ -164,6 +181,7 @@ export function TravelRecoveryPanel({
                 flight={state.flight}
                 hotel={state.hotel}
                 initialFacts={r.request.selection?.facts}
+                onward={state.onward && r.request.onwardFlight ? { arrivalProcessingMinutes: r.request.onwardFlight.arrivalProcessingMinutes, destinationName: destination ? `${destination.name}, ${destination.stateCode}` : r.destination.name, kind: state.onward.kind } : undefined}
                 busy={busy}
                 pending={state.busy}
                 onConfirm={(facts) => void session.confirm(facts)}

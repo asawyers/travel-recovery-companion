@@ -11,6 +11,7 @@ import { createCityRecoveryAgent } from '../_shared/server/city-agent.ts'
 import { createTravelRecoveryHandler } from '../_shared/server/travel-handlers.ts'
 import { createSerpApiTravelAdapter } from '../_shared/server/serpapi-travel.ts'
 import { createTravelRecoveryAgent } from '../_shared/server/travel-agent.ts'
+import { createTravelOnwardAdapter } from '../_shared/server/travel-onward.ts'
 
 const now = () => new Date().toISOString()
 // Independent switches authorize usage; none is an enforced spending cap.
@@ -36,9 +37,10 @@ const cityProvider = createCityGoogleRoutesAdapter({ enabled: routesApproved && 
 const cityAgent = createCityRecoveryAgent({ enabled: modelApproved && Boolean(modelKey), apiKey: modelKey, modelName, now })
 const travelKey = routesApproved ? Deno.env.get('SERPAPI_API_KEY') : undefined
 const travelProvider = createSerpApiTravelAdapter({ enabled: routesApproved && Boolean(travelKey), apiKey: travelKey, now })
+const onwardProvider = createTravelOnwardAdapter({ enabled: routesApproved && Boolean(routesKey), apiKey: routesKey, now })
 const travelAgent = createTravelRecoveryAgent({ enabled: modelApproved && Boolean(modelKey), apiKey: modelKey, modelName, now })
 Deno.serve(createRecoveryRouter({
   legacy: createRecoveryHandler({ now, providers, agent, hotelBookingOrigin }),
   city: createCityRecoveryHandler({ now, provider: cityProvider, agent: cityAgent }),
-  travel: createTravelRecoveryHandler({ now, provider: travelProvider, agent: travelAgent }),
+  travel: createTravelRecoveryHandler({ now, provider: travelProvider, onward: onwardProvider, agent: travelAgent }),
 }))

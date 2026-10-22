@@ -18,6 +18,7 @@ import {
   TravelRecoveryResponseSchema,
   travelRequestBinding,
   TravelSourceStatusSchema,
+  TravelOnwardOfferSchema,
 } from '../domain/travel-contracts.ts'
 import type {
   City,
@@ -27,11 +28,13 @@ import type {
   TravelAssistance,
   TravelRecoveryResponse,
   TravelSourceStatus,
+  TravelOnwardOffer,
 } from '../domain/travel-contracts.ts'
 import type { SourceEvidence } from '../domain/schemas.ts'
 import { assessTravelSelection } from '../domain/travel-planner.ts'
 import { toInstantMillis } from '../domain/time.ts'
 import type { TravelProvider } from './serpapi-travel.ts'
+import type { TravelOnwardInput, TravelOnwardDiscovery } from './travel-onward.ts'
 import type {
   TravelAgentExecutor,
   TravelAssessment,
@@ -131,6 +134,7 @@ export function createTravelRecoveryHandler(
     findAirport?: (iata: string) => TravelAirport | undefined
     provider?: TravelProvider
     agent?: TravelAgentExecutor
+    onward?: (input: TravelOnwardInput) => Promise<TravelOnwardDiscovery>
   },
 ): (request: Request) => Promise<Response> {
   return async (httpRequest) => {
@@ -186,6 +190,8 @@ export function createTravelRecoveryHandler(
       ) throw new HttpError(400, 'Choose valid origin and destination airport codes.')
       const warnings: string[] = [], statuses = new Map<Source, TravelSourceStatus>(), rejectedExpiries: number[] = []
       let flightOffers: FlightOffer[] = [], hotelOffers: NationalHotelOffer[] = [], expiredSelection = false
+      let onwardOffers: TravelOnwardOffer[] = []
+      let onwardPromise: Promise<void> | undefined
       let latest: TravelAssessment | undefined, latestPatch: PreferencePatch = {}, assessmentNumber = 0
       let flightPromise: Promise<TravelFlightDiscovery> | undefined,
         hotelPromise: Promise<TravelHotelDiscovery> | undefined
@@ -315,8 +321,37 @@ export function createTravelRecoveryHandler(
       }
       const getFlights = () => flightPromise ??= discover('flights') as Promise<TravelFlightDiscovery>
       const getHotels = () => hotelPromise ??= discover('hotels') as Promise<TravelHotelDiscovery>
+      const getOnward = () => onwardPromise ??= (async () => {
+        if (!input.investigate || !input.onwardFlight || !deps.onward) return
+        const binding = input.onwardFlight
+        await getFlights()
+        const flight = flightOffers.find(f => f.id === binding.flightOfferId && f.fingerprint === binding.flightFingerprint)
+        if (!flight) return
+        try {
+          const raw = await bounded(deps.onward({ flight: structuredClone(flight), destination: structuredClone(destination), arrivalProcessingMinutes: binding.arrivalProcessingMinutes, signal: providerController.signal }), providerController.signal)
+          active()
+          const parsed = z.strictObject({ offers: z.array(TravelOnwardOfferSchema).max(3), warnings: z.array(z.string().max(500)).max(64) }).parse(raw)
+          const now = millis(deps.now()), ready = millis(flight.segments.at(-1)!.arrivalAt) + binding.arrivalProcessingMinutes * 60000
+          const arrivalAirport = flight.segments.at(-1)!.destinationAirport
+          const valid = parsed.offers.filter(o => {
+            const first = o.legs[0], last = o.legs.at(-1)!
+            return o.flightOfferId === flight.id && o.flightFingerprint === flight.fingerprint && o.arrivalAirportIata === flight.destinationAirportIata && o.destinationCityId === destination.id && millis(o.airportReadyAt) === ready && first.from.latitude === arrivalAirport.latitude && first.from.longitude === arrivalAirport.longitude && first.departureTimeZone === arrivalAirport.timeZone && last.to.latitude === destination.latitude && last.to.longitude === destination.longitude && last.arrivalTimeZone === destination.timeZone && o.evidence.every(e => millis(e.checkedAt) <= now && (e.providerUpdatedAt === null || millis(e.providerUpdatedAt) <= now) && expiryOf(e) > now)
+          })
+          if (valid.length !== parsed.offers.length || new Set(valid.map(o => o.id)).size !== valid.length) throw new Error('Invalid onward route binding')
+          onwardOffers = valid.map(o => ({ ...o, evidence: o.evidence.map(safeEvidence) }))
+          if (parsed.warnings.length) warnings.push('Onward route search has qualifications; confirm terminal access, current service and all charges before booking.')
+          invalidate()
+        } catch {
+          active()
+          onwardOffers = []
+          warnings.push('Onward routes could not be verified. Recheck the selected flight and airport arrival allowance; no ground connection was invented.')
+        }
+      })()
       const ensureDiscovery = async () => {
-        if (input.investigate) await Promise.all([getFlights(), ...(input.overnight ? [getHotels()] : [])])
+        if (input.investigate) {
+          await Promise.all([getFlights(), ...(input.overnight ? [getHotels()] : [])])
+          await getOnward()
+        }
       }
       const snapshot = (patch: PreferencePatch): TravelRecoveryResponse => {
         active()
@@ -344,11 +379,17 @@ export function createTravelRecoveryHandler(
           statuses.set(source, unavailableStatus(source, status))
           warnings.push(sourceMessages.unavailable)
         }
-        const assessment = assessTravelSelection(canonical, { origin, destination, flightOffers, hotelOffers, now })
+        if (onwardOffers.some(o => o.evidence.some(e => expiryOf(e) <= millis(now)))) {
+          rejectedExpiries.push(...onwardOffers.flatMap(o => o.evidence.map(expiryOf)))
+          onwardOffers = []
+          expiredSelection = Boolean(input.selection?.onwardOfferId)
+        }
+        const assessment = assessTravelSelection(canonical, { origin, destination, flightOffers, hotelOffers, onwardOffers, now })
         if (expiredSelection && !assessment.journey) assessment.selectionIssue = 'expired'
         const expires = Math.min(
           millis(now) + TRAVEL_MAX_FACT_AGE_MS,
           ...evidenceOf(flightOffers, hotelOffers).map(expiryOf),
+          ...onwardOffers.flatMap(o => o.evidence.map(expiryOf)),
           ...[...statuses.values()].map(expiryOf),
           ...rejectedExpiries,
         )
@@ -361,6 +402,7 @@ export function createTravelRecoveryHandler(
           expiresAt: new Date(expires).toISOString(),
           flightOffers,
           hotelOffers,
+          ...(input.onwardFlight ? { onwardOffers } : {}),
           sourceStatuses: [...statuses.values()].sort((a, b) => a.source.localeCompare(b.source)),
           ...assessment,
           warnings: notes(warnings),

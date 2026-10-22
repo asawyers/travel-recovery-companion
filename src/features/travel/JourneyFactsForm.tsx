@@ -21,12 +21,13 @@ function localText(at: string | undefined, zone: string | undefined): string {
   catch { return '' }
 }
 /** Restore explicit confirmed facts without refreshing their original confirmation timestamp. */
-export function createJourneyFactsDraft(flight: FlightOffer, hotel: NationalHotelOffer | null, facts?: TravelJourneyFacts | null): JourneyFactsDraft {
+export type OnwardFactsContext = { arrivalProcessingMinutes: number; destinationName: string; kind: 'transit' | 'drive' }
+export function createJourneyFactsDraft(flight: FlightOffer, hotel: NationalHotelOffer | null, facts?: TravelJourneyFacts | null, onward?: OnwardFactsContext): JourneyFactsDraft {
   return {
     originMinutes: facts ? String(facts.originTransfer.minutes) : '', originCost: costText(facts?.originTransfer.costCents),
-    destinationMinutes: facts ? String(facts.destinationTransfer.minutes) : '', destinationCost: costText(facts?.destinationTransfer.costCents),
+    destinationMinutes: onward ? '1' : facts ? String(facts.destinationTransfer.minutes) : '', destinationCost: onward ? '' : costText(facts?.destinationTransfer.costCents),
     airportProcessingMinutes: facts ? String(facts.airportProcessingMinutes) : '',
-    arrivalProcessingMinutes: facts ? String(facts.arrivalProcessingMinutes) : '', flightExtras: costText(facts?.flightExtrasCents),
+    arrivalProcessingMinutes: onward ? String(onward.arrivalProcessingMinutes) : facts ? String(facts.arrivalProcessingMinutes) : '', flightExtras: costText(facts?.flightExtrasCents),
     connections: flight.segments.slice(0, -1).map(segment => {
       const connection = facts?.connections.find(value => value.afterSegmentId === segment.id)
       return { afterSegmentId: segment.id, allowanceMinutes: connection ? String(connection.allowanceMinutes) : '',
@@ -87,18 +88,18 @@ export function buildJourneyFacts(draft: JourneyFactsDraft, flight: FlightOffer,
     arrivalProcessingMinutes: minutes(draft.arrivalProcessingMinutes, 'Arrival processing allowance', true), connections,
     flightExtrasCents: amount(draft.flightExtras), stay, checkedAt })
 }
-type Props = { flight: FlightOffer; hotel?: NationalHotelOffer | null; initialFacts?: TravelJourneyFacts | null; busy?: boolean; pending?: boolean;
+type Props = { onward?: OnwardFactsContext; flight: FlightOffer; hotel?: NationalHotelOffer | null; initialFacts?: TravelJourneyFacts | null; busy?: boolean; pending?: boolean;
   onConfirm: (facts: TravelJourneyFacts) => void; onCancel?: () => void }
 type Step = 'origin' | 'hotelArrival' | 'hotelDeparture' | 'checkin' | 'hotelAirport' | 'arrangements' | 'airport' | `connection:${number}` | 'arrival' | 'destination' | 'review'
 export function JourneyFactsForm(props: Props) {
   return <FactsEditor key={`${props.flight.fingerprint}:${props.hotel?.fingerprint ?? 'no-stay'}`} {...props} />
 }
-function FactsEditor({ flight, hotel = null, initialFacts, busy = false, pending = busy, onConfirm, onCancel }: Props) {
-  const [draft, setDraft] = useState(() => createJourneyFactsDraft(flight, hotel, initialFacts))
+function FactsEditor({ onward, flight, hotel = null, initialFacts, busy = false, pending = busy, onConfirm, onCancel }: Props) {
+  const [draft, setDraft] = useState(() => createJourneyFactsDraft(flight, hotel, initialFacts, onward))
   const [stepIndex, setStepIndex] = useState(0)
   const [error, setError] = useState('')
   const steps: Step[] = ['origin', ...(hotel ? ['hotelArrival', 'hotelDeparture', 'checkin', 'hotelAirport', 'arrangements'] as const : []),
-    'airport', ...flight.segments.slice(0, -1).map((_, i) => `connection:${i}` as const), 'arrival', 'destination', 'review']
+    'airport', ...flight.segments.slice(0, -1).map((_, i) => `connection:${i}` as const), ...(onward ? [] : ['arrival', 'destination'] as const), 'review']
   const step = steps[stepIndex]
   const update = <K extends keyof JourneyFactsDraft>(key: K, value: JourneyFactsDraft[K]) => setDraft(current => ({ ...current, [key]: value }))
   function field(key: keyof Omit<JourneyFactsDraft, 'connections' | 'arrangementsConfirmed' | 'checkedAt'>, label: string, type = 'number') {
@@ -161,6 +162,7 @@ function FactsEditor({ flight, hotel = null, initialFacts, busy = false, pending
   return <form onSubmit={advance} aria-label="Complete journey facts" aria-busy={pending} className="min-w-0 rounded-2xl border border-[var(--companion-border)] bg-white p-4 space-y-4 shadow-sm sm:p-5">
     <div className="flex items-start gap-3"><CompanionAvatar size="sm" /><div className="min-w-0 space-y-2"><p className="text-xs font-medium uppercase tracking-wider text-[var(--companion-teal)]">Step {stepIndex + 1} of {steps.length}</p><h2 className="companion-heading text-lg font-semibold">Let’s check the rest of your journey</h2><p className="text-sm text-muted-foreground">These are your planning allowances; confirm them for this trip.</p></div></div>
     <div role="progressbar" aria-label="Journey facts progress" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={stepIndex + 1} className="h-1 overflow-hidden rounded-full bg-[var(--companion-paper)]"><div className="h-full rounded-full bg-[var(--companion-teal)]" style={{ width: `${(stepIndex + 1) / steps.length * 100}%` }} /></div>
+    {onward && <p className="text-sm text-muted-foreground">The selected onward {onward.kind === 'drive' ? 'driving estimate' : 'itinerary'} reaches {onward.destinationName}, after your confirmed {onward.arrivalProcessingMinutes}-minute arrival allowance. Its actual route replaces the destination transfer estimate.</p>}
     <p className="companion-heading text-base font-medium">{question}</p>
     {step === 'origin' && <>{field('originMinutes', 'Origin transfer minutes')}<p className="text-xs text-muted-foreground">From your selected origin city to {hotel ? hotel.name : `${flight.originAirportIata} airport`}. Confirm the actual transfer.</p>{optionalCost('originCost', 'Origin transfer cost')}</>}
     {step === 'hotelArrival' && <><p className="text-sm">{hotel!.name} · {hotel!.checkin} to {hotel!.checkout}</p>{field('hotelArrivalLocal', `Hotel arrival local date and time (${hotel!.timeZone}, estimated)`, 'datetime-local')}<p className="text-xs text-muted-foreground">Enter the arrival you arranged on {hotel!.checkin}. No check-in time is assumed.</p></>}
@@ -173,7 +175,7 @@ function FactsEditor({ flight, hotel = null, initialFacts, busy = false, pending
     {step === 'arrival' && <>{field('arrivalProcessingMinutes', 'Arrival processing allowance minutes')}<p className="text-xs text-muted-foreground">Time after landing for baggage and airport exit, before the final transfer.</p><Button type="button" variant="outline" disabled={busy} onClick={() => update('arrivalProcessingMinutes', '30')}>Use 30-minute planning allowance</Button></>}
     {step === 'destination' && <>{field('destinationMinutes', 'Destination transfer minutes')}<p className="text-xs text-muted-foreground">From {flight.destinationAirportIata} to your selected destination city. Confirm the actual transfer.</p>{optionalCost('destinationCost', 'Destination transfer cost')}</>}
     {step === 'review' && <div className="space-y-3 text-sm">
-      <p>Origin transfer {draft.originMinutes} min · airport processing {draft.airportProcessingMinutes} min · arrival processing {draft.arrivalProcessingMinutes} min · destination transfer {draft.destinationMinutes} min.</p>
+      <p>Origin transfer {draft.originMinutes} min · airport processing {draft.airportProcessingMinutes} min · arrival processing {draft.arrivalProcessingMinutes} min{!onward && <> · destination transfer {draft.destinationMinutes} min</>}.</p>
       {draft.connections.map((connection, index) => <p key={connection.afterSegmentId}>Connection {index + 1}: {connection.allowanceMinutes} min processing{connection.transferMinutes ? ` + ${connection.transferMinutes} min airport transfer` : ''}.</p>)}
       {hotel && <p>{hotel.name}: arrive {draft.hotelArrivalLocal}, leave {draft.hotelDepartureLocal} ({hotel.timeZone}, estimated); {draft.checkinMinutes} min check-in, {draft.hotelToAirportMinutes} min to airport. Property arrangements confirmed.</p>}
       <details><summary className="cursor-pointer">Optional additional costs</summary><div className="mt-3 space-y-3">{field('flightExtras', 'Additional flight fees and baggage (USD)', 'text')}{hotel && field('hotelExtras', 'Additional hotel fees (USD)', 'text')}<p className="text-xs text-muted-foreground">Blank means unknown. Enter 0 only for checked, confirmed zero additional charges.</p></div></details>

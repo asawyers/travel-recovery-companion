@@ -4,6 +4,9 @@ import type { CostLine, SourceEvidence } from './schemas.ts'
 import { sumCosts, toInstantMillis } from './time.ts'
 import {
   FlightOfferSchema,
+  TravelOnwardOfferSchema,
+  onwardOfferId,
+  type TravelOnwardOffer,
   NationalHotelOfferSchema,
   TravelRecoveryInputSchema,
   TRAVEL_MAX_FACT_AGE_MS,
@@ -19,7 +22,7 @@ import {
   type TravelRecoveryInput,
   type TravelSelectionIssue,
 } from './travel-contracts.ts'
-export type TravelPlanningContext = { origin: City; destination: City; now: string }
+export type TravelPlanningContext = { origin: City; destination: City; now: string; onwardOffers?: TravelOnwardOffer[] }
 export type TravelSelectionContext = TravelPlanningContext & {
   flightOffers: FlightOffer[]
   hotelOffers: NationalHotelOffer[]
@@ -80,6 +83,13 @@ export function assessTravelSelection(
   )
     return { journey: null, selectionIssue: 'hotel_changed' }
   if (expired(originalEvidence(flight, hotel), context.now)) return { journey: null, selectionIssue: 'expired' }
+  if (input.onwardFlight && !selection.onwardOfferId) return { journey: null, selectionIssue: 'onward_missing' }
+  if (selection.onwardOfferId) {
+    const onward = context.onwardOffers?.find(o => o.id === selection.onwardOfferId)
+    if (!onward) return { journey: null, selectionIssue: 'onward_missing' }
+    if (!TravelOnwardOfferSchema.safeParse(onward).success || onward.flightOfferId !== flight.id || onward.flightFingerprint !== flight.fingerprint) return { journey: null, selectionIssue: 'onward_changed' }
+    if (expired(onward.evidence, context.now)) return { journey: null, selectionIssue: 'expired' }
+  }
   return { journey: composeTravelJourney(input, flight, hotel, context), selectionIssue: null }
 }
 
@@ -100,7 +110,8 @@ export function composeTravelJourney(
     violations: string[] = [],
     warnings: string[] = [],
     legs: TravelLeg[] = [],
-    sources = originalEvidence(flight, hotel)
+    onward = selection.onwardOfferId ? context.onwardOffers?.find(o => o.id === selection.onwardOfferId) : undefined,
+    sources = [...originalEvidence(flight, hotel), ...(onward?.evidence ?? [])]
   const addViolation = (message: string) => {
     if (!violations.includes(message)) violations.push(message)
   }
@@ -334,13 +345,23 @@ export function composeTravelJourney(
   const arrivalPlace = place(last.destinationAirport),
     arrivalEnd = shift(last.arrivalAt, facts.arrivalProcessingMinutes, arrivalPlace.timeZone)
   add('processing', arrivalPlace, arrivalPlace, last.arrivalAt, arrivalEnd)
-  const finalArrivalAt = transfer(
-    arrivalPlace,
-    destinationPlace,
-    arrivalEnd,
-    facts.destinationTransfer,
-    'Destination airport to city transfer',
-  )
+  let finalArrivalAt: string
+  if (selection.onwardOfferId && !onward) addViolation('Selected onward route is missing; search again.')
+  if (onward) {
+    if (!TravelOnwardOfferSchema.safeParse(onward).success || onward.id !== onwardOfferId(onward) || onward.flightOfferId !== flight.id || onward.flightFingerprint !== flight.fingerprint || onward.arrivalAirportIata !== flight.destinationAirportIata || onward.destinationCityId !== destination.id) addViolation('Onward route does not match the selected flight and final destination.')
+    if (!input.onwardFlight || input.onwardFlight.flightOfferId !== flight.id || input.onwardFlight.flightFingerprint !== flight.fingerprint || input.onwardFlight.arrivalProcessingMinutes !== facts.arrivalProcessingMinutes || millis(onward.airportReadyAt) !== millis(arrivalEnd)) addViolation('Onward route readiness does not match the confirmed airport arrival allowance.')
+    if (onward.kind === 'drive' && selection.onwardVehicleConfirmed !== true) addViolation('Confirm a vehicle and driver for this onward airport journey.')
+    const firstGround = onward.legs[0].from, lastGround = onward.legs.at(-1)!.to
+    if (firstGround.latitude !== arrivalPlace.latitude || firstGround.longitude !== arrivalPlace.longitude || lastGround.latitude !== destination.latitude || lastGround.longitude !== destination.longitude) addViolation('Onward route must begin at the arrival airport and reach the final destination.')
+    onward.legs.forEach((leg, index) => {
+      const from = { name: leg.from.name, latitude: leg.from.latitude ?? NaN, longitude: leg.from.longitude ?? NaN, timeZone: leg.departureTimeZone }
+      const to = { name: leg.to.name, latitude: leg.to.latitude ?? NaN, longitude: leg.to.longitude ?? NaN, timeZone: leg.arrivalTimeZone }
+      // Airport and city anchors carry canonical names and zones; intermediate stops retain source labels.
+      add(leg.mode, index === 0 ? arrivalPlace : from, index === onward.legs.length - 1 ? destinationPlace : to, leg.startAt, leg.endAt, index === 0 ? onward.costs : [], onward.evidence, { boardingId: leg.vehicleId, operator: leg.operator, service: leg.service, assumptions: leg.assumptions })
+    })
+    finalArrivalAt = onward.legs.at(-1)!.endAt
+    warnings.push(...onward.confirmations)
+  } else finalArrivalAt = transfer(arrivalPlace, destinationPlace, arrivalEnd, facts.destinationTransfer, 'Destination airport to city transfer')
   const allCosts = legs.flatMap((l) => l.costs)
   const totals = sumCosts(allCosts)
   if (!totals.priceComplete)
@@ -378,8 +399,8 @@ export function composeTravelJourney(
       ? earliest
       : Temporal.Instant.fromEpochMilliseconds(Math.min(...sources.map(expiryOf))).toString()
   return structuredClone({
-    id: `journey-${flight.id.slice(7)}${hotel ? '-' + hotel.id.slice(6, 22) : ''}`,
-    title: hotel ? 'Origin overnight and connecting flight journey' : 'Complete flight journey',
+    id: `journey-${flight.id.slice(7)}${hotel ? '-' + hotel.id.slice(6, 22) : ''}${onward ? '-' + onward.id.slice(7, 23) : ''}`,
+    title: onward ? `Flight and onward ${onward.kind === 'drive' ? 'driving' : 'public transit'} journey` : hotel ? 'Origin overnight and connecting flight journey' : 'Complete flight journey',
     originCityId: trip.originCityId,
     destinationCityId: trip.destinationCityId,
     flightOfferId: flight.id,
@@ -389,8 +410,8 @@ export function composeTravelJourney(
     evidence: allEvidence,
     finalArrivalAt,
     durationMinutes: Math.max(0, (millis(finalArrivalAt) - millis(trip.readyAt)) / 60000),
-    boardings: flight.segments.length,
-    transfers: Math.max(0, flight.segments.length - 1),
+    boardings: legs.filter(l => ['flight', 'bus', 'rail', 'subway', 'tram', 'ferry'].includes(l.kind)).length,
+    transfers: Math.max(0, legs.filter(l => ['flight', 'bus', 'rail', 'subway', 'tram', 'ferry'].includes(l.kind)).length - 1),
     knownCostCents: totals.knownCostCents,
     priceComplete: totals.priceComplete,
     feasibility: violations.length ? 'infeasible' : 'requires_confirmation',

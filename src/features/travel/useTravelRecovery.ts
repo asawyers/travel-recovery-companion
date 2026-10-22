@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Temporal } from "@js-temporal/polyfill";
-import { findAirport } from "@domain/airport-metadata";
+import { findAirport, nearestAirports } from "@domain/airport-metadata";
 import type { City } from "@domain/city-contracts";
 import type { PreferencePatch } from "@domain/assistance";
 import {
@@ -11,10 +11,25 @@ import {
   type TravelRecoveryResponse,
   travelRequestBinding,
   type TravelTrip,
+  type TravelOnwardOffer,
 } from "@domain/travel-contracts";
 import { sumCosts } from "@domain/time";
 import { assessTravelSelection } from "@domain/travel-planner";
 import { requestTravel } from "@/lib/travel-api";
+/** Filter all nearby metadata before choosing one alternative; smaller airports can precede a hub. */
+export function nearbyArrivalAirport(destination: City | null, from: string, to: string) {
+  return destination ? nearestAirports(destination, { limit: Number.MAX_SAFE_INTEGER, radiusKm: 200 })
+    .find(({ airport }) => airport.kind === "large_airport" && airport.iata !== to && airport.iata !== from) ?? null : null;
+}
+/** A distant airport needs a sourced onward route even when selected as the primary airport. */
+export function requiresOnwardTravel(arrivalAirportIata: string, destination: City): boolean {
+  const airport = findAirport(arrivalAirportIata);
+  if (!airport) return true;
+  const radians = Math.PI / 180;
+  const h = Math.sin((airport.latitude - destination.latitude) * radians / 2) ** 2 +
+    Math.cos(destination.latitude * radians) * Math.cos(airport.latitude * radians) * Math.sin((airport.longitude - destination.longitude) * radians / 2) ** 2;
+  return 6371.0088 * 2 * Math.asin(Math.sqrt(Math.min(1, h))) > 50;
+}
 export function buildTravelRequest(
   trip: TravelTrip,
   origin: City,
@@ -53,6 +68,9 @@ type State = {
   hotel: NationalHotelOffer | null;
   selected: boolean;
   editingFacts: boolean;
+  needsOnward: boolean;
+  onward: TravelOnwardOffer | null;
+  onwardVehicleConfirmed: boolean;
   sequence: number;
 };
 export class TravelSession {
@@ -68,6 +86,9 @@ export class TravelSession {
     hotel: null,
     selected: false,
     editingFacts: false,
+    needsOnward: false,
+    onward: null,
+    onwardVehicleConfirmed: false,
     sequence: 0,
   };
   private listeners = new Set<() => void>();
@@ -107,6 +128,9 @@ export class TravelSession {
             flight: null,
             hotel: null,
             editingFacts: false,
+            needsOnward: false,
+            onward: null,
+            onwardVehicleConfirmed: false,
             error: null,
           }
         : {
@@ -120,6 +144,9 @@ export class TravelSession {
             hotel: null,
             selected: false,
             editingFacts: false,
+            needsOnward: false,
+            onward: null,
+            onwardVehicleConfirmed: false,
           },
     );
   }
@@ -150,6 +177,9 @@ export class TravelSession {
         hotel: null,
         selected: false,
         editingFacts: false,
+        needsOnward: false,
+        onward: null,
+        onwardVehicleConfirmed: false,
         notice:
           "Flight and hotel quotes expired. Recheck available sources and reselect your quotes.",
       });
@@ -176,20 +206,43 @@ export class TravelSession {
       },
     });
   }
-  planFlight(quote: FlightOffer) {
+  planFlight(quote: FlightOffer, needsOnward = false) {
     if (!this.usable()) return;
     const flight = this.state.result!.flightOffers.find(
       (f) => f.id === quote.id && f.fingerprint === quote.fingerprint,
     );
     if (!flight) return;
     this.invalidateFacts();
+    const { onwardFlight: _oldLookup, ...request } = this.state.result!.request;
     this.update({
+      result: { ...this.state.result!, request, onwardOffers: undefined },
       flight,
       hotel: null,
       selected: false,
-      editingFacts: true,
+      editingFacts: !needsOnward,
+      needsOnward,
+      onward: null,
+      onwardVehicleConfirmed: false,
       notice: null,
     });
+  }
+  async searchOnward(arrivalProcessingMinutes: number) {
+    const { result, flight } = this.state;
+    if (!result || !flight || !this.usable() || !this.state.needsOnward ||
+      !Number.isInteger(arrivalProcessingMinutes) || arrivalProcessingMinutes < 0 || arrivalProcessingMinutes > 10080) return;
+    await this.search({ ...result.request, selection: null, onwardFlight: {
+      flightOfferId: flight.id, flightFingerprint: flight.fingerprint, arrivalProcessingMinutes,
+    } });
+  }
+  planOnward(quote: TravelOnwardOffer, vehicleConfirmed = false) {
+    const { result, flight } = this.state;
+    if (!result || !flight || !this.usable() || !result.request.onwardFlight) return;
+    const onward = result.onwardOffers?.find(value => value.id === quote.id &&
+      value.flightOfferId === flight.id && value.flightFingerprint === flight.fingerprint);
+    if (!onward || (onward.kind === "drive" && !vehicleConfirmed)) return;
+    this.invalidateFacts();
+    this.update({ onward, onwardVehicleConfirmed: onward.kind === "drive" && vehicleConfirmed,
+      editingFacts: true, selected: false, notice: null });
   }
   planHotel(quote: NationalHotelOffer) {
     if (!this.usable() || !this.state.flight) return;
@@ -198,10 +251,10 @@ export class TravelSession {
     );
     if (!hotel) return;
     this.invalidateFacts();
-    this.update({ hotel, selected: false, editingFacts: true, notice: null });
+    this.update({ hotel, selected: false, editingFacts: !this.state.needsOnward || Boolean(this.state.onward), notice: null });
   }
   reviewFacts() {
-    if (this.usable() && this.state.flight)
+    if (this.usable() && this.state.flight && (!this.state.needsOnward || this.state.onward))
       this.update({ editingFacts: true, selected: false });
   }
   cancel() {
@@ -213,17 +266,21 @@ export class TravelSession {
       flight: null,
       hotel: null,
       editingFacts: false,
+      needsOnward: false,
+      onward: null,
+      onwardVehicleConfirmed: false,
       selected: false,
       notice: "Journey planning canceled. Quotes remain available for review.",
     });
   }
   async confirm(facts: TravelJourneyFacts) {
-    const { result, flight, hotel } = this.state;
+    const { result, flight, hotel, onward } = this.state;
     if (
       !result ||
       !flight ||
       !this.usable() ||
-      (result.request.overnight && !hotel)
+      (result.request.overnight && !hotel) ||
+      (this.state.needsOnward && (!onward || !result.request.onwardFlight || facts.arrivalProcessingMinutes !== result.request.onwardFlight.arrivalProcessingMinutes))
     )
       return;
     await this.search({
@@ -234,6 +291,7 @@ export class TravelSession {
         hotelOfferId: hotel?.id ?? null,
         hotelFingerprint: hotel?.fingerprint ?? null,
         facts,
+        ...(onward ? { onwardOfferId: onward.id, ...(onward.kind === "drive" ? { onwardVehicleConfirmed: this.state.onwardVehicleConfirmed } : {}) } : {}),
       },
     });
   }
@@ -272,6 +330,7 @@ export class TravelSession {
           now: this.options.now(),
           flightOffers: result.flightOffers,
           hotelOffers: result.hotelOffers,
+          onwardOffers: result.onwardOffers,
         }),
       );
     }
@@ -356,7 +415,8 @@ export class TravelSession {
       const flight = issue
         ? null
         : (result.flightOffers.find(
-            (f) => f.id === result.request.selection?.flightOfferId,
+            (f) => f.id === (result.request.selection?.flightOfferId ?? result.request.onwardFlight?.flightOfferId) &&
+              f.fingerprint === (result.request.selection?.flightFingerprint ?? result.request.onwardFlight?.flightFingerprint),
           ) ?? null);
       const hotel = issue
         ? null
@@ -373,6 +433,9 @@ export class TravelSession {
         flight,
         hotel,
         editingFacts: false,
+        needsOnward: !issue && Boolean(result.request.onwardFlight),
+        onward: !issue ? result.onwardOffers?.find(o => o.id === result.request.selection?.onwardOfferId) ?? null : null,
+        onwardVehicleConfirmed: !issue && result.request.selection?.onwardVehicleConfirmed === true,
         notice: issue
           ? "A selected quote changed, disappeared or expired. Reselect a current flight and hotel and confirm the journey facts again."
           : null,
@@ -389,6 +452,9 @@ export class TravelSession {
           flight: null,
           hotel: null,
           editingFacts: false,
+          needsOnward: false,
+          onward: null,
+          onwardVehicleConfirmed: false,
         });
       }
     } finally {

@@ -7,12 +7,14 @@ import {
 } from "@domain/travel-contracts";
 import {
   buildTravelRequest,
+  nearbyArrivalAirport,
   useTravelRecovery,
 } from "../travel/useTravelRecovery";
 import {
   AirportChoices,
   TravelRecoveryPanel,
 } from "../travel/TravelRecoveryPanel";
+import { hasOnwardConversationContext, isTravelMessage, travelConversationGuidance, travelMessageTarget } from "../travel/travelConversation";
 import { TravelHistoryPanel } from "../travel/TravelHistoryPanel";
 import {
   readTravelHistory,
@@ -40,6 +42,7 @@ import type {
   SelectionStorage,
   StorageResult,
 } from "../recovery/savedSelection";
+import { containsTravelGoogleMaps } from "../travel/savedSelectionSchema";
 import { GOOGLE_SAVE_MESSAGE } from "../recovery/providerRetention";
 import { LegalFooter } from "../recovery/LegalPage";
 import { CityStarterForm } from "./CityStarterForm";
@@ -89,6 +92,8 @@ export function CityRecoveryApp() {
   const visibleRejected = state.result?.rejected.filter((plan) => plan.kind !== "driving_estimate") ?? [];
   const [draft, setDraft] = useState(emptyCityDraft);
   const travel = useTravelRecovery();
+  const nearbyTravel = useTravelRecovery();
+  const [activeTravel, setActiveTravel] = useState<"primary" | "nearby" | null>(null);
   const [airports, setAirports] = useState<{ from: string; to: string } | null>(
     null,
   );
@@ -102,7 +107,9 @@ export function CityRecoveryApp() {
     (draft.destination
       ? (nearestAirports(draft.destination)[0]?.airport.iata ?? "")
       : "");
+  const alternative = nearbyArrivalAirport(draft.destination, from, to);
   const travelReported = useRef(0);
+  const nearbyReported = useRef(0);
   const [errors, setErrors] = useState<CityFormErrors>({});
   const [started, setStarted] = useState(false);
   const [manual, setManual] = useState<CityCandidate[]>([]);
@@ -121,7 +128,7 @@ export function CityRecoveryApp() {
     if (panel && started && !editing && followConversation.current) {
       panel.scrollTop = panel.scrollHeight;
     }
-  }, [turns, state.busy, travel.state.busy, started, editing]);
+  }, [turns, state.busy, travel.state.busy, nearbyTravel.state.busy, started, editing]);
   useEffect(() => () => session.dispose(), [session]);
   useEffect(() => {
     if (!state.result) return;
@@ -186,6 +193,7 @@ export function CityRecoveryApp() {
       Object.keys(assistance.appliedPreferences).length
     ) {
       travel.session.applyPreferences({ ...assistance.appliedPreferences, drivingAllowed: false });
+      nearbyTravel.session.applyPreferences({ ...assistance.appliedPreferences, drivingAllowed: false });
     }
     if (!assistance?.clarification) {
       setDraft((current) => ({
@@ -204,7 +212,8 @@ export function CityRecoveryApp() {
       next.destination?.id !== draft.destination?.id;
     session.edit(!cityChanged);
     travel.session.edit(!cityChanged);
-    if (cityChanged) setAirports(null);
+    nearbyTravel.session.edit(!cityChanged);
+    if (cityChanged) { setAirports(null); setActiveTravel(null); }
     setStorageMessage(null);
     setStorageError(null);
     setErrors({});
@@ -256,7 +265,7 @@ export function CityRecoveryApp() {
       turnId,
     );
     if (!refinement) {
-      if (!investigate) travel.session.rerank(built.request.priority);
+      if (!investigate) { travel.session.rerank(built.request.priority); nearbyTravel.session.rerank(built.request.priority); }
       else {
         const {
           version: _version,
@@ -264,7 +273,7 @@ export function CityRecoveryApp() {
           confirmedOptions: _options,
           ...trip
         } = built.request;
-        const active = travel.state.result?.request;
+        const active = travel.state.result?.request ?? nearbyTravel.state.result?.request;
         const preserve =
           travelMode === "preserve" &&
           active &&
@@ -291,6 +300,12 @@ export function CityRecoveryApp() {
         }
         if (input) void travel.session.search(input);
         else travel.session.unavailable();
+        const nearbyAirport = nearbyArrivalAirport(next.destination, from, to);
+        const alternateInput = nearbyAirport && buildTravelRequest(TravelTripSchema.parse(trip), next.origin, from, nearbyAirport.airport.iata, Boolean(preserve && active.overnight));
+        if (alternateInput) {
+          if (input) { alternateInput.departureDate = input.departureDate; alternateInput.overnight = input.overnight; }
+          void nearbyTravel.session.search(alternateInput);
+        } else nearbyTravel.session.edit(false);
       }
     }
     await session.compare(
@@ -324,16 +339,20 @@ export function CityRecoveryApp() {
         addTurn("user", "Explore overnight");
         if (input) void travel.session.search(input);
         else travel.session.unavailable();
+        const alternateInput = alternative && buildTravelRequest(TravelTripSchema.parse({ ...tripFacts, drivingAllowed: false }), draft.origin, from, alternative.airport.iata, true);
+        if (alternateInput) void nearbyTravel.session.search(alternateInput);
       }
       return;
     }
     if (
       (kind === "cheapest" || kind === "fewest_transfers") &&
       !session.canRerank() &&
-      !travel.session.usable()
+      !travel.session.usable() &&
+      !nearbyTravel.session.usable()
     ) {
       session.expire();
       travel.session.expire();
+      nearbyTravel.session.expire();
       return;
     }
     const next = {
@@ -344,6 +363,7 @@ export function CityRecoveryApp() {
     setDraft(next);
     if (!session.canRerank()) {
       travel.session.rerank(kind);
+      nearbyTravel.session.rerank(kind);
       addTurn("user", kind === "cheapest" ? "Cheaper" : "Fewer changes");
       return;
     }
@@ -361,37 +381,48 @@ export function CityRecoveryApp() {
       return;
     travelReported.current = t.sequence;
     const assistance = t.result.assistance;
-    const summary =
-      (assistance?.appliedPreferences.drivingAllowed !== true ? assistance?.summary : undefined) ??
-      `${t.result.flightOffers.length} flight quotes${
-        t.result.request.overnight
-          ? ` and ${t.result.hotelOffers.length} origin hotel quotes`
-          : ""
-      } checked. Confirm transfers and allowances before choosing a complete flight journey.`;
-    addTurn("assistant", summary);
+    const guidance = travelConversationGuidance(t.result, false, Boolean(t.hotel));
+    addTurn("assistant", guidance.summary);
+    if (guidance.openTripEditor) setEditing(true);
+    if (guidance.reviewFacts) travel.session.reviewFacts();
     if (
       assistance?.status === "completed" &&
       Object.keys(assistance.appliedPreferences).length
     ) {
       setDraft((current) => ({ ...current, ...assistance.appliedPreferences, drivingAllowed: false }));
       session.applyPreferences({ ...assistance.appliedPreferences, drivingAllowed: false });
+      nearbyTravel.session.applyPreferences({ ...assistance.appliedPreferences, drivingAllowed: false });
     }
     if (!assistance?.clarification && t.result.request.trip.drivingAllowed) {
       travel.session.applyPreferences({ drivingAllowed: false });
     }
-    const field = t.result.assistance?.clarification?.field;
-    if (
-      field &&
-      ["airport", "readyAt", "deadlineAt", "budget", "preference"].includes(
-        field,
-      )
-    )
-      setEditing(true);
-    if (field === "transfer" || (field === "hotel" && t.hotel))
-      travel.session.reviewFacts();
   }, [travel.state]);
+  useEffect(() => {
+    const t = nearbyTravel.state;
+    if (t.busy || !t.result || t.error || t.sequence === nearbyReported.current) return;
+    nearbyReported.current = t.sequence;
+    const result = t.result;
+    const assistance = result.assistance;
+    if (assistance?.status === "completed" && Object.keys(assistance.appliedPreferences).length) {
+      const patch = { ...assistance.appliedPreferences, drivingAllowed: false };
+      setDraft(current => ({ ...current, ...patch }));
+      session.applyPreferences(patch);
+      travel.session.applyPreferences(patch);
+      if (result.request.trip.drivingAllowed) nearbyTravel.session.applyPreferences({ drivingAllowed: false });
+    }
+    if (!assistance?.clarification && result.request.trip.drivingAllowed) nearbyTravel.session.applyPreferences({ drivingAllowed: false });
+    const guidance = travelConversationGuidance(result, true, Boolean(t.hotel));
+    addTurn("assistant", guidance.summary);
+    if (guidance.openTripEditor) setEditing(true);
+    if (guidance.reviewFacts) nearbyTravel.session.reviewFacts();
+  }, [nearbyTravel.state]);
   function travelMessage(text: string) {
-    const result = travel.state.result;
+    const target = travelMessageTarget({ text, primaryAirport: to, nearbyAirport: alternative?.airport.iata, active: activeTravel,
+      primaryResult: Boolean(travel.state.result), nearbyResult: Boolean(nearbyTravel.state.result),
+      primaryHasFlights: Boolean(travel.state.result?.flightOffers.length), nearbyHasFlights: Boolean(nearbyTravel.state.result?.flightOffers.length) });
+    const controller = target === "nearby" ? nearbyTravel : travel;
+    setActiveTravel(target);
+    const result = controller.state.result;
     const turnId = crypto.randomUUID();
     addTurn("user", text, turnId);
     let input: TravelRequestBinding | null = result
@@ -416,21 +447,21 @@ export function CityRecoveryApp() {
       result &&
       confirmed &&
       current &&
-      travel.session.usable() &&
+      controller.session.usable() &&
       !state.dirty &&
-      !travel.state.editingFacts &&
+      !controller.state.editingFacts &&
       !result.selectionIssue &&
       result.request.originAirportIata === from &&
-      result.request.destinationAirportIata === to &&
+      result.request.destinationAirportIata === (controller === nearbyTravel ? alternative?.airport.iata : to) &&
       Object.entries(result.request.trip).every(
         ([key, value]) => current[key as keyof typeof current] === value,
       ) &&
-      travel.state.flight?.id === confirmed.flightOfferId &&
-      travel.state.flight.fingerprint === confirmed.flightFingerprint &&
+      controller.state.flight?.id === confirmed.flightOfferId &&
+      controller.state.flight.fingerprint === confirmed.flightFingerprint &&
       (result.request.overnight
-        ? travel.state.hotel?.id === confirmed.hotelOfferId &&
-          travel.state.hotel.fingerprint === confirmed.hotelFingerprint
-        : confirmed.hotelOfferId === null && travel.state.hotel === null)
+        ? controller.state.hotel?.id === confirmed.hotelOfferId &&
+          controller.state.hotel.fingerprint === confirmed.hotelFingerprint
+        : confirmed.hotelOfferId === null && controller.state.hotel === null)
     ) {
       input.selection = confirmed;
     }
@@ -465,24 +496,26 @@ export function CityRecoveryApp() {
           TravelTripSchema.parse(trip),
           draft.origin,
           from,
-          to,
+          controller === nearbyTravel ? alternative?.airport.iata ?? to : to,
           wantsOvernight,
         );
       }
     }
     if (!input) {
-      travel.session.unavailable();
+      controller.session.unavailable();
       return;
     }
-    void travel.session.search({
+    void controller.session.search({
       ...input,
       refinement: text,
       conversation: conversationContext(turnId, session.revision, turns),
     });
   }
   function refreshTravel(request: TravelRequestBinding) {
+    setActiveTravel(null);
     session.edit();
     travel.session.edit(false);
+    nearbyTravel.session.edit(false);
     const saved =
       record.ok && record.value?.schemaVersion === 3 ? record.value : null;
     if (
@@ -512,13 +545,14 @@ export function CityRecoveryApp() {
     void travel.session.search({ ...request, trip: { ...request.trip, drivingAllowed: false } });
   }
   function save() {
+    const chosenTravel = nearbyTravel.state.selected ? nearbyTravel : travel;
     if (
-      travel.state.selected &&
-      travel.state.result &&
-      travel.session.usable()
+      chosenTravel.state.selected &&
+      chosenTravel.state.result &&
+      chosenTravel.session.usable()
     ) {
       const snap = travelSnapshot(
-        travel.state.result,
+        chosenTravel.state.result,
         new Date().toISOString(),
       );
       const saved = snap.ok
@@ -571,12 +605,15 @@ export function CityRecoveryApp() {
     setRecord(cleared);
     session.clearSaved();
     travel.session.clearSelection();
+    nearbyTravel.session.clearSelection();
     setStorageError(null);
     setStorageMessage("Saved plan deleted from this device.");
   }
   function refresh(saved: CitySavedSelection) {
+    setActiveTravel(null);
     session.edit();
     travel.session.edit(false);
+    nearbyTravel.session.edit(false);
     setAirports(null);
     const request = { ...refreshCityRequest(saved), drivingAllowed: false },
       next = draftFromCityRequest(request, saved.origin, saved.destination);
@@ -616,11 +653,14 @@ export function CityRecoveryApp() {
   const selected = visiblePlans.find(
       (plan) => plan.id === state.selectedId,
     ),
-    googleSelected = !!selected && containsCityGoogle(selected),
+    googleSelected = (!!selected && containsCityGoogle(selected)) ||
+      (travel.state.selected && containsTravelGoogleMaps(travel.state.result?.journey)) ||
+      (nearbyTravel.state.selected && containsTravelGoogleMaps(nearbyTravel.state.result?.journey)),
     savedRecord = record.ok ? record.value : null;
   const canSave =
     (!!selected && session.canUseResult()) ||
-    (travel.state.selected && travel.session.usable());
+    (travel.state.selected && travel.session.usable()) ||
+    (nearbyTravel.state.selected && nearbyTravel.session.usable());
   const editor = (
     <>
       <AirportChoices
@@ -629,12 +669,14 @@ export function CityRecoveryApp() {
         from={from}
         to={to}
         open={
-          travel.state.result?.assistance?.clarification?.field === "airport"
+          travel.state.result?.assistance?.clarification?.field === "airport" || nearbyTravel.state.result?.assistance?.clarification?.field === "airport"
         }
         onChange={(from, to) => {
           setAirports({ from, to });
+          setActiveTravel(null);
           session.edit(true);
           travel.session.edit(true);
+          nearbyTravel.session.edit(true);
         }}
       />
       <CityStarterForm
@@ -863,7 +905,7 @@ export function CityRecoveryApp() {
                       Confirm your trip details to compare options.
                     </p>
                   ) : null}
-                  {travel.state.busy && (
+                  {(travel.state.busy || nearbyTravel.state.busy) && (
                     <CompanionStatus label="Checking flight and hotel options…" />
                   )}
                   {state.error && (
@@ -905,11 +947,12 @@ export function CityRecoveryApp() {
                       disabled={
                         state.busy ||
                         travel.state.busy ||
+                        nearbyTravel.state.busy ||
                         state.dirty ||
-                        (!state.result && !travel.state.result) ||
+                        (!state.result && !travel.state.result && !nearbyTravel.state.result) ||
                         ((kind === "cheapest" || kind === "fewest_transfers") &&
                           !session.canRerank() &&
-                          !travel.session.usable())
+                          !travel.session.usable() && !nearbyTravel.session.usable())
                       }
                       onClick={() => quickReply(kind)}
                     >
@@ -939,9 +982,7 @@ export function CityRecoveryApp() {
                         /cheap/i.test(text) ? "cheapest" : "fewest_transfers",
                       );
                     } else if (
-                      /flight|fly|airport|hotel|overnight|stay|security|connection|transfer/i.test(
-                        text,
-                      )
+                      isTravelMessage(text, [from, to, alternative?.airport.iata ?? ""], hasOnwardConversationContext(travel.state, nearbyTravel.state, activeTravel))
                     )
                       travelMessage(text);
                     else void compare(draft, manual, true, text, text);
@@ -969,11 +1010,12 @@ export function CityRecoveryApp() {
                       disabled={
                         state.busy ||
                         travel.state.busy ||
+                        nearbyTravel.state.busy ||
                         state.dirty ||
                         !message.trim()
                       }
                     >
-                      {(state.busy || travel.state.busy) && <LoadingSpinner />}
+                      {(state.busy || travel.state.busy || nearbyTravel.state.busy) && <LoadingSpinner />}
                       Send message
                     </Button>
                   </div>
@@ -1004,7 +1046,7 @@ export function CityRecoveryApp() {
                   <h2 className="companion-heading text-xl font-semibold">Travel options</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Compare ground travel and flight quotes. Explore an origin overnight when you need it.</p>
                 </div>
-                {(state.busy || travel.state.busy) && <Badge variant="secondary" className="gap-2"><LoadingSpinner /> Checking sources</Badge>}
+                {(state.busy || travel.state.busy || nearbyTravel.state.busy) && <Badge variant="secondary" className="gap-2"><LoadingSpinner /> Checking sources</Badge>}
               </div>
               {state.result && <p role="status" className="text-sm text-muted-foreground">{cityResultCount(state.result)}</p>}
               {state.dirty && (
@@ -1027,8 +1069,10 @@ export function CityRecoveryApp() {
                         onSelect={() => {
                           setStorageMessage(null);
                           session.select(plan.id);
-                          if (session.getSnapshot().selectedId === plan.id)
+                          if (session.getSnapshot().selectedId === plan.id) {
                             travel.session.clearSelection();
+                            nearbyTravel.session.clearSelection();
+                          }
                         }}
                       />
                     ))}
@@ -1097,8 +1141,16 @@ export function CityRecoveryApp() {
               )}
               <TravelRecoveryPanel
                 controller={travel}
-                onChoose={() => session.clearSelection()}
+                onActivate={() => setActiveTravel("primary")}
+                onChoose={() => { session.clearSelection(); nearbyTravel.session.clearSelection(); }}
               />
+              {(alternative || nearbyTravel.state.result) && <TravelRecoveryPanel
+                controller={nearbyTravel}
+                onActivate={() => setActiveTravel("nearby")}
+                nearby
+                destination={draft.destination}
+                onChoose={() => { session.clearSelection(); travel.session.clearSelection(); }}
+              />}
 
               <div className="flex flex-wrap items-start gap-3 rounded-xl border bg-white p-4">
                 <Button
@@ -1115,6 +1167,7 @@ export function CityRecoveryApp() {
                     disabled={
                       state.busy ||
                       travel.state.busy ||
+                        nearbyTravel.state.busy ||
                       state.dirty ||
                       travel.state.dirty
                     }

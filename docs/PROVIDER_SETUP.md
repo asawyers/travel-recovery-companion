@@ -85,3 +85,8 @@ Discovery uses [`POST /hotels/rates`](https://docs.liteapi.travel/reference/post
 Property handoffs use the exact configured origin and `/hotels/{hotelId}`, dates and base64 JSON-array occupancy only. Identity, nationality, offer/prebook IDs and payment payloads are excluded. Arbitrary provider links and `/booking?offerId=...` checkout/prebook routes are not used. Restored historical plans use general hotel search. See [property deeplinks](https://docs.liteapi.travel/docs/deeplinking-to-whitelabel).
 
 FlightAware is a future README note only: flight input plus detected-delay notification could initiate recovery. The current app performs no flight-status lookup or monitoring.
+
+
+## Nearby arrival airports and onward travel
+
+The existing SerpApi key searches the primary airport pair and at most one nearby large arrival airport (within 200 km), concurrently. Each pair retains its own quote binding. After selecting a nearby-airport flight and confirming arrival-processing time, the existing approved Google Routes key checks transit and a scoped onward drive from the actual airport point to the final city. This adds at most two Google requests for that selected flight; complete confirmation reacquires the selected flight and onward routes. These calls use the existing provider approval switch and do not require a new account, key or environment setting. Missing transit, changed quotes and unknown vehicle costs remain explicit. No airline protection, seat, ticket, rental vehicle or purchase is implied.
