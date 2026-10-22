@@ -10,17 +10,23 @@ describe('recovery URL dispatcher', () => {
     ['/recovery/city', 'city'],
     ['/functions/v1/recovery/city', 'city'],
     ['/recovery/city/?source=web', 'city'],
+    ['/recovery/travel', 'travel'],
+    ['/functions/v1/recovery/travel/?source=web', 'travel'],
   ] as const)('routes %s to %s and preserves the original request', async (path, target) => {
     const request = new Request(`https://edge.test${path}`, { method: 'POST', body: '{"trip":true}' })
     const observed: Request[] = []
     const legacy = vi.fn(async (input: Request) => { observed.push(input); return new Response('legacy') })
     const city = vi.fn(async (input: Request) => { observed.push(input); return new Response('city') })
+    const travel = vi.fn(async (input: Request) => { observed.push(input); return new Response('travel') })
 
-    const response = await createRecoveryRouter({ legacy, city })(request)
+    const response = await createRecoveryRouter({ legacy, city, travel })(request)
 
     expect(await response.text()).toBe(target)
-    expect(target === 'legacy' ? legacy : city).toHaveBeenCalledTimes(1)
-    expect(target === 'legacy' ? city : legacy).not.toHaveBeenCalled()
+    const handlers = { legacy, city, travel }
+    expect(handlers[target]).toHaveBeenCalledTimes(1)
+    for (const [name, handler] of Object.entries(handlers)) {
+      if (name !== target) expect(handler).not.toHaveBeenCalled()
+    }
     expect(observed[0]).toBe(request)
   })
 
@@ -64,12 +70,39 @@ describe('recovery URL dispatcher', () => {
     expect(handler).toHaveBeenCalledWith(request)
   })
 
+  it.each(['GET', 'OPTIONS'])('forwards travel %s unchanged', async method => {
+    const request = new Request('https://edge.test/recovery/travel', { method })
+    const travel = vi.fn(async (input: Request) => new Response(input.method))
+    const router = createRecoveryRouter({ legacy: vi.fn(), city: vi.fn(), travel })
+
+    const response = await router(request)
+
+    expect(await response.text()).toBe(method)
+    expect(travel).toHaveBeenCalledWith(request)
+  })
+
+  it('returns a safe CORS 404 for travel when no travel handler is provided', async () => {
+    const router = createRecoveryRouter({ legacy: vi.fn(), city: vi.fn() })
+
+    const response = await router(new Request('https://edge.test/functions/v1/recovery/travel'))
+
+    expect(response.status).toBe(404)
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(response.headers.get('content-type')).toContain('application/json')
+    expect(await response.json()).toEqual({ error: 'Not found.' })
+  })
+
   it.each([
     '/not/recovery',
     '/prefix/recovery',
     '/prefix/recovery/city',
     '/functions/v1/other/recovery/city',
     '/recovery/city/extra',
+    '/recovery/city/travel',
+    '/recovery/travel/extra',
+    '/functions/v1/recovery/travel/extra',
+    '/recovery//travel',
     '/Recovery',
   ])('returns a safe CORS 404 for unknown path %s', async path => {
     const legacy = vi.fn(async () => new Response('legacy'))

@@ -8,6 +8,9 @@ import { createRecoveryRouter } from '../_shared/server/app-router.ts'
 import { createCityRecoveryHandler } from '../_shared/server/city-handlers.ts'
 import { createCityGoogleRoutesAdapter } from '../_shared/server/city-google-routes.ts'
 import { createCityRecoveryAgent } from '../_shared/server/city-agent.ts'
+import { createTravelRecoveryHandler } from '../_shared/server/travel-handlers.ts'
+import { createSerpApiTravelAdapter } from '../_shared/server/serpapi-travel.ts'
+import { createTravelRecoveryAgent } from '../_shared/server/travel-agent.ts'
 
 const now = () => new Date().toISOString()
 // Independent switches authorize usage; none is an enforced spending cap.
@@ -31,7 +34,11 @@ const providers = createProviderRegistry({
 const agent = createRecoveryAgent({ enabled: modelApproved && Boolean(modelKey), apiKey: modelKey, modelName, now })
 const cityProvider = createCityGoogleRoutesAdapter({ enabled: routesApproved && Boolean(routesKey), apiKey: routesKey, now })
 const cityAgent = createCityRecoveryAgent({ enabled: modelApproved && Boolean(modelKey), apiKey: modelKey, modelName, now })
+const travelKey = routesApproved ? Deno.env.get('SERPAPI_API_KEY') : undefined
+const travelProvider = createSerpApiTravelAdapter({ enabled: routesApproved && Boolean(travelKey), apiKey: travelKey, now })
+const travelAgent = createTravelRecoveryAgent({ enabled: modelApproved && Boolean(modelKey), apiKey: modelKey, modelName, now })
 Deno.serve(createRecoveryRouter({
   legacy: createRecoveryHandler({ now, providers, agent, hotelBookingOrigin }),
   city: createCityRecoveryHandler({ now, provider: cityProvider, agent: cityAgent }),
+  travel: createTravelRecoveryHandler({ now, provider: travelProvider, agent: travelAgent }),
 }))
