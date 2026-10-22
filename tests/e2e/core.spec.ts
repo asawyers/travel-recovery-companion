@@ -293,7 +293,11 @@ test("manual confirmation timestamps survive priority-only input edits without a
   ])
     await page.getByLabel(label, { exact: true }).fill(value);
   await compare(page);
-  await expect(page.getByTestId("option-card")).toHaveCount(1);
+  const manualCard = page.getByTestId("option-card").filter({
+    has: page.getByRole("heading", { name: "Manual priority test", exact: true, includeHidden: true }),
+  });
+  await expect(manualCard).toHaveCount(1);
+  expect(posts[0].investigate).toBe(true);
   await page.clock.fastForward(2_000);
   await page.getByRole("button", { name: "Cheaper", exact: true }).click();
   await reviewPlan(page, "View Manual priority test");

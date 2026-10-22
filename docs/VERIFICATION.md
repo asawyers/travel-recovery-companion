@@ -1,6 +1,6 @@
 # Verification status
 
-The compact starter-to-chat source has passed the local gate below. Earlier deployed Google/OpenAI/sandbox evidence remains historical until this revised frontend and v6 backend are published and checked. Production hotel onboarding remains deferred.
+The compact starter-to-chat app is deployed with a v6 backend. Local checks, all 50 hosted Brave cases and actual Google/OpenAI/sandbox acceptance passed as recorded below. Production hotel onboarding remains deferred.
 
 ## Starter-to-chat local gate — 2026-10-22
 
@@ -16,6 +16,27 @@ The approved redesign starts with gate arrival and an ASAP/explicit goal, then o
 | Regression preservation | All 39 prior cases retained, plus eleven conversation/guided-hotel workflows; no skips |
 
 Independent domain and backend specification/quality reviews approved. Frontend specification, quality and regression-preservation reviews approved after correcting all findings. Focused regressions exercised invalid explicit deadlines, required stay confirmation, invalid hotel costs/dates, the Enter-submit bypass, same-ID changed-price saved status, typed-result history and both inline deadline/ASAP transitions before their fixes. The final local browser gate includes all corrected flows, stale/late response guards, cache/source boundaries, save/history/storage/expiry/mobile/keyboard behavior. No live provider/model call occurred in these fixture/loopback gates. No credentials were read.
+
+
+## Starter-to-chat deployed and actual provider acceptance — 2026-10-22
+
+Reviewed implementation `229faf724df586ef555a8d80f47eb42e10aa7870` was pushed to main and the feature branch. [Main workflow 39702713464](https://github.com/asawyers/travel-recovery-companion/actions/runs/39702713464) passed clean install, 444 tests, build and scoped Edge Function deployment. Branch workflow 39702713455 passed. [Native Vercel deployment](https://vercel.com/rito-labs-2cc43421/travel-recovery-companion/ANNHeZM5eys8PU3HKyyvN11rd1g4) succeeded; the stable production app served `/assets/index-DqPxFlpB.js` and returned `public-recovery-v6`.
+
+Actual isolated Brave checks, with no response interception, passed:
+
+- Short custom-arrival/ASAP starter: HTTP 200 in 2,930 ms, two Google schedule candidates/plans, null original departure/connection and null hard deadline.
+- Actual GPT-6 Luna clarification: 8,032 ms, typed deadline question, exact turn/revision echo, unchanged hard facts, retained current cards and only model activity. The structured answer then supplied the exact traveler-entered deadline and produced new options.
+- Actual GPT-6 Luna preference refinement: 20,559 ms, completed no-driving change with an eligible recommendation and matching echo. A following Cheaper quick reply made zero extra POSTs; no chat or itinerary was saved in that transport profile.
+- Actual sandbox discovery: 2,674 ms, three offers with estimated/sandbox provenance. Selected-property guidance and explicit fictional transfer defaults produced two plans, including the selected hotel journey. Priority reranking made zero extra POSTs.
+- Sandbox save/reload/refresh: original hotel evidence retained, zero reload POSTs, no booking links and saved historical JSON unchanged after explicit refresh. The successful focused sequence made exactly three synthetic+sandbox investigations with no refinement; refreshed offers remained three.
+
+The actual transport flow and focused sandbox flow ran separately against the same deployed source. Initial harness assumptions about the exact Google attribution label and a shared sandbox/real hotel confirmation control were corrected to match the source before acceptance; these required no application change. The sandbox rerun did not repeat already-passing paid model checks. Temporary scripts `/tmp/travel-hybrid-live-acceptance.mjs` and `/tmp/travel-hybrid-live-sandbox.mjs` closed their isolated browsers; no credential or raw provider/model payload was retained. Sandbox rates are test data, not live production inventory. Production hotel onboarding remains deferred.
+
+## Final hosted browser gate
+
+All 50 configured Brave cases passed against the stable production app in 1.9 minutes. The first hosted run passed 48/50; two manual-route tests incorrectly assumed no additional Google options. The narrow test-only correction targets the exact entered manual card and explicitly verifies investigation remains enabled. It preserves prices, original evidence timestamps, zero-request priority reuse, keyboard selection and validation. Independent regression review approved, the focused two cases passed in 9.5 seconds, then root reran all 50 successfully. No application/provider configuration changed for this correction.
+
+Local 50 cases passed against implementation `229faf7` before the final hosted-only selector correction. Actual-provider acceptance is separate from these fixture/browser regressions. All task-owned loopback servers and isolated browsers were closed; ports 37425/37426 had no listener. Private Superpowers/session/reference documents remain ignored. The remaining production-hotel onboarding and the author's own understanding review are separate from the completed challenge UI/deployment scope.
 
 ## Earlier core revisions
 

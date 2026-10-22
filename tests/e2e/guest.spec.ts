@@ -116,8 +116,15 @@ test("a traveler-entered bus uses actual inputs and retains them on invalid date
   await page.getByLabel("Fare (USD)").fill("35");
   await page.getByLabel("Access cost (USD)").fill("0");
   await page.getByLabel("Final transfer cost (USD)").fill("12");
+  const comparisonRequest = page.waitForRequest(request =>
+    request.url().includes("/functions/v1/recovery") && request.method() === "POST",
+  );
   await compare(page);
-  await expect(page.getByTestId("option-card")).toContainText("$47.00");
+  expect((await comparisonRequest).postDataJSON().investigate).toBe(true);
+  const manualCard = page.getByTestId("option-card").filter({
+    has: page.getByRole("heading", { name: "My confirmed bus", exact: true, includeHidden: true }),
+  });
+  await expect(manualCard).toContainText("$47.00");
   await (await revealPlan(page, "View My confirmed bus")).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("itinerary")).toContainText(

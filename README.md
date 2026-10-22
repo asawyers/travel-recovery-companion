@@ -6,7 +6,7 @@ The motivation is the author's San Diego → Portland journey: a delay on the Sa
 
 ## Current state
 
-[Open the deployed app](https://travel-recovery-companion.vercel.app). The source now implements a compact starter followed by one recovery conversation, contextual fact confirmations, quick replies and an optional manual option editor. The traveler supplies their revised gate-arrival time; no flight lookup or delay verification is required. See [verification status](docs/VERIFICATION.md) for the exact source, deployment and acceptance evidence; earlier hosted acceptance does not establish this revised flow's deployment.
+[Open the deployed app](https://travel-recovery-companion.vercel.app). The deployed app implements a compact starter followed by one recovery conversation, contextual fact confirmations, quick replies and an optional manual option editor. The traveler supplies their revised gate-arrival time; no flight lookup or delay verification is required. The revised flow is deployed; actual Google route discovery, OpenAI clarification/preference changes and the guided sandbox save/history flow have passed in Brave. See [verification status](docs/VERIFICATION.md) for exact revisions and checks.
 
 The planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Public server comparison and current-tab priority reuse are implemented. The backend uses GitHub Actions and the frontend uses Vercel's native Git integration. Google Routes, LiteAPI hotel discovery/property handoffs and an actual OpenAI Agents SDK assistant are implemented. Google and OpenAI usage are already authorized and configured. Production hotel access and public-rate approval remain deferred.
 
@@ -31,7 +31,7 @@ npm run build
 npm run test:e2e -- tests/e2e/guest.spec.ts
 ```
 
-The starter-to-chat source passes 444 unit tests across 27 files, TypeScript/Vite build, Deno checking, nine real loopback HTTP cases and all 50 local Brave cases. The browser suite preserves the 39 prior cases and adds eleven focused conversation/guided-hotel workflows. Fixture results do not establish live inventory or paid model acceptance; current deployment and separate actual Google, OpenAI and sandbox evidence are recorded in [verification status](docs/VERIFICATION.md). Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for another Brave installation.
+The starter-to-chat source passes 444 unit tests across 27 files, TypeScript/Vite build, Deno checking, nine real loopback HTTP cases and all 50 local and all 50 hosted Brave cases. The browser suite preserves the 39 prior cases and adds eleven focused conversation/guided-hotel workflows. Fixture results do not establish live inventory or paid model acceptance; current deployment and separate actual Google, OpenAI and sandbox evidence are recorded in [verification status](docs/VERIFICATION.md). Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for another Brave installation.
 
 ## Stack and backend direction
 
@@ -95,7 +95,7 @@ The browser endpoint setting is optional: set `VITE_RECOVERY_API_URL=http://127.
 
 ## Deployment status and setup
 
-[Public source](https://github.com/asawyers/travel-recovery-companion) was published on `main` and `feat/travel-recovery-companion`. Earlier GitHub checks and functions-only backend deployment passed. The prior deployed UI passed all 39 configured Brave cases against the stable HTTPS frontend, including real backend comparison and device save/reload/delete. These historical results do not establish deployment or acceptance of the starter-to-chat amendment. Native main/branch Git deployments were observed; the author confirmed Production / Ready and Preview / Ready labels. The deployed public API uses wildcard CORS without an origin allowlist. No core hosting blocker remains.
+[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. The starter-to-chat implementation passed GitHub checks and functions-only backend deployment, native Vercel deployment, all 50 configured hosted Brave cases, and separate actual Google/OpenAI/sandbox acceptance. The hosted suite includes real public HTTP comparison and device save/reload/delete. Native main/branch Git integration remains in use. The public API uses wildcard CORS without an origin allowlist. No core hosting blocker remains.
 
 This repository is connected to its dedicated Vercel project using [Vercel’s native GitHub integration](https://vercel.com/docs/git/vercel-for-github). Use the Vite preset, repository root, Node 24, `npm ci`, `npm run build`, `dist` and production branch `main`. Main pushes should produce production deployments; branch/PR pushes should produce previews and GitHub deployment status. Verify both deployed commit SHAs. No Vercel token or custom deploy Action is needed.
 
