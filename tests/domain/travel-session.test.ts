@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { travelFixture } from "@domain/travel-fixtures";
+import { travelFixture, overnightTravelFixture } from "@domain/travel-fixtures";
+import { assessTravelSelection } from "@domain/travel-planner";
 import {
   buildTravelRequest,
   TravelSession,
 } from "../../src/features/travel/useTravelRecovery";
 import {
   type TravelRecoveryResponse,
+  hotelOfferFingerprint,
   travelRequestBinding,
 } from "@domain/travel-contracts";
 const f = travelFixture();
@@ -177,4 +179,147 @@ it("soft preference synchronization invalidates a pending travel request and ret
   await pending;
   expect(session.usable()).toBe(false);
   expect(session.getSnapshot().dirty).toBe(true);
+});
+
+for (const issue of ["hotel_changed", "flight_missing"] as const) {
+  it(`does not preserve an eligible journey when clarification accompanies ${issue}`, async () => {
+    const overnight = overnightTravelFixture();
+    const full = {
+      ...response(overnight.input),
+      flightOffers: overnight.flightOffers,
+      hotelOffers: overnight.hotelOffers,
+      ...assessTravelSelection(overnight.input, overnight),
+    };
+    expect(full.journey?.selectable).toBe(true);
+    const session = new TravelSession({
+      now: () => overnight.now,
+      transport: async () => full,
+    });
+    await session.search(overnight.input);
+    session.select();
+    expect(session.getSnapshot().selected).toBe(true);
+    const changedHotel = structuredClone(overnight.hotel);
+    changedHotel.costs[0].cents = 45000;
+    changedHotel.fingerprint = hotelOfferFingerprint(changedHotel);
+    const offers = {
+      flightOffers: issue === "flight_missing" ? [] : overnight.flightOffers,
+      hotelOffers:
+        issue === "hotel_changed" ? [changedHotel] : overnight.hotelOffers,
+    };
+    session.options.transport = async (input) => ({
+      ...response(input),
+      ...offers,
+      ...assessTravelSelection(input, { ...overnight, ...offers }),
+      assistance: {
+        status: "limited",
+        summary: "Reselect the changed quote.",
+        appliedPreferences: {},
+        selectedPlanId: null,
+        activity: [],
+        clarification: {
+          field: issue === "hotel_changed" ? "hotel" : "flight",
+          reason: "required",
+        },
+      },
+    });
+    await session.search({
+      ...overnight.input,
+      refinement: "Recommend this flight journey",
+    });
+    const state = session.getSnapshot();
+    expect(state.result?.selectionIssue).toBe(issue);
+    expect(state.result?.hotelOffers).toEqual(offers.hotelOffers);
+    expect(state.result?.flightOffers).toEqual(offers.flightOffers);
+    expect(state.result?.journey).toBeNull();
+    expect(state.flight).toBeNull();
+    expect(state.hotel).toBeNull();
+    session.select();
+    expect(session.getSnapshot().selected).toBe(false);
+  });
+}
+it("a clarification for a canceled null selection cannot restore earlier confirmed facts", async () => {
+  const full = {
+    ...response(),
+    flightOffers: f.flightOffers,
+    ...assessTravelSelection(f.input, f),
+  };
+  expect(full.journey?.selectable).toBe(true);
+  const session = new TravelSession({
+    now: () => f.now,
+    transport: async () => full,
+  });
+  await session.search(f.input);
+  session.reviewFacts();
+  session.cancel();
+  expect(session.usable()).toBe(true);
+  expect(session.getSnapshot().flight).toBeNull();
+  session.options.transport = async (input) => ({
+    ...response(input),
+    flightOffers: f.flightOffers,
+    assistance: {
+      status: "limited",
+      summary: "Choose a flight and confirm facts.",
+      appliedPreferences: {},
+      selectedPlanId: null,
+      activity: [],
+      clarification: { field: "flight", reason: "required" },
+    },
+  });
+  await session.search({
+    ...f.input,
+    selection: null,
+    refinement: "Recommend a flight",
+  });
+  expect(session.getSnapshot().result?.request.selection).toBeNull();
+  expect(session.getSnapshot().result?.journey).toBeNull();
+  expect(session.getSnapshot().flight).toBeNull();
+  session.select();
+  expect(session.getSnapshot().selected).toBe(false);
+});
+it("accepts a newly infeasible assessment even when the exact binding returns a clarification", async () => {
+  const overnight = overnightTravelFixture();
+  overnight.input.trip.readyAt = overnight.now;
+  overnight.input.selection!.facts.stay!.hotelArrivalAt =
+    "2026-11-18T06:31:00-08:00";
+  let current = overnight.now;
+  const full = {
+    ...response(overnight.input),
+    flightOffers: overnight.flightOffers,
+    hotelOffers: overnight.hotelOffers,
+    ...assessTravelSelection(overnight.input, overnight),
+  };
+  expect(full.journey?.selectable).toBe(true);
+  const session = new TravelSession({
+    now: () => current,
+    transport: async () => full,
+  });
+  await session.search(overnight.input);
+  session.select();
+  current = "2026-11-18T06:02:00-08:00";
+  const latest = assessTravelSelection(overnight.input, {
+    ...overnight,
+    now: current,
+  });
+  expect(latest.selectionIssue).toBeNull();
+  expect(latest.journey?.selectable).toBe(false);
+  session.options.transport = async () => ({
+    ...full,
+    ...latest,
+    generatedAt: current,
+    assistance: {
+      status: "limited",
+      summary: "Confirm a new transfer timing.",
+      appliedPreferences: {},
+      selectedPlanId: null,
+      activity: [],
+      clarification: { field: "transfer", reason: "required" },
+    },
+  });
+  await session.search({
+    ...overnight.input,
+    refinement: "Check my flight transfer",
+  });
+  expect(session.getSnapshot().result?.journey).toEqual(latest.journey);
+  session.select();
+  expect(session.getSnapshot().selected).toBe(false);
 });

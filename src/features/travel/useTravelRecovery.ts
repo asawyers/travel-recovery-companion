@@ -341,9 +341,10 @@ export class TravelSession {
       }
       if (
         result.assistance?.clarification &&
+        !result.selectionIssue &&
+        !result.journey &&
         this.state.result &&
-        canonical({ ...result.request, selection: null }) ===
-          canonical({ ...this.state.result.request, selection: null })
+        canonical(result.request) === canonical(this.state.result.request)
       ) {
         this.update({
           result: { ...this.state.result, assistance: result.assistance },
