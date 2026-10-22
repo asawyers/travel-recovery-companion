@@ -17,7 +17,7 @@ function candidates(input: CityRecoveryInput, driveOnly: boolean): CityCandidate
     legs: [{ id: `${id}-leg`, mode: kind === "transit" ? "bus" : "drive",
       from: { name: origin.name, latitude: origin.latitude, longitude: origin.longitude },
       to: { name: destination.name, latitude: destination.latitude, longitude: destination.longitude },
-      startAt: input.request.readyAt, endAt: new Date(Date.parse(input.request.readyAt) + minutes * 60_000).toISOString(),
+      startAt: kind === "transit" ? new Date(Date.parse(input.request.readyAt) + 60 * 60000).toISOString() : input.request.readyAt, endAt: new Date(Date.parse(input.request.readyAt) + (minutes + (kind === "transit" ? 60 : 0)) * 60_000).toISOString(),
       departureTimeZone: origin.timeZone, arrivalTimeZone: destination.timeZone,
       operator: kind === "transit" ? "Concord Coach Lines" : null,
       service: kind === "transit" ? "Deterministic checked fixture" : null,

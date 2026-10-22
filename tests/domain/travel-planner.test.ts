@@ -152,16 +152,30 @@ describe('pure complete travel composition', () => {
     bind(f)
     expect(p!.composeTravelJourney(f.input, f.flight, null, f).priceComplete).toBe(false)
   })
-  it('rejects expired and future original evidence without refreshing it', async () => {
+  it('retains aged original quotes for planning but rejects future evidence', async () => {
     const p = await implementation()
     expect(p).not.toBeNull()
     const f = travelFixture()
     f.flight.segments[0].evidence[0].expiresAt = f.now
-    expect(p!.composeTravelJourney(f.input, f.flight, null, f).violations.join(' ')).toMatch(/expired/i)
-    expect(p!.assessTravelSelection(f.input, f).selectionIssue).toBe('expired')
+    bind(f)
+    const before = JSON.stringify(f.flight)
+    expect(p!.composeTravelJourney(f.input, f.flight, null, f).selectable).toBe(true)
+    expect(p!.assessTravelSelection(f.input, f).selectionIssue).toBeNull()
+    expect(JSON.stringify(f.flight)).toBe(before)
     f.flight.segments[0].evidence[0].expiresAt = null
     f.flight.evidence[0].checkedAt = '2026-11-18T06:01:00-08:00'
-    expect(p!.composeTravelJourney(f.input, f.flight, null, f).selectable).toBe(false)
+    bind(f)
+    expect(p!.composeTravelJourney(f.input, f.flight, null, f).violations.join(' ')).toMatch(/future/i)
+  })
+  it('keeps thirty-minute-old accepted quotes usable without changing their original checks', async () => {
+    const p = await implementation(); expect(p).not.toBeNull()
+    const f = travelFixture(), before = JSON.stringify(f.flight)
+    const context = { ...f, now: '2026-11-18T06:30:00-08:00' }
+    const assessment = p!.assessTravelSelection(f.input, context)
+    expect(assessment.selectionIssue).toBeNull()
+    expect(assessment.journey?.selectable).toBe(true)
+    expect(assessment.journey?.evidenceExpiresAt).toBe(f.flight.evidence[0].expiresAt)
+    expect(JSON.stringify(f.flight)).toBe(before)
   })
   it('uses elapsed instants over DST and midnight and applies the final destination deadline', async () => {
     const p = await implementation()
@@ -363,6 +377,15 @@ describe('nearby-airport onward composition', () => {
     expect(j.costs.at(-1)!.cents).toBe(3500)
     expect(j.costs.some(c => c.label === 'Destination airport to city transfer')).toBe(false)
     expect(TravelJourneySchema.safeParse(j).success).toBe(true)
+  })
+  it('retains an accepted nearby-airport bus journey after its quote refresh suggestion', async () => {
+    const f = await example(), p = await implementation(), before = JSON.stringify(f.onwardOffers)
+    const context = { ...f, now: '2026-11-18T06:30:00-08:00' }
+    const assessment = p!.assessTravelSelection(f.input, { ...context, flightOffers: [f.flight], hotelOffers: [] })
+    expect(assessment.selectionIssue).toBeNull()
+    expect(assessment.journey?.selectable).toBe(true)
+    expect(assessment.journey?.legs.at(-1)?.kind).toBe('bus')
+    expect(JSON.stringify(f.onwardOffers)).toBe(before)
   })
   it('rejects a missing or changed onward selection instead of inventing destination access', async () => {
     const f = await example(), p = await implementation()

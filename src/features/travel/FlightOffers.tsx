@@ -12,6 +12,7 @@ export function formatTravelTime(at: string, zone: string): string {
     return `${local.toPlainDate()} ${local.toPlainTime().toString({ smallestUnit: 'minute' })} ${local.offset} · ${zone}`
   } catch { return `${at} · ${zone}` }
 }
+/** Observation-age indicator only; older accepted estimates remain usable for planning. */
 export function travelEvidenceFresh(evidence: SourceEvidence[], expiresAt?: string | null, now = Date.now()): boolean {
   return evidence.length > 0 && evidence.every(source => {
     const checked = Date.parse(source.checkedAt)
@@ -23,11 +24,11 @@ export function TravelCosts({ costs }: { costs: CostLine[] }) {
   return <ul className="space-y-1 text-sm">{costs.map((line, index) => <li key={index}>{line.label}: {line.cents === null ? 'Unknown' : line.currency === 'USD' ? `${travelMoney(line.cents)} USD` : `${(line.cents / 100).toFixed(2)} ${line.currency}`}{line.includedInOtherCharge ? ' (included in another charge)' : ''}</li>)}</ul>
 }
 export function TravelEvidence({ evidence }: { evidence: SourceEvidence[] }) {
-  return <ul className="space-y-1 text-xs text-muted-foreground">{evidence.map((source, index) => <li key={index} className="break-words [overflow-wrap:anywhere]">{source.provider} · {source.type} · checked {source.checkedAt} · expires {source.expiresAt ?? 'not supplied; refresh within five minutes'}{source.warnings.map((warning, i) => <p key={i}>{warning}</p>)}</li>)}</ul>
+  return <ul className="space-y-1 text-xs text-muted-foreground">{evidence.map((source, index) => <li key={index} className="break-words [overflow-wrap:anywhere]">{source.provider} · {source.type} · Last checked <time dateTime={source.checkedAt}>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(source.checkedAt))}</time>{source.warnings.map((warning, i) => <p key={i}>{warning}</p>)}</li>)}</ul>
 }
-export function CustomerHandoff({ href, kind, fresh, onExpired }: { href: string | null; kind: 'flights' | 'hotels'; fresh: () => boolean; onExpired?: () => void }) {
+export function CustomerHandoff({ href, kind }: { href: string | null; kind: 'flights' | 'hotels'; fresh?: () => boolean; onExpired?: () => void }) {
   const allowed = href !== null && (kind === 'flights' ? FlightOfferSchema.shape.handoffUrl : NationalHotelOfferSchema.shape.handoffUrl).safeParse(href).success
-  return <div className="space-y-2 text-xs text-muted-foreground">{allowed && <a className="underline text-foreground" href={href!} target="_blank" rel="noopener noreferrer" onClick={event => { if (!fresh()) { event.preventDefault(); onExpired?.() } }}>Check current {kind === 'flights' ? 'flight' : 'hotel'} options on Google Travel</a>}<p>Opening a link does not reserve or purchase anything. Recheck the exact itinerary, availability and final price with the provider.</p></div>
+  return <div className="space-y-2 text-xs text-muted-foreground">{allowed && <a className="underline text-foreground" href={href!} target="_blank" rel="noopener noreferrer">Check current {kind === 'flights' ? 'flight' : 'hotel'} options on Google Travel</a>}<p>Opening a link does not reserve or purchase anything. Recheck the exact itinerary, availability and final price with the provider.</p></div>
 }
 /** Preserve unknown quotes and omit charges already included in the quoted amount. */
 export function quotedTravelAmount(costs: CostLine[]): number | null {
@@ -42,7 +43,7 @@ function compactTravelDate(at: string, zone: string): string {
   try { return Temporal.Instant.from(at).toZonedDateTimeISO(zone).toPlainDate().toString() }
   catch { return at }
 }
-export function FlightOffers({ offers, busy = false, expiresAt, onPlan, onExpired }: {
+export function FlightOffers({ offers, busy = false, onPlan }: {
   offers: FlightOffer[]; busy?: boolean; expiresAt?: string | null; onPlan: (offer: FlightOffer) => void; onExpired?: () => void
 }) {
   if (!offers.length) return null
@@ -51,7 +52,6 @@ export function FlightOffers({ offers, busy = false, expiresAt, onPlan, onExpire
     <p className="text-sm text-muted-foreground">Observed flight quotes. We will check your transfers and timing before building a complete journey.</p></div>
     <ul className="space-y-4">{offers.map((offer, offerIndex) => {
       const evidence = [...offer.evidence, ...offer.segments.flatMap(segment => segment.evidence)]
-      const fresh = () => travelEvidenceFresh(evidence, expiresAt)
       const first = offer.segments[0], last = offer.segments.at(-1)!
       return <li key={offer.id} className="min-w-0 space-y-4 rounded-2xl border border-[var(--companion-border)] bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -74,9 +74,9 @@ export function FlightOffers({ offers, busy = false, expiresAt, onPlan, onExpire
           </li>)}</ol>
           <TravelCosts costs={offer.costs} />
         </div></details>
-        <Button className="w-full whitespace-normal" disabled={busy} onClick={() => { if (fresh()) onPlan(offer); else onExpired?.() }}>Plan this flight</Button>
+        <Button className="w-full whitespace-normal" disabled={busy} onClick={() => onPlan(offer)}>Plan this flight</Button>
         <details className="text-sm"><summary className="cursor-pointer py-1 text-muted-foreground">Source and freshness</summary><div className="mt-2"><TravelEvidence evidence={evidence} /></div></details>
-        <CustomerHandoff href={offer.handoffUrl} kind="flights" fresh={fresh} onExpired={onExpired} />
+        <CustomerHandoff href={offer.handoffUrl} kind="flights" />
       </li>
     })}</ul>
   </section>

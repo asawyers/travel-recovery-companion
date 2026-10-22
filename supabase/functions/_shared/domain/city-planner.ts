@@ -52,6 +52,9 @@ function evaluate(request: CityTripRequest, candidate: CityCandidate, context: {
   if (!originMatches) violations.push('Journey does not start at the selected origin city center.')
   if (!atCity(last.to, context.destination)) violations.push('Journey does not finish at the selected destination city center.')
   if (toInstantMillis(first.startAt) < ready) violations.push('Journey starts before the traveler is ready.')
+  // Price age is advisory; a service that has actually departed cannot be boarded.
+  const firstBoarding = legs.find(leg => transitModes.has(leg.mode))
+  if (firstBoarding && toInstantMillis(firstBoarding.startAt) <= now) violations.push('The first transit departure has already occurred; choose a later service.')
   for (let index = 0; index < legs.length; index++) {
     const leg = legs[index], previous = legs[index - 1]
     if (previous) {
@@ -95,7 +98,7 @@ function evaluate(request: CityTripRequest, candidate: CityCandidate, context: {
   for (const evidence of candidate.evidence) {
     if (toInstantMillis(evidence.checkedAt) > now) violations.push('Evidence check is in the future; its freshness cannot be verified.')
     if (evidence.providerUpdatedAt !== null && toInstantMillis(evidence.providerUpdatedAt) > now) violations.push('Provider update is in the future; its freshness cannot be verified.')
-    if (evidence.expiresAt !== null && toInstantMillis(evidence.expiresAt) <= now) violations.push('Original source evidence has expired; obtain a fresh check before selection.')
+    if (evidence.expiresAt !== null && toInstantMillis(evidence.expiresAt) < toInstantMillis(evidence.checkedAt)) violations.push('Original evidence expiry precedes its check.')
   }
   const expiries = candidate.evidence.flatMap(e => e.expiresAt === null ? [] : [e.expiresAt])
   const evidenceExpiresAt = expiries.reduce<string | null>((best, next) => best === null || toInstantMillis(next) < toInstantMillis(best) ? next : best, null)

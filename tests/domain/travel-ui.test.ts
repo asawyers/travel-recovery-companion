@@ -197,7 +197,8 @@ describe('complete journey presentation', () => {
     journey.legs.forEach((leg, index) => {
       for (const evidence of leg.evidence) {
         expect(legRegions[index]).toContain(evidence.provider)
-        expect(legRegions[index]).toContain(`checked ${evidence.checkedAt}`)
+        expect(legRegions[index]).toContain(`dateTime="${evidence.checkedAt}"`)
+        expect(legRegions[index]).toContain("Last checked")
       }
     })
   })

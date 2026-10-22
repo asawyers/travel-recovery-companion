@@ -341,3 +341,27 @@ describe('city HTTP boundary', () => {
     expect(body.result.destination.id).toBe(west.destination.id)
   })
 })
+
+
+describe('new provider observation acceptance', () => {
+  it.each(['expired', 'old_without_expiry', 'future_check', 'future_update'] as const)('does not accept %s incoming transport as a new provider observation', async kind => {
+    const candidate = structuredClone(request.confirmedOptions[0]);
+    candidate.id = 'invalid-incoming';
+    const evidence = candidate.evidence[0];
+    evidence.checkedAt = now();
+    evidence.expiresAt = null;
+    evidence.providerUpdatedAt = null;
+    if (kind === 'expired') evidence.expiresAt = now();
+    if (kind === 'old_without_expiry') evidence.checkedAt = new Date(Date.parse(now()) - 300001).toISOString();
+    if (kind === 'future_check') evidence.checkedAt = new Date(Date.parse(now()) + 1).toISOString();
+    if (kind === 'future_update') evidence.providerUpdatedAt = new Date(Date.parse(now()) + 1).toISOString();
+    const provider = vi.fn(async () => ({ candidates: [candidate], warnings: [] }));
+    const { handler } = setup({ provider });
+    const response = await handler(post({ request, investigate: true }));
+    expect(response.status).toBe(200);
+    const body = CityRecoveryResponseSchema.parse(await response.json());
+    expect(body.facts.candidates.map(candidate => candidate.id)).not.toContain('invalid-incoming');
+    expect(body.facts.candidates).toHaveLength(request.confirmedOptions.length);
+    expect(body.result.warnings.join(' ')).toMatch(/unavailable/i);
+  });
+});

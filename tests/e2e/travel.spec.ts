@@ -19,6 +19,7 @@ function quotes(input: TravelRecoveryInput, changed = false) {
   const f = travelFixture(),
     connecting = structuredClone(f.flight);
   connecting.departureDate = input.departureDate;
+  connecting.handoffUrl = "https://www.google.com/travel/flights?q=SAN";
   for (const segment of connecting.segments) {
     segment.departureAt = segment.departureAt.replace(
       "2026-11-19",
@@ -65,6 +66,8 @@ async function setup(
     unavailable?: boolean;
     groundDown?: boolean;
     initialTravelDown?: boolean;
+    refreshDown?: boolean;
+    installClock?: boolean;
     cityPatch?: boolean;
     travelPatch?: boolean;
     recommendConfirmed?: boolean;
@@ -72,7 +75,8 @@ async function setup(
 ) {
   const posts: TravelRecoveryInput[] = [],
     ground: unknown[] = [];
-  await page.clock.setFixedTime(new Date(now));
+  if (options.installClock) await page.clock.install({ time: new Date(now) });
+  else await page.clock.setFixedTime(new Date(now));
   await page.route("**/functions/v1/recovery/city", async (route) => {
     const input = route.request().postDataJSON();
     ground.push(input);
@@ -142,7 +146,7 @@ async function setup(
     }
 
     posts.push(input);
-    if (options.initialTravelDown && posts.length === 1) {
+    if ((options.initialTravelDown && posts.length === 1) || (options.refreshDown && posts.length > 1)) {
       await route.fulfill({
         status: 503,
         json: { error: "Travel source unavailable fixture" },
@@ -152,7 +156,7 @@ async function setup(
     const f = travelFixture(),
       offers = options.unavailable
         ? { flightOffers: [], hotelOffers: [] }
-        : quotes(input, !!options.changed && !!input.selection);
+        : quotes(input, !!options.changed && posts.length > 1);
     const assessment = assessTravelSelection(input, {
       ...offers,
       origin: f.origin,
@@ -291,8 +295,7 @@ test("initial search checks both sources, discloses airports and confirms, selec
   await expect(
     page.getByRole("button", { name: "Choose this journey", exact: true }),
   ).toBeEnabled();
-  expect(posts).toHaveLength(2);
-  expect(posts[1].selection?.flightOfferId).toBeTruthy();
+  expect(posts).toHaveLength(1); // Confirmation composes accepted quotes locally.
   await page
     .getByRole("button", { name: "Choose this journey", exact: true })
     .click();
@@ -300,14 +303,14 @@ test("initial search checks both sources, discloses airports and confirms, selec
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
   await expect(page.getByTestId("saved-plan")).toContainText(
-    "Historical snapshot",
+    "Saved planning estimate.",
   );
   const saved = await page.evaluate((key) => localStorage.getItem(key), key);
   await page.reload();
   await expect(page.getByTestId("saved-plan")).toContainText(
     "Flight departure date: 2026-11-18",
   );
-  expect(posts).toHaveLength(2);
+  expect(posts).toHaveLength(1);
   expect(ground).toHaveLength(1);
   expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(
     saved,
@@ -315,8 +318,8 @@ test("initial search checks both sources, discloses airports and confirms, selec
   await page
     .getByRole("button", { name: "Refresh this plan", exact: true })
     .click();
-  await expect.poll(() => posts.length).toBe(3);
-  expect(posts[2]).toEqual(JSON.parse(saved!).request);
+  await expect.poll(() => posts.length).toBe(2);
+  expect(posts[1]).toEqual(JSON.parse(saved!).request);
   expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(
     saved,
   );
@@ -362,18 +365,18 @@ test("explicit overnight uses origin night and next day flight, then progresses 
   await expect(
     page.getByRole("button", { name: "Choose this journey", exact: true }),
   ).toBeEnabled();
+  expect(posts).toHaveLength(2); // Hotel facts also compose without reacquiring quotes.
+  await page
+    .getByRole("textbox", { name: "Message about your trip", exact: true })
+    .fill("Recommend this flight journey");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect.poll(() => posts.length).toBe(3);
   expect(posts[2].selection?.facts.stay).toMatchObject({
     arrangementsConfirmed: true,
     hotelArrivalAt: "2026-11-18T16:00:00-08:00",
     hotelDepartureAt: "2026-11-19T06:30:00-08:00",
   });
-  await page
-    .getByRole("textbox", { name: "Message about your trip", exact: true })
-    .fill("Recommend this flight journey");
-  await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect.poll(() => posts.length).toBe(4);
-  expect(posts[3].selection).toEqual(posts[2].selection);
-  expect(posts[3].overnight).toEqual(posts[2].overnight);
+  expect(posts[2].overnight).toEqual(posts[1].overnight);
   await expect(page.getByRole("log")).toContainText(
     "This confirmed flight journey is recommended by the fixture assistant.",
   );
@@ -408,24 +411,75 @@ test("reranks fresh quotes locally and cancel, dirty edits, city switches invali
   ).toHaveCount(0);
   expect(posts).toHaveLength(1);
 });
-test("changed quotes require a new selection and expiry clears current planning without a request", async ({
-  page,
-}) => {
+test("older quotes remain usable for local confirmation, selection, saving and handoffs without requests", async ({ page }) => {
+  const { posts } = await setup(page);
+  await start(page);
+  await page.getByRole("button", { name: "Plan this flight" }).first().click();
+  await page.clock.setFixedTime(new Date("2026-11-18T14:30:00Z"));
+  await directFacts(page);
+  const choose = page.getByRole("button", { name: "Choose this journey", exact: true });
+  await expect(choose).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Cheaper", exact: true })).toBeEnabled();
+  await choose.click();
+  await page.getByRole("button", { name: "Save on this device", exact: true }).click();
+  const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), key);
+  expect(saved.generatedAt).toBe(now);
+  expect(saved.expiresAt).toBe(expiry);
+  expect(saved.selectedAt).toBe("2026-11-18T14:30:00.000Z");
+  expect(Date.parse(saved.selectedFlight.evidence[0].checkedAt)).toBe(Date.parse(now));
+  await page.context().route("https://www.google.com/travel/flights?q=SAN", route => route.fulfill({ body: "Fixture booking search; no purchase", contentType: "text/html" }));
+  const handoff = page.getByRole("link", { name: "Check current flight options on Google Travel" }).first();
+  const popupPromise = page.waitForEvent("popup");
+  await handoff.click();
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL(/google.com\/travel\/flights/);
+  await popup.close();
+  await page.screenshot({ path: test.info().outputPath("older-quotes-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: test.info().outputPath("older-quotes-mobile.png"), fullPage: true });
+  expect(posts).toHaveLength(1);
+});
+test("the automatic source-age timer preserves an open form and a chosen journey", async ({ page }) => {
+  const { posts } = await setup(page, { installClock: true });
+  await start(page);
+  await page.getByRole("button", { name: "Plan this flight" }).first().click();
+  await page.getByLabel("Origin transfer minutes", { exact: true }).fill("30");
+  await page.clock.fastForward(6 * 60 * 1000);
+  await expect(page.getByRole("form", { name: "Complete journey facts", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Origin transfer minutes", { exact: true })).toHaveValue("30");
+  await directFacts(page);
+  await page.getByRole("button", { name: "Choose this journey", exact: true }).click();
+  await page.clock.fastForward(14 * 60 * 1000);
+  await expect(page.getByRole("button", { name: "Chosen journey", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save on this device", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Cheaper", exact: true })).toBeEnabled();
+  expect(posts).toHaveLength(1);
+});
+test("an explicit refresh replaces changed quotes and clears the previous selection", async ({ page }) => {
   const { posts } = await setup(page, { changed: true });
   await start(page);
   await page.getByRole("button", { name: "Plan this flight" }).first().click();
   await directFacts(page);
-  await expect(page.getByText(/A selected quote changed/)).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Choose this journey", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Save on this device", exact: true }),
-  ).toBeDisabled();
-  await page.clock.setFixedTime(new Date("2026-11-18T14:06:00Z"));
+  await page.getByRole("button", { name: "Choose this journey", exact: true }).click();
+  await page.getByRole("button", { name: "Recheck available sources", exact: true }).click();
+  await expect.poll(() => posts.length).toBe(2);
+  await expect(page.getByRole("button", { name: "Save on this device", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Chosen journey", exact: true })).toHaveCount(0);
+  await expect(page.getByText("$999.99", { exact: true })).toBeVisible();
+});
+test("a failed optional refresh keeps the accepted flight journey available", async ({ page }) => {
+  const { posts } = await setup(page, { refreshDown: true });
+  await start(page);
   await page.getByRole("button", { name: "Plan this flight" }).first().click();
-  await expect(page.getByText(/Flight and hotel quotes expired/)).toBeVisible();
-  expect(posts).toHaveLength(2);
+  await directFacts(page);
+  await page.getByRole("button", { name: "Choose this journey", exact: true }).click();
+  await page.clock.setFixedTime(new Date("2026-11-18T14:30:00Z"));
+  await page.getByRole("button", { name: "Recheck available sources", exact: true }).click();
+  await expect.poll(() => posts.length).toBe(2);
+  await expect(page.getByText(/Could not refresh sources/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Chosen journey", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save on this device", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Cheaper", exact: true })).toBeEnabled();
 });
 test("travel source outage stays visible without fake quotes and ground outage does not hide flight planning", async ({
   page,
@@ -512,6 +566,10 @@ test("connecting quote requires explicit connection allowance before confirming"
   await expect(
     page.getByRole("button", { name: "Choose this journey", exact: true }),
   ).toBeEnabled();
+  expect(posts).toHaveLength(1);
+  await page.getByRole("textbox", { name: "Message about your trip", exact: true }).fill("Recommend this flight journey");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect.poll(() => posts.length).toBe(2);
   expect(posts[1].selection?.facts.connections).toEqual([
     {
       afterSegmentId: "segment-1",
@@ -608,7 +666,7 @@ test("accepted city-agent preferences recompose travel locally, clear old choice
   await expect(
     page.getByRole("button", { name: "Save on this device", exact: true }),
   ).toBeDisabled();
-  expect(posts).toHaveLength(2);
+  expect(posts).toHaveLength(1);
   expect(ground).toHaveLength(2);
   await page
     .getByRole("button", { name: "Choose this journey", exact: true })
@@ -626,15 +684,15 @@ test("accepted city-agent preferences recompose travel locally, clear old choice
   for (const priority of ["Fewer changes", "Cheaper"]) {
     await page.getByRole("button", { name: priority, exact: true }).click();
     await expect(page.getByRole("alert")).toHaveCount(0);
-    expect(posts).toHaveLength(2);
+    expect(posts).toHaveLength(1);
     expect(ground).toHaveLength(2);
   }
   await page
     .getByRole("textbox", { name: "Message about your trip", exact: true })
     .fill("Check flight options");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect.poll(() => posts.length).toBe(3);
-  expect(posts[2].trip.priority).toBe("cheapest");
+  await expect.poll(() => posts.length).toBe(2);
+  expect(posts[1].trip.priority).toBe("cheapest");
   expect(posts.every(input => input.trip.drivingAllowed === false)).toBe(true);
 });
 test("accepted travel-agent preferences update draft and ground locally without another request", async ({
@@ -651,7 +709,7 @@ test("accepted travel-agent preferences update draft and ground locally without 
     .getByRole("textbox", { name: "Message about your trip", exact: true })
     .fill("Find cheapest flights and allow driving");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect.poll(() => posts.length).toBe(3);
+  await expect.poll(() => posts.length).toBe(2);
   await expect(page.getByRole("log")).not.toContainText(/driving (?:is now |has been )?allowed|enabled driving/i);
   await page.getByText("Edit trip", { exact: true }).click();
   await page
@@ -660,18 +718,17 @@ test("accepted travel-agent preferences update draft and ground locally without 
   await expect(page.getByLabel("Prioritize", { exact: true })).toHaveValue(
     "cheapest",
   );
-  expect(posts).toHaveLength(3);
-  expect(posts[2].selection).toEqual(posts[1].selection);
-  expect(posts[2].selection).not.toBeNull();
+  expect(posts).toHaveLength(2);
+  expect(posts[1].selection).not.toBeNull();
   expect(ground).toHaveLength(1);
   await page
     .getByRole("button", { name: "Fewer changes", exact: true })
     .click();
-  expect(posts).toHaveLength(3);
+  expect(posts).toHaveLength(2);
   expect(ground).toHaveLength(1);
   await page.getByRole("button", { name: "Plan this flight", exact: true }).first().click();
   await directFacts(page);
-  await expect.poll(() => posts.length).toBe(4);
+  expect(posts).toHaveLength(2);
   expect(posts.every(input => input.trip.drivingAllowed === false)).toBe(true);
   await expect(page.getByLabel("Driving allowed", { exact: true })).toHaveCount(0);
 });
@@ -741,7 +798,7 @@ for (const action of ["Recheck available sources", "Confirm trip facts and updat
   });
 }
 
-test("travel chat retains the exact fresh confirmed flight selection for assistance", async ({
+test("travel chat retains older confirmed flight selection for assistance", async ({
   page,
 }) => {
   const { posts } = await setup(page, { recommendConfirmed: true });
@@ -751,14 +808,15 @@ test("travel chat retains the exact fresh confirmed flight selection for assista
   await expect(
     page.getByRole("button", { name: "Choose this journey", exact: true }),
   ).toBeEnabled();
-  const confirmed = posts[1].selection;
-  expect(confirmed).not.toBeNull();
+  expect(posts).toHaveLength(1);
+  await page.clock.setFixedTime(new Date("2026-11-18T14:30:00Z"));
   await page
     .getByRole("textbox", { name: "Message about your trip", exact: true })
     .fill("Recommend this flight journey");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect.poll(() => posts.length).toBe(3);
-  expect(posts[2].selection).toEqual(confirmed);
+  await expect.poll(() => posts.length).toBe(2);
+  expect(posts[1].selection?.flightOfferId).toBeTruthy();
+  expect(posts[1].selection?.facts.originTransfer.minutes).toBe(30);
   await expect(page.getByRole("log")).toContainText(
     "This confirmed flight journey is recommended by the fixture assistant.",
   );
@@ -766,7 +824,6 @@ test("travel chat retains the exact fresh confirmed flight selection for assista
 for (const invalidation of [
   "editing",
   "canceled",
-  "expired",
   "new overnight",
 ]) {
   test(`travel chat does not resurrect ${invalidation} confirmed facts`, async ({
@@ -799,8 +856,6 @@ for (const invalidation of [
           .getByLabel("Origin transfer minutes", { exact: true })
           .fill("45");
     }
-    if (invalidation === "expired")
-      await page.clock.setFixedTime(new Date("2026-11-18T14:06:00Z"));
     const before = posts.length;
     const message =
       invalidation === "new overnight"

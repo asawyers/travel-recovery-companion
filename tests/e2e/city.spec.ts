@@ -29,7 +29,7 @@ function response(
   const request = input.request,
     origin = findCity(request.originCityId)!,
     destination = findCity(request.destinationCityId)!;
-  const start = request.readyAt,
+  const start = new Date(Date.parse(request.readyAt) + 60 * 60000).toISOString(),
     arrival = new Date(Date.parse(start) + 180 * 60000).toISOString();
   const candidate: CityCandidate = {
     id: "checked-fixture-bus",
@@ -571,7 +571,7 @@ test("valid v1 history uses the original airport path and unknown records remain
   );
 });
 
-test("expired priority controls stay local and require an explicit source recheck", async ({
+test("older source checks keep priority controls usable and refreshing remains optional", async ({
   page,
 }) => {
   const posts: Envelope[] = [];
@@ -583,19 +583,18 @@ test("expired priority controls stay local and require an explicit source rechec
   await page.goto("/");
   await start(page);
   await page.clock.setFixedTime(new Date("2026-11-18T13:01:00Z"));
-  // This ordinary draft-free render exposes expiration without advancing a real five-minute timer.
+  // Trigger a render after the source check window without making a new request.
   await page
     .getByLabel("Message about your trip", { exact: true })
     .fill("Check freshness");
   await expect(
     page.getByRole("button", { name: "Cheaper", exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Fewer changes", exact: true }),
-  ).toBeDisabled();
-  await expect(
-    page.getByText("Source checks need refreshing.", { exact: false }),
-  ).toBeVisible();
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Cheaper", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByTestId("city-option-card")).toHaveCount(1);
   expect(posts).toHaveLength(1);
   await page

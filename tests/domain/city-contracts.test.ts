@@ -76,7 +76,7 @@ describe('national city contracts', () => {
   })
 })
 
-it('rejects a saved selection whose evidence was already expired when selected', async () => {
+it('retains original source timestamps when saving an older estimate', async () => {
   const { CitySavedSelectionSchema } = await import('@domain/city-contracts')
   const { planCityRecovery } = await import('@domain/city-planner')
   const f = await fixture()
@@ -84,5 +84,5 @@ it('rejects a saved selection whose evidence was already expired when selected',
   const result = planCityRecovery(f.request, f.candidates, f)
   const saved = { schemaVersion: 2, request: result.request, plan: result.plans[0], origin: f.origin, destination: f.destination,
     generatedAt: f.now, selectedAt: f.candidates[0].evidence[0].expiresAt }
-  expect(CitySavedSelectionSchema.safeParse(saved).success).toBe(false)
+  expect(CitySavedSelectionSchema.safeParse(saved).success).toBe(true)
 })

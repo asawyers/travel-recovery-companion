@@ -46,10 +46,10 @@ export const TravelSavedSelectionSchema = z.strictObject({
   if (!value.journey.selectable || !value.request.selection) issue('Only a complete eligible selected journey can be saved.')
   try {
     const selected = toInstantMillis(value.selectedAt)
-    if (selected < toInstantMillis(value.generatedAt) || selected >= toInstantMillis(value.expiresAt)) issue('Selection must occur while the original comparison is fresh.')
+    if (selected < toInstantMillis(value.generatedAt)) issue('Selection cannot precede the original comparison.')
     if (response.success && value.request.selection) {
       const expected = composeTravelJourney(value.request, value.selectedFlight, value.selectedHotel, { origin: value.origin, destination: value.destination, now: value.selectedAt })
-      if (!expected.selectable || JSON.stringify(expected) !== JSON.stringify(value.journey)) issue('Saved journey must be the complete original assessment with fresh evidence at selection.')
+      if (!expected.selectable || JSON.stringify(expected) !== JSON.stringify(value.journey)) issue('Saved journey must preserve the complete original assessment and remain feasible at selection.')
     }
   } catch { issue('Cannot validate the original selection times and journey facts.') }
 })

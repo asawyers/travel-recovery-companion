@@ -196,9 +196,9 @@ export const CitySavedSelectionSchema = z.strictObject({
   }
   const generated = instant(value.generatedAt), selected = instant(value.selectedAt)
   if (generated !== null && selected !== null && selected < generated) ctx.addIssue({ code: 'custom', path: ['selectedAt'], message: 'Selection cannot precede generation' })
-  const expiries = [value.plan.evidenceExpiresAt, ...value.plan.evidence.map(e => e.expiresAt)]
-  if (selected !== null && expiries.some(expiry => expiry !== null && (instant(expiry) ?? Infinity) <= selected)) {
-    ctx.addIssue({ code: 'custom', path: ['selectedAt'], message: 'Evidence must still be current when selected' })
+  const firstBoarding = value.plan.legs.find(leg => ['bus', 'rail', 'subway', 'tram', 'ferry'].includes(leg.mode))
+  if (selected !== null && firstBoarding && (instant(firstBoarding.startAt) ?? Infinity) <= selected) {
+    ctx.addIssue({ code: 'custom', path: ['selectedAt'], message: 'The first transit departure must still be ahead when selected' })
   }
 })
 export type CitySavedSelection = z.infer<typeof CitySavedSelectionSchema>

@@ -52,11 +52,8 @@ function originalEvidence(flight: FlightOffer, hotel: NationalHotelOffer | null)
 function expiryOf(e: SourceEvidence): number {
   return Math.min(millis(e.checkedAt) + TRAVEL_MAX_FACT_AGE_MS, e.expiresAt === null ? Infinity : millis(e.expiresAt))
 }
-function expired(evidence: SourceEvidence[], now: string): boolean {
-  return evidence.some((e) => expiryOf(e) <= millis(now))
-}
 
-/** Source quotes alone cannot create a complete journey; server callers must reacquire the selected quotes first. */
+/** Compose accepted source quotes without renewing their original observation timestamps. */
 export function assessTravelSelection(
   raw: TravelRecoveryInput,
   context: TravelSelectionContext,
@@ -82,13 +79,11 @@ export function assessTravelSelection(
       hotel.id !== hotelOfferId(hotel))
   )
     return { journey: null, selectionIssue: 'hotel_changed' }
-  if (expired(originalEvidence(flight, hotel), context.now)) return { journey: null, selectionIssue: 'expired' }
   if (input.onwardFlight && !selection.onwardOfferId) return { journey: null, selectionIssue: 'onward_missing' }
   if (selection.onwardOfferId) {
     const onward = context.onwardOffers?.find(o => o.id === selection.onwardOfferId)
     if (!onward) return { journey: null, selectionIssue: 'onward_missing' }
     if (!TravelOnwardOfferSchema.safeParse(onward).success || onward.flightOfferId !== flight.id || onward.flightFingerprint !== flight.fingerprint) return { journey: null, selectionIssue: 'onward_changed' }
-    if (expired(onward.evidence, context.now)) return { journey: null, selectionIssue: 'expired' }
   }
   return { journey: composeTravelJourney(input, flight, hotel, context), selectionIssue: null }
 }
@@ -163,7 +158,6 @@ export function composeTravelJourney(
       (e.providerUpdatedAt !== null && millis(e.providerUpdatedAt) > millis(now))
     )
       addViolation('Original source evidence is dated in the future.')
-    if (expiryOf(e) <= millis(now)) addViolation('Original source evidence has expired; search again.')
     if (e.expiresAt !== null && millis(e.expiresAt) < millis(e.checkedAt))
       addViolation('Original evidence expiry precedes its check.')
   }

@@ -105,7 +105,7 @@ async function setup(page: Page, options: { emptyFlights?: boolean; emptyOnward?
   await page.route('**/functions/v1/recovery/travel', async route => {
     const input = route.request().postDataJSON() as TravelRecoveryInput
     posts.push(input)
-    const f = travelFixture(), flight = flightQuote(input, options.changedFlight && !!input.selection, options.detailedTransfers)
+    const f = travelFixture(), flight = flightQuote(input, options.changedFlight && !!input.onwardFlight, options.detailedTransfers)
     const flightOffers = options.emptyFlights ? [] : [flight]
     const onwardOffers = options.emptyOnward || !flightOffers.length || input.destinationAirportIata !== 'BOS' ? [] : groundQuotes(input, flight, options.detailedTransfers)
     const assessment = assessTravelSelection(input, { origin: f.origin, destination: f.destination, now,
@@ -172,9 +172,8 @@ test('discovers primary PWM and nearby BOS flights without enabling a standalone
   await expect(journey.locator('time[datetime="2026-11-19T03:00:00.000Z"]:visible').first()).toContainText('10:00 PM')
   await expect(journey).toContainText('Fixture rail to Portland')
   await expect(journey.getByRole('button', { name: 'Choose this journey', exact: true })).toBeEnabled()
-  const selected = posts.at(-1)!
-  expect(selected.selection?.onwardOfferId).toBeTruthy()
-  expect(selected.onwardFlight).toEqual(query.onwardFlight)
+  expect(posts).toHaveLength(3) // Confirmation uses the accepted onward route locally.
+  expect(posts.at(-1)?.onwardFlight).toEqual(query.onwardFlight)
   await journey.getByRole('button', { name: 'Choose this journey', exact: true }).click()
   await expect(journey.getByRole('button', { name: 'Chosen journey', exact: true })).toBeVisible()
 })
@@ -187,26 +186,25 @@ test('on a phone, onward drive requires explicit vehicle and driver confirmation
   await expect(drive).toBeDisabled()
   await onward.getByRole('checkbox', { name: 'I have confirmed a vehicle and driver for this onward trip.', exact: true }).check()
   await expect(drive).toBeEnabled()
+  await expect(onward.getByRole('checkbox', { name: 'I have confirmed a vehicle and driver for this onward trip.', exact: true })).toBeChecked()
   await drive.click()
   await confirmFacts(alternate(page))
   const journey = alternate(page).getByRole('article', { name: 'Complete journey', exact: true })
   await expect(journey.locator('time[datetime="2026-11-18T23:45:00.000Z"]').first()).toContainText('6:45 PM')
   await expect(journey.locator('time[datetime="2026-11-19T01:45:00.000Z"]:visible').first()).toContainText('8:45 PM')
   await expect(journey.getByRole('button', { name: 'Choose this journey', exact: true })).toBeEnabled()
-  expect(posts.at(-1)?.selection?.onwardVehicleConfirmed).toBe(true)
+  expect(posts).toHaveLength(3)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 
-test('a changed BOS flight quote invalidates its previously selected onward route', async ({ page }) => {
-  await setup(page, { changedFlight: true })
+test('a changed BOS flight quote cannot create onward routes bound to the old flight', async ({ page }) => {
+  const { posts } = await setup(page, { changedFlight: true })
   await start(page)
-  const onward = await discoverOnward(page)
-  await onward.getByRole('button', { name: 'Use this onward option', exact: true }).first().click()
-  await confirmFacts(alternate(page))
-  await expect(alternate(page).getByText(/A selected quote changed/)).toBeVisible()
+  await discoverOnward(page)
   await expect(alternate(page).getByRole('article', { name: 'Complete journey', exact: true })).toHaveCount(0)
   await expect(alternate(page).getByRole('button', { name: 'Use this onward option', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Save on this device', exact: true })).toBeDisabled()
+  expect(posts.at(-1)?.onwardFlight?.flightFingerprint).not.toBe(flightQuote(posts.at(-1)!, true).fingerprint)
 })
 
 test('a flight arriving before the deadline cannot be chosen when onward travel reaches Portland too late', async ({ page }) => {
@@ -269,7 +267,7 @@ test('explicitly choosing BOS as the arrival airport still requires actual onwar
   await expect(journey.locator('time[datetime="2026-11-19T02:45:00.000Z"]:visible').first()).toContainText('9:45 PM')
   await expect(journey.getByRole('button', { name: 'Choose this journey', exact: true })).toBeEnabled()
   expect(posts.at(-1)).toMatchObject({ destinationAirportIata: 'BOS', trip: { destinationCityId: 'geonames:4975802', drivingAllowed: false }, onwardFlight: { arrivalProcessingMinutes: 45 } })
-  expect(posts.at(-1)?.selection?.onwardOfferId).toBeTruthy()
+  expect(posts.at(-1)?.selection).toBeNull() // No re-fetch during local composition.
 })
 
 
@@ -311,7 +309,7 @@ test('on a phone, rail and bus show the main ride while transfer details stay co
   await expect(journey.locator('time[datetime="2026-11-19T03:00:00.000Z"]:visible').first()).toContainText('10:00 PM')
   await expect(journey.getByText('$285.00', { exact: true })).toBeVisible()
   const selected = posts.at(-1)!, selectedOffer = groundQuotes(selected, flightQuote(selected))[0]
-  expect(selected.selection?.onwardOfferId).toBe(selectedOffer.id)
+  expect(selected.selection).toBeNull() // Local composition preserves the accepted onward facts.
   expect(selectedOffer.airportReadyAt).toBe('2026-11-18T23:45:00.000Z')
   expect(selectedOffer.legs.at(-1)?.endAt).toBe('2026-11-19T03:00:00.000Z')
   expect(selectedOffer.costs[0].cents).toBe(3500)
@@ -405,7 +403,7 @@ test('on phones, grouped transfers preserve overnight times, costs and warnings 
     await expect(journey.getByText('Known costs', { exact: true })).toBeVisible()
     await expect(journey.getByText('$285.00', { exact: true })).toBeVisible()
     const selected = posts.at(-1)!, selectedOffer = groundQuotes(selected, flightQuote(selected, false, true), true)[0]
-    expect(selected.selection?.onwardOfferId).toBe(selectedOffer.id)
+    expect(selected.selection).toBeNull() // Local composition preserves the accepted onward facts.
     expect(selectedOffer.airportReadyAt).toBe('2026-11-19T04:45:00.000Z')
     expect(selectedOffer.legs.at(-1)?.endAt).toBe('2026-11-19T08:00:00.000Z')
     expect(selectedOffer.legs).toHaveLength(9)

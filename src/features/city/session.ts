@@ -1,6 +1,5 @@
 import {
   CITY_ADAPTER_REVISION,
-  CITY_MAX_FACT_AGE_MS,
 } from "@domain/city-contracts";
 import type {
   City,
@@ -45,17 +44,15 @@ export function canReuseCityFacts(
     !Number.isFinite(now)
   )
     return false;
-  const checked = Date.parse(cache.facts.checkedAt),
-    expiry = Math.min(
-      Date.parse(cache.facts.expiresAt),
-      checked + CITY_MAX_FACT_AGE_MS,
-      ...cache.facts.candidates.flatMap((c) =>
-        c.evidence.flatMap((e) =>
-          e.expiresAt ? [Date.parse(e.expiresAt)] : [],
-        ),
-      ),
-    );
-  return checked <= now && now < expiry;
+  const checked = Date.parse(cache.facts.checkedAt);
+  return Number.isFinite(checked) && checked <= now &&
+    Number.isFinite(Date.parse(cache.facts.expiresAt)) &&
+    cache.facts.candidates.every(candidate => candidate.evidence.every(e => {
+      const observed = Date.parse(e.checkedAt);
+      return Number.isFinite(observed) && observed <= now &&
+        (e.providerUpdatedAt === null || Date.parse(e.providerUpdatedAt) <= now) &&
+        (e.expiresAt === null || Date.parse(e.expiresAt) >= observed);
+    }));
 }
 export function responseMatchesRequest(
   input: CityTripRequest,
@@ -82,6 +79,7 @@ export type CitySessionState = {
   history: CityRecoveryResult[];
   busy: boolean;
   error: string | null;
+  notice: string | null;
   selectedId: string | null;
   saved: boolean;
   assistance: CityAssistance | null;
@@ -106,6 +104,7 @@ export class CitySession {
     history: [],
     busy: false,
     error: null,
+    notice: null,
     selectedId: null,
     saved: false,
     assistance: null,
@@ -143,7 +142,7 @@ export class CitySession {
     this.revision++;
     this.dispose();
     if (preserveComparison) {
-      this.update({ dirty: true, busy: false, error: null });
+      this.update({ dirty: true, busy: false, error: null, notice: null });
       return;
     }
     this.update({
@@ -155,6 +154,7 @@ export class CitySession {
       assistance: null,
       busy: false,
       error: null,
+      notice: null,
       factsExpiresAt: null,
     });
   }
@@ -167,14 +167,18 @@ export class CitySession {
       this.state.error
     )
       return;
-    if (this.expired()) {
-      this.update({
-        error:
-          "Source checks expired. Recheck available sources before choosing or saving.",
+    const previous = this.state.result!;
+    const assessed = planCityRecovery(previous.request,
+      this.cache?.facts.candidates ?? previous.request.confirmedOptions, {
+        now: this.options.now(), origin: previous.origin, destination: previous.destination,
       });
-      return;
-    }
-    this.update({ selectedId: id, saved: false, error: null });
+    const result = { ...assessed, generatedAt: previous.generatedAt,
+      warnings: [...new Set([...assessed.warnings, ...previous.warnings])] };
+    this.update({
+      result: JSON.stringify(result) === JSON.stringify(previous) ? previous : result,
+      selectedId: result.plans.some(value => value.id === id && value.selectable) ? id : null,
+      saved: false, error: null,
+    });
   }
   markSaved() {
     if (this.state.selectedId && this.canUseResult())
@@ -188,12 +192,7 @@ export class CitySession {
   }
   expire() {
     if (this.expired())
-      this.update({
-        selectedId: null,
-        saved: false,
-        error:
-          "Source checks expired. Recheck available sources before choosing or saving.",
-      });
+      this.update({ notice: "Last-checked estimates are still available. Prices and availability may have changed; refresh whenever you want." });
   }
   expired() {
     const now = Date.parse(this.options.now());
@@ -219,12 +218,11 @@ export class CitySession {
       !!this.state.result &&
       !this.state.busy &&
       !this.state.dirty &&
-      !this.state.error &&
-      !this.expired()
+      !this.state.error
     );
   }
   canRerank() {
-    if (!this.state.result || this.state.dirty || this.expired()) return false;
+    if (!this.canUseResult()) return false;
     // Local supplied facts can be reassessed without a provider cache.
     return (
       this.state.factsExpiresAt === null ||
@@ -236,7 +234,7 @@ export class CitySession {
         ))
     );
   }
-  /** Apply an already authorized shared preference using only current source facts. */
+  /** Apply an already authorized shared preference using accepted source facts with their original observation times. */
   applyPreferences(patch: PreferencePatch) {
     if (!Object.keys(patch).length) return;
     if (!this.canUseResult() || !this.canRerank()) {
@@ -275,7 +273,10 @@ export class CitySession {
       current === this.sequence &&
       revision === this.revision &&
       !controller.signal.aborted;
-    this.update({ busy: true, error: null, sequence: current });
+    const retained = this.canUseResult() && !refinement?.trim() && !conversation && this.acceptedInput !== null &&
+      canReuseCityFacts(this.cache, request, Date.parse(this.options.now())) &&
+      cityReuseKey(this.acceptedInput) === cityReuseKey(request);
+    this.update({ busy: true, error: null, notice: null, sequence: current });
     try {
       const now = this.options.now(),
         endpoint = this.options.endpoint();
@@ -286,14 +287,13 @@ export class CitySession {
         !refinement?.trim() &&
         (this.state.dirty ||
           (endpoint &&
-            !canReuseCityFacts(this.cache, request, Date.parse(now))) ||
-          (this.state.result && this.expired()))
+            !canReuseCityFacts(this.cache, request, Date.parse(now))))
       ) {
         this.update({
           busy: false,
           error: this.state.dirty
             ? "Confirm the edited trip facts before changing priorities."
-            : "Source checks expired or changed. Recheck available sources explicitly before changing priorities.",
+            : "Trip facts changed. Confirm them before changing priorities.",
         });
         return;
       }
@@ -402,6 +402,11 @@ export class CitySession {
       });
     } catch (error) {
       if (live()) {
+        if (retained) {
+          this.update({ busy: false, error: null,
+            notice: "Could not refresh sources. Your last-checked estimates are still available; confirm current prices and availability with the operator." });
+          return;
+        }
         this.cache = null;
         this.update({
           busy: false,

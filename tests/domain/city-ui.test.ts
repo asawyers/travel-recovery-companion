@@ -262,7 +262,7 @@ describe("city starter", () => {
   });
 });
 describe("transient city facts", () => {
-  it("reuses only current source facts for priority changes, never factual or driving changes", () => {
+  it("reuses accepted source facts for priority changes, never factual or driving changes", () => {
     const cache = {
       inputKey: cityReuseKey(f.request),
       facts: {
@@ -299,7 +299,7 @@ describe("transient city facts", () => {
         f.request,
         Date.parse("2026-11-18T08:01:00-05:00"),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
   it("accepts only unchanged hard facts and explicit matching model preference patches", () => {
     expect(responseMatchesRequest(f.request, f.request, undefined)).toBe(true);
@@ -472,7 +472,7 @@ describe("city request lifecycle", () => {
   });
 });
 
-it("never reuses cached facts beyond an original evidence expiry or after a future check", () => {
+it("reuses aged accepted facts but rejects a future check", () => {
   const request = { ...f.request };
   const facts = {
     candidates: structuredClone(f.candidates),
@@ -487,7 +487,7 @@ it("never reuses cached facts beyond an original evidence expiry or after a futu
       request,
       Date.parse("2026-11-18T07:57:00-05:00"),
     ),
-  ).toBe(false);
+  ).toBe(true);
   expect(
     canReuseCityFacts(
       { inputKey: cityReuseKey(request), facts },
@@ -533,7 +533,7 @@ it("clears saved status explicitly after deleting a record", async () => {
   engine.clearSaved();
   expect(engine.getSnapshot().saved).toBe(false);
 });
-it("prevents choosing a local option after its original evidence expires", async () => {
+it("allows choosing a local estimate after its original observation window", async () => {
   const { CitySession } = await import("../../src/features/city/session");
   let clock = f.now;
   const candidates = structuredClone(f.candidates);
@@ -548,8 +548,8 @@ it("prevents choosing a local option after its original evidence expires", async
   const id = engine.getSnapshot().result!.plans[0].id;
   clock = "2026-11-18T07:57:00-05:00";
   engine.select(id);
-  expect(engine.getSnapshot().selectedId).toBeNull();
-  expect(engine.getSnapshot().error).toMatch(/expired/);
+  expect(engine.getSnapshot().selectedId).toBe(id);
+  expect(engine.getSnapshot().error).toBeNull();
 });
 it("does not present an earlier comparison as a new assistant answer after a controlled error", async () => {
   const { cityAnswer } = await import(
@@ -641,7 +641,7 @@ it("invalidates in-flight clarification replies while draft edits retain the acc
     dirty: true,
   });
 });
-it("never posts a cached priority action after expiry and preserves accepted facts until explicit recheck", async () => {
+it("reranks aged accepted facts locally without a POST or rewriting original check times", async () => {
   const { CitySession } = await import("../../src/features/city/session");
   const { planCityRecovery } = await import("@domain/city-planner");
   let clock = f.now,
@@ -678,13 +678,21 @@ it("never posts a cached priority action after expiry and preserves accepted fac
     false,
   );
   expect(posts).toBe(1);
-  expect(engine.canRerank()).toBe(false);
-  expect(engine.getSnapshot().result).toBe(accepted);
-  expect(engine.getSnapshot().history).toHaveLength(0);
-  expect(engine.getSnapshot().error).toMatch(/recheck available sources/i);
+  expect(engine.canRerank()).toBe(true);
+  expect(engine.canUseResult()).toBe(true);
+  expect(engine.getSnapshot().result?.request.priority).toBe("cheapest");
+  expect(engine.getSnapshot().history).toEqual([accepted]);
+  expect(engine.getSnapshot().error).toBeNull();
+  expect(engine.getSnapshot().factsExpiresAt).toBe("2026-11-18T08:00:00-05:00");
+  expect(engine.getSnapshot().result?.plans[0].evidence).toEqual(accepted?.plans[0].evidence);
+  engine.select(engine.getSnapshot().result!.plans[0].id);
+  engine.markSaved();
+  const selected = engine.getSnapshot().selectedId;
+  engine.expire();
+  expect(engine.getSnapshot()).toMatchObject({ selectedId: selected, saved: true, error: null });
 });
 
-it("retains source expiry after a failed recheck without making old cards usable again", async () => {
+it("keeps last-checked estimates usable after an optional refresh fails", async () => {
   const { CitySession } = await import("../../src/features/city/session");
   const { planCityRecovery } = await import("@domain/city-planner");
   let clock = f.now,
@@ -722,10 +730,11 @@ it("retains source expiry after a failed recheck without making old cards usable
   expect(engine.getSnapshot().result).toBe(accepted);
   expect(engine.getSnapshot().factsExpiresAt).toBe("2026-11-18T08:00:00-05:00");
   engine.select(result.plans[0].id);
-  expect(engine.getSnapshot().selectedId).toBeNull();
-  expect(engine.canUseResult()).toBe(false);
+  expect(engine.getSnapshot().selectedId).toBe(result.plans[0].id);
+  expect(engine.canUseResult()).toBe(true);
+  expect(engine.getSnapshot().notice).toMatch(/could not refresh/i);
 });
-it("blocks selecting or saving retained cards after a failed recheck even before original expiry", async () => {
+it("keeps selection and saving available after an optional refresh fails before observation expiry", async () => {
   const { CitySession } = await import("../../src/features/city/session");
   const { planCityRecovery } = await import("@domain/city-planner");
   let fail = false;
@@ -755,10 +764,15 @@ it("blocks selecting or saving retained cards after a failed recheck even before
   engine.select(result.plans[0].id);
   fail = true;
   await engine.compare(f.request, f.origin, f.destination, true);
-  expect(engine.getSnapshot().error).toBeTruthy();
+  expect(engine.getSnapshot().error).toBeNull();
+  expect(engine.getSnapshot().notice).toMatch(/could not refresh/i);
   engine.select(result.plans[0].id);
   engine.markSaved();
-  expect(engine.getSnapshot().saved).toBe(false);
+  expect(engine.getSnapshot().saved).toBe(true);
+  expect(engine.canUseResult()).toBe(true);
+  engine.edit(true);
+  await engine.compare(f.request, f.origin, f.destination, true);
+  expect(engine.getSnapshot().error).toBeTruthy();
   expect(engine.canUseResult()).toBe(false);
 });
 it('synchronizes accepted soft preferences through the local city planner and clears obsolete selection without a POST',async()=>{
@@ -780,3 +794,28 @@ it('synchronizes accepted soft preferences through the local city planner and cl
  expect(engine.getSnapshot().dirty).toBe(true)
  expect(engine.canUseResult()).toBe(false)
 })
+
+it("reuses original accepted manual evidence when its observation window ended before collection", () => {
+  const facts = { candidates: structuredClone(f.candidates), checkedAt: "2026-11-18T07:57:00-05:00",
+    expiresAt: "2026-11-18T07:56:00-05:00", adapterRevision: "public-city-v1" as const };
+  facts.candidates[0].evidence[0].expiresAt = "2026-11-18T07:56:00-05:00";
+  expect(canReuseCityFacts({ inputKey: cityReuseKey(f.request), facts }, f.request,
+    Date.parse("2026-11-18T08:30:00-05:00"))).toBe(true);
+  facts.candidates[0].evidence[0].expiresAt = "2026-11-18T07:54:00-05:00";
+  expect(canReuseCityFacts({ inputKey: cityReuseKey(f.request), facts }, f.request,
+    Date.parse("2026-11-18T08:30:00-05:00"))).toBe(false);
+});
+
+it("reassesses actual transit boarding before selecting while preserving original source checks", async () => {
+  let clock = f.now;
+  const engine = new CitySession({ now: () => clock });
+  await engine.compare(f.request, f.origin, f.destination, false);
+  const original = engine.getSnapshot().result!;
+  clock = "2026-11-18T08:31:00-05:00";
+  engine.select(original.plans[0].id);
+  expect(engine.getSnapshot().selectedId).toBeNull();
+  expect(engine.getSnapshot().result?.plans).toHaveLength(0);
+  expect(engine.getSnapshot().result?.rejected[0].violations.join(" ")).toMatch(/depart|boarding/i);
+  expect(engine.getSnapshot().result?.rejected[0].evidence).toEqual(original.plans[0].evidence);
+  expect(engine.getSnapshot().result?.generatedAt).toBe(original.generatedAt);
+});

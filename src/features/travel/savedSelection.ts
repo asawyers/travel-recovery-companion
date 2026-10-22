@@ -35,11 +35,11 @@ export function travelSnapshot(response: TravelRecoveryResponse, selectedAt: str
     selectedHotel: selection.hotelOfferId === null ? null : r.hotelOffers.find(h => h.id === selection.hotelOfferId),
     journey: r.journey,
   })
-  return parsed.success ? { ok: true, value: parsed.data } : { ok: false, message: containsTravelGoogleMaps(response) ? GOOGLE_SAVE_MESSAGE : 'Cannot save invalid or expired journey facts. Search again and recheck your selection.' }
+  return parsed.success ? { ok: true, value: parsed.data } : { ok: false, message: containsTravelGoogleMaps(response) ? GOOGLE_SAVE_MESSAGE : 'Cannot save invalid journey facts. Search again and recheck your selection.' }
 }
 export function writeTravelSelection(storage: SelectionStorage, value: TravelSavedSelection): StorageResult<TravelSavedSelection> {
   const parsed = TravelSavedSelectionSchema.safeParse(value)
-  if (!parsed.success) return { ok: false, message: containsTravelGoogleMaps(value) ? GOOGLE_SAVE_MESSAGE : 'Cannot save invalid or expired journey facts. Compare again.' }
+  if (!parsed.success) return { ok: false, message: containsTravelGoogleMaps(value) ? GOOGLE_SAVE_MESSAGE : 'Cannot save invalid journey facts. Compare again.' }
   const existing = readTravelHistory(storage)
   if (!existing.ok) return existing
   try {

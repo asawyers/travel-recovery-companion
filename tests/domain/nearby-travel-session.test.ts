@@ -23,7 +23,8 @@ describe('nearby arrival session', () => {
     session.planOnward(onward)
     expect(session.getSnapshot().editingFacts).toBe(true)
     await session.confirm({ ...f.input.selection!.facts, arrivalProcessingMinutes: 30 })
-    expect(inputs.at(-1)?.selection?.onwardOfferId).toBe('actual-route')
+    expect(inputs).toHaveLength(2)
+    expect(session.getSnapshot().result?.request.selection?.onwardOfferId).toBe('actual-route')
     expect(inputs.at(-1)?.onwardFlight?.arrivalProcessingMinutes).toBe(30)
   })
   it('clears onward route and allowance stage on cancel, changed quote and edit', async () => {

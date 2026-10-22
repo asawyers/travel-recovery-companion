@@ -167,21 +167,17 @@ export class TravelSession {
   }
   usable() {
     return (
-      this.fresh() && !this.state.busy && !this.state.dirty && !this.state.error
+      !!this.state.result &&
+      Number.isFinite(Date.parse(this.state.result.generatedAt)) &&
+      Date.parse(this.state.result.generatedAt) <= Date.parse(this.options.now()) &&
+      !this.state.busy && !this.state.dirty && !this.state.error
     );
   }
   expire() {
     if (!this.fresh()) {
       this.update({
-        flight: null,
-        hotel: null,
-        selected: false,
-        editingFacts: false,
-        needsOnward: false,
-        onward: null,
-        onwardVehicleConfirmed: false,
         notice:
-          "Flight and hotel quotes expired. Recheck available sources and reselect your quotes.",
+          "Last-checked estimates are still available. Prices and availability may have changed; refresh whenever you want.",
       });
     }
   }
@@ -189,8 +185,17 @@ export class TravelSession {
     this.update({ selected: false });
   }
   select() {
-    if (this.usable() && this.state.result?.journey?.selectable) {
-      this.update({ selected: true });
+    const result = this.state.result;
+    if (this.usable() && result?.journey?.selectable && result.request.selection) {
+      const assessment = assessTravelSelection(result.request, {
+        origin: result.origin, destination: result.destination, now: this.options.now(),
+        flightOffers: result.flightOffers, hotelOffers: result.hotelOffers, onwardOffers: result.onwardOffers,
+      });
+      this.update({
+        result: JSON.stringify(assessment.journey) === JSON.stringify(result.journey) && assessment.selectionIssue === result.selectionIssue
+          ? result : { ...result, ...assessment },
+        selected: Boolean(assessment.journey?.selectable),
+      });
     }
   }
   private invalidateFacts() {
@@ -283,7 +288,7 @@ export class TravelSession {
       (this.state.needsOnward && (!onward || !result.request.onwardFlight || facts.arrivalProcessingMinutes !== result.request.onwardFlight.arrivalProcessingMinutes))
     )
       return;
-    await this.search({
+    const request = {
       ...result.request,
       selection: {
         flightOfferId: flight.id,
@@ -293,6 +298,19 @@ export class TravelSession {
         facts,
         ...(onward ? { onwardOfferId: onward.id, ...(onward.kind === "drive" ? { onwardVehicleConfirmed: this.state.onwardVehicleConfirmed } : {}) } : {}),
       },
+    };
+    const assessment = assessTravelSelection(request, {
+      origin: result.origin, destination: result.destination, now: this.options.now(),
+      flightOffers: result.flightOffers, hotelOffers: result.hotelOffers,
+      onwardOffers: result.onwardOffers,
+    });
+    this.update({
+      result: { ...result, request, ...assessment, assistance: undefined },
+      history: [...this.state.history, result].slice(-3),
+      editingFacts: false, selected: false,
+      sequence: this.state.sequence + 1,
+      notice: assessment.selectionIssue ? "A selected quote no longer matches this journey. Choose an option again." :
+        this.fresh() ? null : "Last-checked estimates are still available. Prices and availability may have changed; refresh whenever you want.",
     });
   }
   rerank(priority: TravelTrip["priority"]) {
@@ -302,7 +320,7 @@ export class TravelSession {
     }
     this.applyPreferences({ priority });
   }
-  /** Only fresh accepted quotes may be recomposed for shared soft preferences. */
+  /** Recompose accepted quotes without changing their original observation times. */
   applyPreferences(patch: PreferencePatch) {
     if (!Object.keys(patch).length) return;
     if (!this.usable()) {
@@ -357,6 +375,14 @@ export class TravelSession {
     this.update({ result, selected: false });
   }
   async search(input: TravelRecoveryInput) {
+    const observationKey = (value: TravelRecoveryInput) => {
+      const { selection: _selection, onwardFlight: _onward, ...request } = travelRequestBinding(value);
+      return JSON.stringify(request, (_key, item) => item && typeof item === "object" && !Array.isArray(item)
+        ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+    };
+    const retained = this.usable() && !input.refinement && !input.conversation && !input.onwardFlight &&
+      observationKey(input) === observationKey(this.state.result!.request);
+    const selected = this.state.selected;
     this.dispose();
     const revision = this.revision,
       controller = new AbortController();
@@ -443,6 +469,11 @@ export class TravelSession {
       if (!this.fresh()) this.expire();
     } catch (error) {
       if (revision === this.revision && !controller.signal.aborted) {
+        if (retained) {
+          this.update({ busy: false, error: null, selected,
+            notice: "Could not refresh sources. Your last-checked estimates are still available; confirm current prices and availability with the operator." });
+          return;
+        }
         this.update({
           busy: false,
           error:

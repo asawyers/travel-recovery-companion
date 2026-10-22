@@ -68,7 +68,7 @@ async function fixtures(page: Page) {
       originCityId: origin.id, destinationCityId: destination.id,
       legs: [{ id: `bus-leg-${index}`, mode: "bus", from: { name: origin.name, latitude: origin.latitude, longitude: origin.longitude },
         to: { name: destination.name, latitude: destination.latitude, longitude: destination.longitude },
-        startAt: input.request.readyAt, endAt: new Date(Date.parse(input.request.readyAt) + (180 + index * 30) * 60000).toISOString(),
+        startAt: new Date(Date.parse(input.request.readyAt) + 60 * 60000).toISOString(), endAt: new Date(Date.parse(input.request.readyAt) + (240 + index * 30) * 60000).toISOString(),
         departureTimeZone: origin.timeZone, arrivalTimeZone: destination.timeZone, operator: "Concord Coach Lines", service: `Fixture ${index + 1}`,
         vehicleId: `fixture-${index}`, assumptions: [] }],
       costs: [{ label: "Fixture complete fare", cents: 4000 + index * 1000, currency: "USD", includedInOtherCharge: false }],

@@ -95,7 +95,7 @@ export function citySnapshot(
     : {
         ok: false,
         message:
-          "Cannot save invalid or expired trip facts. Recheck the itinerary and select it again.",
+          "Cannot save invalid trip facts. Recheck the itinerary and select it again.",
       };
 }
 export function writeCitySelection(
@@ -108,7 +108,7 @@ export function writeCitySelection(
       ok: false,
       message: containsCityGoogle(value)
         ? GOOGLE_SAVE_MESSAGE
-        : "Cannot save invalid or expired trip facts. Compare again.",
+        : "Cannot save invalid trip facts. Compare again.",
     };
   const existing = readCityHistory(storage);
   if (!existing.ok) return existing;

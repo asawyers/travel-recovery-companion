@@ -284,7 +284,7 @@ test("reduced motion retains honest loading text, renders only returned agent ac
   expect(travelPosts).toHaveLength(1);
 });
 
-test("short desktop viewports keep expanded privacy help and expired-source composition reachable", async ({ page }) => {
+test("short desktop viewports keep expanded privacy help and older-source composition reachable", async ({ page }) => {
   await fixtures(page);
   for (const { width, height } of [
     { width: 1280, height: 600 },
@@ -297,7 +297,8 @@ test("short desktop viewports keep expanded privacy help and expired-source comp
     await expect(page.getByRole("button", { name: "Plan this flight", exact: true })).toHaveCount(1);
     await page.clock.setFixedTime(new Date("2026-11-18T14:06:00Z"));
     await page.getByRole("button", { name: "Plan this flight", exact: true }).click();
-    await expect(page.getByText(/Flight and hotel quotes expired/)).toBeVisible();
+    await expect(page.getByRole("form", { name: "Complete journey facts", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cheaper", exact: true })).toBeEnabled();
     await page.getByText("About messages and privacy", { exact: true }).click();
     const conversationViewportHeight = await page
       .getByRole("region", { name: "Conversation history", exact: true })

@@ -65,8 +65,8 @@ describe('version 3 saved complete journeys', () => {
       const panel = await import('../../src/features/travel/TravelHistoryPanel').catch(() => null)
       expect(panel, 'history panel exists').not.toBeNull()
       const html = renderToStaticMarkup(createElement(panel!.TravelHistoryPanel, { history: saved.value, onRefresh: vi.fn(), onDelete: vi.fn() }))
-      expect(html).toContain('Historical snapshot')
-      expect(html).toContain('Evidence expired')
+      expect(html).toContain('Saved planning estimate')
+      expect(html).toContain('Prices and availability may have changed')
       expect(html).toContain(r.request.departureDate)
       expect(html).toContain(r.request.trip.readyAt)
       expect(html).toContain(r.generatedAt)
@@ -75,12 +75,18 @@ describe('version 3 saved complete journeys', () => {
       expect(post).not.toHaveBeenCalled()
     } finally { vi.restoreAllMocks(); vi.unstubAllGlobals() }
   })
-  it('rejects missing, unselectable, expired and future-selected journeys before any write', async () => {
+  it('retains older quotes when saving but rejects missing, unselectable or invalid selection times', async () => {
     const api = await implementation(); expect(api).not.toBeNull()
     const r = response()
     for (const altered of [ { ...r, journey: null }, { ...r, journey: { ...r.journey!, selectable: false } } ]) expect(api!.travelSnapshot(altered, r.generatedAt).ok).toBe(false)
-    expect(api!.travelSnapshot(r, r.expiresAt).ok).toBe(false)
+    const aged = api!.travelSnapshot(r, '2026-11-18T06:30:00-08:00')
+    expect(aged.ok).toBe(true)
+    if (aged.ok) {
+      expect(aged.value.selectedFlight).toEqual(r.flightOffers[0])
+      expect(aged.value.expiresAt).toBe(r.expiresAt)
+    }
     expect(api!.travelSnapshot(r, '2026-11-18T05:59:59-08:00').ok).toBe(false)
+    expect(api!.travelSnapshot(r, '2026-11-19T10:00:00-08:00').ok).toBe(false)
     const future = structuredClone(r); future.flightOffers[0].evidence[0].checkedAt = r.expiresAt
     expect(api!.travelSnapshot(future, r.generatedAt).ok).toBe(false)
   })
@@ -107,7 +113,7 @@ describe('version 3 saved complete journeys', () => {
     if (!saved.ok) throw Error(saved.message)
     const { legacy, city } = oldSelections()
     const malformed = structuredClone(saved.value); malformed.journey.legs.find(l => l.kind === 'flight')!.service = 'fabricated'
-    for (const raw of ['{', '{"schemaVersion":3}', '{"schemaVersion":4}', JSON.stringify(malformed), JSON.stringify({ ...saved.value, rawResponse: {} }), JSON.stringify({ ...saved.value, selectedAt: r.expiresAt })]) {
+    for (const raw of ['{', '{"schemaVersion":3}', '{"schemaVersion":4}', JSON.stringify(malformed), JSON.stringify({ ...saved.value, rawResponse: {} }), JSON.stringify({ ...saved.value, selectedAt: '2026-11-18T05:59:59-08:00' })]) {
       const s = memory(raw)
       expect(api!.readTravelHistory(s).ok).toBe(false)
       expect(readSavedSelection(s).ok).toBe(false)

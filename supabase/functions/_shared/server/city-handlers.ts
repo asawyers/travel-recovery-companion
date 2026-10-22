@@ -90,6 +90,14 @@ export function createCityRecoveryHandler(deps: { now: () => string; findCity?: 
             active()
             const facts = providerFacts.parse(raw)
             if (facts.candidates.some(candidate => candidate.evidence.some(evidence => evidence.environment !== 'production' || evidence.type === 'synthetic'))) throw new Error('Evidence mode mismatch')
+            // New provider observations must be current at collection. Previously accepted
+            // observations remain usable for local planning without renewing these timestamps.
+            const observedNow = toInstantMillis(deps.now())
+            if (facts.candidates.some(candidate => candidate.evidence.some(evidence => {
+              const checked = toInstantMillis(evidence.checkedAt)
+              const expires = Math.min(checked + CITY_MAX_FACT_AGE_MS, evidence.expiresAt === null ? Infinity : toInstantMillis(evidence.expiresAt))
+              return checked > observedNow || expires <= observedNow || (evidence.providerUpdatedAt !== null && toInstantMillis(evidence.providerUpdatedAt) > observedNow)
+            }))) throw new Error('Provider observation is not current')
             const candidates = facts.candidates.map(candidate => ({ ...candidate, evidence: candidate.evidence.map(safeEvidence) }))
             extras = candidates
             latest = undefined; latestPatch = {}

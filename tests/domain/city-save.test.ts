@@ -108,3 +108,22 @@ it("rejects Google selected plans and filters all Google alternatives from manua
     false,
   );
 });
+
+it("saves an older estimate without rewriting original observation timestamps", () => {
+  const r = result();
+  r.plans[0].evidence[0].expiresAt = f.now;
+  r.plans[0].evidenceExpiresAt = f.now;
+  const saved = citySnapshot(r, r.plans[0].id, "2026-11-18T08:25:00-05:00");
+  expect(saved.ok).toBe(true);
+  if (saved.ok) {
+    expect(saved.value.plan.evidence).toEqual(r.plans[0].evidence);
+    expect(saved.value.plan.evidenceExpiresAt).toBe(f.now);
+  }
+});
+
+it("rejects saving a city itinerary once its first actual transit departure has passed", () => {
+  const r = result();
+  expect(citySnapshot(r, r.plans[0].id, "2026-11-18T08:25:00-05:00").ok).toBe(true);
+  expect(citySnapshot(r, r.plans[0].id, "2026-11-18T08:30:00-05:00").ok).toBe(false);
+  expect(citySnapshot(r, r.plans[0].id, "2026-11-18T08:31:00-05:00").ok).toBe(false);
+});

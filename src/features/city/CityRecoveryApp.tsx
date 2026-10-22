@@ -570,12 +570,6 @@ export function CityRecoveryApp() {
       return;
     }
     if (!state.result || !state.selectedId || !selected || !session.canUseResult()) return;
-    if (session.expired()) {
-      setStorageError(
-        "Source checks expired. Recheck available sources before saving.",
-      );
-      return;
-    }
     const snap = citySnapshot(
       state.result,
       state.selectedId,
@@ -908,6 +902,11 @@ export function CityRecoveryApp() {
                   {(travel.state.busy || nearbyTravel.state.busy) && (
                     <CompanionStatus label="Checking flight and hotel options…" />
                   )}
+                  {state.notice && (
+                    <p role="status" className="rounded-xl bg-[var(--companion-paper)] p-3 text-sm text-muted-foreground">
+                      {state.notice}
+                    </p>
+                  )}
                   {state.error && (
                     <Alert role="alert">
                       <AlertTitle>Comparison unavailable</AlertTitle>
@@ -962,8 +961,7 @@ export function CityRecoveryApp() {
                 </div>
                 {!state.dirty && state.result && !session.canRerank() && (
                   <p className="text-sm text-muted-foreground">
-                    Source checks need refreshing. Choose “Recheck available
-                    sources” before changing priorities.
+                    This comparison is unavailable. Refresh sources to try again.
                   </p>
                 )}
                 <form
@@ -1048,6 +1046,11 @@ export function CityRecoveryApp() {
                 </div>
                 {(state.busy || travel.state.busy || nearbyTravel.state.busy) && <Badge variant="secondary" className="gap-2"><LoadingSpinner /> Checking sources</Badge>}
               </div>
+              {(state.result || travel.state.result || nearbyTravel.state.result) && (
+                <p className="text-sm text-muted-foreground">
+                  Prices and availability may change. Keep planning with these estimates, or refresh sources whenever you like.
+                </p>
+              )}
               {state.result && <p role="status" className="text-sm text-muted-foreground">{cityResultCount(state.result)}</p>}
               {state.dirty && (
                 <p role="status" className="rounded-xl border border-[#DCC5A7] bg-[#FFF8EE] p-4 text-sm text-[#A35B12]">

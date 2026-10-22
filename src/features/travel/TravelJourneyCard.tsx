@@ -4,12 +4,11 @@ import { isTransferDetail, ItinerarySummary } from './TransferDetails'
 import { ItineraryTimeline, RouteNotes, RouteTimeLegend } from './ItineraryPresentation'
 import { GoogleRouteAttribution, mapsRouteLink } from './OnwardOffers'
 import { Button } from '@/components/ui/button'
-import { travelEvidenceFresh, quotedTravelAmount, TravelCosts, TravelEvidence } from './FlightOffers'
+import { quotedTravelAmount, TravelCosts, TravelEvidence } from './FlightOffers'
 
-export function TravelJourneyCard({ journey, selected = false, busy = false, onSelect, onExpired }: {
+export function TravelJourneyCard({ journey, selected = false, busy = false, onSelect }: {
   journey: TravelJourney; selected?: boolean; busy?: boolean; onSelect: (journey: TravelJourney) => void; onExpired?: () => void
 }) {
-  const fresh = () => travelEvidenceFresh(journey.evidence.filter(source => source.type !== 'traveler_confirmed'), journey.evidenceExpiresAt)
   const eligible = journey.selectable && journey.feasibility === 'requires_confirmation' && journey.violations.length === 0
   const finalLeg = journey.legs.at(-1)
   const legs = journey.legs.map(leg => ({ ...leg, mode: leg.kind }))
@@ -26,8 +25,8 @@ export function TravelJourneyCard({ journey, selected = false, busy = false, onS
     <RouteNotes legs={legs} notes={[...journey.warnings, ...journey.confirmations]} />
     <details className="rounded-xl border border-[var(--companion-border)] text-sm"><summary className="cursor-pointer px-3 py-3 font-medium">Cost breakdown</summary><div className="px-3 pb-3"><TravelCosts costs={journey.costs} /></div></details>
     {journey.violations.length > 0 && <div role="alert" className="rounded-xl border border-destructive/20 p-3 text-sm text-destructive"><p className="font-medium">This journey needs changes.</p><ul>{journey.violations.map(note => <li key={note}>{note}</li>)}</ul></div>}
-    {onwardLegs.length > 0 && <GoogleRouteAttribution href={mapsRouteLink(onwardLegs[0].from, onwardLegs.at(-1)?.to, onwardLegs.some(leg => leg.kind === 'drive') ? 'drive' : 'transit')} fresh={fresh} onExpired={onExpired} />}
-    <Button className="w-full whitespace-normal" disabled={busy || !eligible} onClick={() => { if (!eligible) return; if (!fresh()) { onExpired?.(); return } onSelect(journey) }}>{selected ? 'Chosen journey' : 'Choose this journey'}</Button>
-    <details className="text-sm"><summary className="cursor-pointer py-1 text-muted-foreground">Source and freshness</summary><div className="mt-2"><TravelEvidence evidence={journey.evidence} /><p className="text-xs">Journey evidence expires {journey.evidenceExpiresAt ?? 'at the next source refresh'}.</p></div></details>
+    {onwardLegs.length > 0 && <GoogleRouteAttribution href={mapsRouteLink(onwardLegs[0].from, onwardLegs.at(-1)?.to, onwardLegs.some(leg => leg.kind === 'drive') ? 'drive' : 'transit')} />}
+    <Button className="w-full whitespace-normal" disabled={busy || !eligible} onClick={() => { if (eligible) onSelect(journey) }}>{selected ? 'Chosen journey' : 'Choose this journey'}</Button>
+    <details className="text-sm"><summary className="cursor-pointer py-1 text-muted-foreground">Source and freshness</summary><div className="mt-2"><TravelEvidence evidence={journey.evidence} /></div></details>
   </article>
 }

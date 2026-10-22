@@ -323,3 +323,72 @@ it("accepts a newly infeasible assessment even when the exact binding returns a 
   session.select();
   expect(session.getSnapshot().selected).toBe(false);
 });
+
+
+it("keeps aged accepted quotes and facts usable and confirms locally without changing observation times", async () => {
+  let clock = f.now, posts = 0;
+  const input = { ...f.input, selection: null };
+  const initial = { ...response(input), flightOffers: f.flightOffers };
+  const session = new TravelSession({ now: () => clock, transport: async () => { posts++; return initial; } });
+  await session.search(input);
+  session.planFlight(f.flight);
+  clock = "2026-11-18T14:30:00Z";
+  session.expire();
+  expect(session.fresh()).toBe(false);
+  expect(session.usable()).toBe(true);
+  expect(session.getSnapshot().flight).toEqual(f.flight);
+  expect(session.getSnapshot().editingFacts).toBe(true);
+  expect(session.getSnapshot().notice).toMatch(/last checked|may have changed/i);
+  await session.confirm(f.input.selection!.facts);
+  expect(posts).toBe(1);
+  expect(session.getSnapshot().sequence).toBe(2);
+  expect(session.getSnapshot().result?.journey?.selectable).toBe(true);
+  expect(session.getSnapshot().result?.generatedAt).toBe(initial.generatedAt);
+  expect(session.getSnapshot().result?.expiresAt).toBe(initial.expiresAt);
+  expect(session.getSnapshot().result?.flightOffers).toEqual(initial.flightOffers);
+  session.select();
+  session.expire();
+  expect(session.getSnapshot().selected).toBe(true);
+  session.applyPreferences({ priority: "cheapest" });
+  expect(session.usable()).toBe(true);
+  expect(posts).toBe(1);
+  expect(session.getSnapshot().result?.request.trip.priority).toBe("cheapest");
+  session.edit(true);
+  expect(session.usable()).toBe(false);
+});
+
+it("does not make a future-generated response usable under the advisory age policy", async () => {
+  const session = new TravelSession({ now: () => "2026-11-18T13:59:00Z", transport: async () => response() });
+  await session.search(f.input);
+  expect(session.usable()).toBe(false);
+});
+
+it("preserves a completed last-checked journey when its optional refresh fails, but never after hard edits", async () => {
+  const full = { ...response(), flightOffers: f.flightOffers, ...assessTravelSelection(f.input, f) };
+  const session = new TravelSession({ now: () => f.now, transport: async () => full });
+  await session.search(f.input);
+  session.select();
+  session.options.transport = async () => { throw Error("offline"); };
+  await session.search({ ...f.input, selection: null });
+  expect(session.getSnapshot().result).toBe(full);
+  expect(session.getSnapshot().selected).toBe(true);
+  expect(session.getSnapshot().flight).toEqual(f.flight);
+  expect(session.usable()).toBe(true);
+  expect(session.getSnapshot().notice).toMatch(/could not refresh/i);
+  session.edit(true);
+  await session.search({ ...f.input, selection: null });
+  expect(session.usable()).toBe(false);
+  expect(session.getSnapshot().error).toMatch(/offline/);
+});
+
+it("reassesses actual departure feasibility before selecting an aged completed journey", async () => {
+  const full = { ...response(), flightOffers: f.flightOffers, ...assessTravelSelection(f.input, f) };
+  let clock = f.now;
+  const session = new TravelSession({ now: () => clock, transport: async () => full });
+  await session.search(f.input);
+  clock = "2026-11-19T18:00:00Z";
+  session.select();
+  expect(session.getSnapshot().selected).toBe(false);
+  expect(session.getSnapshot().result?.journey?.selectable).toBe(false);
+  expect(session.getSnapshot().result?.journey?.violations.join(" ")).toMatch(/departed|already have started/);
+});

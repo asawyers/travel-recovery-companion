@@ -69,18 +69,36 @@ describe('pure national city planner', () => {
     expect(p!.planCityRecovery(f.request, [c], f).plans[0].transfers).toBe(2)
   })
 
-  it('retains the original earliest expiry and rejects expired or future evidence', async () => {
+  it('retains the original earliest expiry and permits aged estimates but rejects future evidence', async () => {
     const p = await implementation(); expect(p).not.toBeNull()
     const f = await fixture(), c = f.candidates[0]
     c.evidence[0].expiresAt = iso(f.now, 1)
     c.evidence.push({ ...c.evidence[0], expiresAt: iso(f.now, 3) })
     expect(p!.planCityRecovery(f.request, [c], f).plans[0].evidenceExpiresAt).toBe(c.evidence[0].expiresAt)
     c.evidence[0].expiresAt = f.now
-    expect(p!.planCityRecovery(f.request, [c], f).rejected[0].violations.join(' ')).toMatch(/expired/i)
+    const aged = p!.planCityRecovery(f.request, [c], f)
+    expect(aged.plans[0].selectable).toBe(true)
+    expect(aged.plans[0].evidenceExpiresAt).toBe(f.now)
+    expect(aged.plans[0].evidence).toEqual(c.evidence)
     c.evidence[0].expiresAt = null; c.evidence[0].checkedAt = iso(f.now, 1)
     expect(p!.planCityRecovery(f.request, [c], f).plans).toHaveLength(0)
   })
 
+  it('keeps older prices usable until the actual first transit departure rather than the access walk', async () => {
+    const p = await implementation(); expect(p).not.toBeNull()
+    const f = await fixture(), c = f.candidates[0]
+    c.evidence[0].expiresAt = iso(f.now, 5)
+    const original = JSON.stringify(c)
+    const afterWalk = p!.planCityRecovery(f.request, [c], { ...f, now: '2026-11-18T08:25:00-05:00' })
+    expect(afterWalk.plans[0].selectable).toBe(true)
+    expect(afterWalk.plans[0].evidence).toEqual(c.evidence)
+    for (const now of ['2026-11-18T08:30:00-05:00', '2026-11-18T08:31:00-05:00']) {
+      const missed = p!.planCityRecovery(f.request, [c], { ...f, now })
+      expect(missed.plans).toHaveLength(0)
+      expect(missed.rejected[0].violations.join(' ')).toMatch(/first transit departure.*already/i)
+    }
+    expect(JSON.stringify(c)).toBe(original)
+  })
   it('keeps unknown and non-USD prices incomplete, excludes them under hard budgets, and ranks complete cheapest first', async () => {
     const p = await implementation(); expect(p).not.toBeNull()
     const f = await fixture(), unknown = structuredClone(f.candidates[0]), priced = structuredClone(f.candidates[0])
