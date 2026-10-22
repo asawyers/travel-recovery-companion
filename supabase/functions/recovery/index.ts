@@ -4,6 +4,10 @@ import { createGoogleRoutesAdapter } from '../_shared/server/google-routes.ts'
 import { createLiteApiAdapter } from '../_shared/server/liteapi.ts'
 import { createRecoveryAgent } from '../_shared/server/recovery-agent.ts'
 import { MODEL_REGISTRY } from '../_shared/server/model-registry.ts'
+import { createRecoveryRouter } from '../_shared/server/app-router.ts'
+import { createCityRecoveryHandler } from '../_shared/server/city-handlers.ts'
+import { createCityGoogleRoutesAdapter } from '../_shared/server/city-google-routes.ts'
+import { createCityRecoveryAgent } from '../_shared/server/city-agent.ts'
 
 const now = () => new Date().toISOString()
 // Independent switches authorize usage; none is an enforced spending cap.
@@ -25,4 +29,9 @@ const providers = createProviderRegistry({
   sandboxHotels: createLiteApiAdapter({ enabled: Boolean(sandboxHotelKey?.trim()), environment: 'sandbox', apiKey: sandboxHotelKey, now }),
 })
 const agent = createRecoveryAgent({ enabled: modelApproved && Boolean(modelKey), apiKey: modelKey, modelName, now })
-Deno.serve(createRecoveryHandler({ now, providers, agent, hotelBookingOrigin }))
+const cityProvider = createCityGoogleRoutesAdapter({ enabled: routesApproved && Boolean(routesKey), apiKey: routesKey, now })
+const cityAgent = createCityRecoveryAgent({ enabled: modelApproved && Boolean(modelKey), apiKey: modelKey, modelName, now })
+Deno.serve(createRecoveryRouter({
+  legacy: createRecoveryHandler({ now, providers, agent, hotelBookingOrigin }),
+  city: createCityRecoveryHandler({ now, provider: cityProvider, agent: cityAgent }),
+}))
