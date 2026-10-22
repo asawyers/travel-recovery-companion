@@ -83,7 +83,14 @@ test("network failure retains inputs and makes the previous choice stale; explic
     }),
   ).toBeDisabled();
   await page.unroute(endpoint);
+  const recovered = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/functions/v1/recovery" &&
+    response.request().method() === "POST" &&
+    response.request().postDataJSON().investigate === true,
+  );
   await page.getByRole("button", { name: "Recheck available sources", exact: true }).click();
+  await (await recovered).finished();
+  await expect(page.getByRole("button", { name: "Recheck available sources", exact: true })).toBeEnabled();
   await expect(page.getByTestId("option-card")).toHaveCount(3);
   await expect(
     page.getByText(/No live.*checked|unavailable|disabled/).first(),
@@ -358,7 +365,14 @@ test("explicit recheck investigates once and a priority quick reply reuses the c
   expect(posts).toHaveLength(2);
   await openPreferences(page);
   await page.getByLabel("Priority", { exact: true }).selectOption("earliest");
+  const updated = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/functions/v1/recovery" &&
+    response.request().method() === "POST" &&
+    response.request().postDataJSON().investigate === true,
+  );
   await page.getByRole("button", { name: "Update options", exact: true }).click();
+  await (await updated).finished();
+  await expect(page.getByRole("button", { name: "Update options", exact: true })).toBeEnabled();
   await expect.poll(() => posts.length).toBe(3);
   expect(posts[2].investigate).toBe(true);
 });
