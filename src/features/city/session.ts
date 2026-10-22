@@ -180,6 +180,9 @@ export class CitySession {
     if (this.state.selectedId && this.canUseResult())
       this.update({ saved: true });
   }
+  clearSelection() {
+    this.update({ selectedId: null, saved: false });
+  }
   clearSaved() {
     this.update({ saved: false });
   }
@@ -232,6 +235,27 @@ export class CitySession {
           Date.parse(this.options.now()),
         ))
     );
+  }
+  /** Apply an already authorized shared preference using only current source facts. */
+  applyPreferences(patch: PreferencePatch) {
+    if (!Object.keys(patch).length) return;
+    if (!this.canUseResult() || !this.canRerank()) {
+      this.edit(true);
+      return;
+    }
+    const previous = this.state.result!;
+    const request = { ...previous.request, ...patch };
+    const candidates = this.cache?.facts.candidates ?? request.confirmedOptions;
+    const result = planCityRecovery(request, candidates, {
+      now: this.options.now(), origin: previous.origin, destination: previous.destination,
+    });
+    this.revision++;
+    if (this.acceptedInput && this.cache) {
+      this.acceptedInput = { ...this.acceptedInput, ...patch };
+      this.cache = { ...this.cache, inputKey: cityReuseKey(this.acceptedInput) };
+    }
+    this.update({ result, history: [...this.state.history, previous].slice(-3),
+      selectedId: null, saved: false, assistance: null });
   }
   private acceptedInput: CityTripRequest | null = null;
   async compare(

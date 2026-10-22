@@ -1,3 +1,4 @@
+import { TravelSavedSelectionSchema } from "../travel/savedSelectionSchema";
 import { CitySavedSelectionSchema } from "@domain/city-contracts";
 import { z } from "zod";
 import {
@@ -69,7 +70,7 @@ export function readSavedSelection(
     if (raw.length > MAX_SNAPSHOT_LENGTH)
       return { ok: false, message: invalid };
     const data: unknown = JSON.parse(raw);
-    if (CitySavedSelectionSchema.safeParse(data).success)
+    if (TravelSavedSelectionSchema.safeParse(data).success || CitySavedSelectionSchema.safeParse(data).success)
       return { ok: true, value: null };
     const parsed = SavedSelectionSchema.safeParse(data);
     return parsed.success

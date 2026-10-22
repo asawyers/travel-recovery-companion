@@ -1,3 +1,4 @@
+import { TravelSavedSelectionSchema } from "../travel/savedSelectionSchema";
 import { CitySavedSelectionSchema } from "@domain/city-contracts";
 import type {
   CityRecoveryResult,
@@ -46,6 +47,7 @@ export function readCityHistory(
     if (raw === null) return { ok: true, value: null };
     if (raw.length > MAX) throw Error();
     const data: unknown = JSON.parse(raw);
+    if (TravelSavedSelectionSchema.safeParse(data).success) return { ok: true, value: null };
     const city = CitySavedSelectionSchema.safeParse(data);
     if (city.success) return { ok: true, value: city.data };
     const legacy = SavedSelectionSchema.safeParse(data);

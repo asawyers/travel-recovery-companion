@@ -147,6 +147,11 @@ async function fulfill(
 }
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date(now));
+  await page.route("**/functions/v1/recovery/travel", async route => {
+    const input = route.request().postDataJSON();
+    const { refinement: _refinement, conversation, ...request } = input;
+    await route.fulfill({json:{version:3,request,origin:findCity(request.trip.originCityId),destination:findCity(request.trip.destinationCityId),generatedAt:now,expiresAt:"2026-11-18T13:00:00Z",flightOffers:[],hotelOffers:[],sourceStatuses:[],journey:null,selectionIssue:null,warnings:["Travel fixture unavailable; no live inventory was checked."],...(conversation?{conversation:{turnId:conversation.turnId,baseRevision:conversation.baseRevision}}:{})}});
+  });
 });
 test("long-drive-only city comparison exposes an informational estimate without a continuous-arrival or save claim", async ({ page }) => {
   let posts = 0;
@@ -180,7 +185,7 @@ test("long-drive-only city comparison exposes an informational estimate without 
   await expect(page.getByRole("status").filter({ hasText: /0 selectable journeys.*1 informational driving estimate/ })).toBeVisible();
   await expect(page.getByRole("log")).toContainText("No complete ground itinerary could be validated");
   await expect(page.getByRole("log")).toContainText("does not mean no travel options exist");
-  await expect(page.getByText("Ground travel search only. Flights and overnight stays have not been checked.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Compare ground travel and flight quotes. Explore an origin overnight when you need it.", { exact: true })).toBeVisible();
   await expect(card).toContainText("48 hours of driving time before breaks and overnight stops");
   await expect(card).toContainText("Arrival time has not been planned");
   await expect(card).toContainText("Total trip cost unknown");
@@ -319,7 +324,7 @@ test("priority quick replies reassess cached facts without POST and no-driving d
     .getByRole("button", { name: "Explore overnight", exact: true })
     .click();
   await expect(page.getByRole("log")).toContainText(
-    "National hotel rates are unavailable",
+    "Explore overnight",
   );
   expect(posts).toHaveLength(2);
 });

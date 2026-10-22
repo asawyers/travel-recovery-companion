@@ -38,8 +38,10 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
             </p>
             <p>
               Google Maps route content is available only during the current
-              session and cannot be saved as a device snapshot. Traveler-entered
-              and fictional itineraries can be saved in this browser.
+              session and cannot be saved as a device snapshot. Traveler-entered,
+              fictional and eligible complete flight itineraries can be saved in
+              this browser. Observed flight and hotel search quotes do not
+              guarantee seats, rooms or final payable prices.
             </p>
           </>
         ) : (
@@ -51,8 +53,11 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
               planning uses city center coordinates and explicit origin and
               destination time zones. Relevant current inputs may be sent to
               Google Maps: route, travel time and relevant transport choices for
-              route estimates and transit schedules. National hotel rates are
-              unavailable. In the separate Boston airport demo, hotel
+              route estimates and transit schedules. Explicit flight and overnight
+              searches send selected airports, cities, dates, one-adult occupancy
+              and relevant search preferences to SerpApi for Google Flights and
+              Google Hotels observations. Confirming a selected journey checks
+              those quotes again. In the separate Boston airport demo, hotel
               investigations may send stay dates, occupancy and the nationality
               you enter to the enabled hotel source. Submitting a selected hotel
               journey explicitly investigates its availability again. Optional
@@ -70,12 +75,14 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
               rates; it makes no OpenAI or live transport calls.
             </p>
             <p>
-              Traveler-entered and fictional device snapshots are stored in
+              Traveler-entered, fictional and eligible complete flight snapshots are stored in
               localStorage in this browser profile until you delete them or
-              clear browser data. Saving a manual plan excludes Google-derived
+              clear browser data. Saving a manual plan excludes Google Maps-derived
               alternatives. Google Maps route content is transient in the
-              current tab and is not saved in device snapshots. No traveler
-              account or booking record is created.
+              current tab and is not saved in device snapshots. Flight snapshots contain only the selected normalized flight,
+              optional hotel and confirmed complete journey, preserving original
+              source dates and checks. Other offers, raw responses and conversation
+              are excluded. No traveler account or booking record is created.
             </p>
             <p>
               Provider keys stay on the server. External operator links open

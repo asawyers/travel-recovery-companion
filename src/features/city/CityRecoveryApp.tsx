@@ -1,5 +1,24 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CityCandidate, CitySavedSelection } from "@domain/city-contracts";
+import { nearestAirports } from "@domain/airport-metadata";
+import {
+  type TravelRequestBinding,
+  TravelTripSchema,
+} from "@domain/travel-contracts";
+import {
+  buildTravelRequest,
+  useTravelRecovery,
+} from "../travel/useTravelRecovery";
+import {
+  AirportChoices,
+  TravelRecoveryPanel,
+} from "../travel/TravelRecoveryPanel";
+import { TravelHistoryPanel } from "../travel/TravelHistoryPanel";
+import {
+  readTravelHistory,
+  travelSnapshot,
+  writeTravelSelection,
+} from "../travel/savedSelection";
 import { cityAnswer, cityResultCount } from "./conversationModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,7 +50,6 @@ import type { CityDraft, CityFormErrors } from "./formModel";
 import {
   citySnapshot,
   containsCityGoogle,
-  readCityHistory,
   refreshCityRequest,
   writeCitySelection,
 } from "./savedSelection";
@@ -62,6 +80,21 @@ export function CityRecoveryApp() {
     session.getSnapshot,
   );
   const [draft, setDraft] = useState(emptyCityDraft);
+  const travel = useTravelRecovery();
+  const [airports, setAirports] = useState<{ from: string; to: string } | null>(
+    null,
+  );
+  const from =
+    airports?.from ??
+    (draft.origin
+      ? (nearestAirports(draft.origin)[0]?.airport.iata ?? "")
+      : "");
+  const to =
+    airports?.to ??
+    (draft.destination
+      ? (nearestAirports(draft.destination)[0]?.airport.iata ?? "")
+      : "");
+  const travelReported = useRef(0);
   const [errors, setErrors] = useState<CityFormErrors>({});
   const [started, setStarted] = useState(false);
   const [manual, setManual] = useState<CityCandidate[]>([]);
@@ -69,7 +102,7 @@ export function CityRecoveryApp() {
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [editing, setEditing] = useState(false);
   const [manualKey, setManualKey] = useState(0);
-  const [record, setRecord] = useState(() => storage(readCityHistory));
+  const [record, setRecord] = useState(() => storage(readTravelHistory));
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const reported = useRef(0);
@@ -112,8 +145,9 @@ export function CityRecoveryApp() {
   }
   useEffect(() => {
     const content = cityAnswer(state);
-    if (!content || state.sequence === reported.current || !state.result)
+    if (!content || state.sequence === reported.current || !state.result) {
       return;
+    }
     reported.current = state.sequence;
     const assistance = state.assistance;
     setTurns((current) =>
@@ -124,20 +158,33 @@ export function CityRecoveryApp() {
         revision: session.revision,
       }),
     );
-    if (assistance?.clarification && assistance.clarification.field !== "hotel")
+    if (
+      assistance?.clarification &&
+      assistance.clarification.field !== "hotel"
+    ) {
       setEditing(true);
-    if (!assistance?.clarification)
+    }
+    if (
+      assistance?.status === "completed" &&
+      Object.keys(assistance.appliedPreferences).length
+    ) {
+      travel.session.applyPreferences(assistance.appliedPreferences);
+    }
+    if (!assistance?.clarification) {
       setDraft((current) => ({
         ...current,
         priority: state.result!.request.priority,
         drivingAllowed: state.result!.request.drivingAllowed,
       }));
+    }
   }, [state, session]);
   function edit(next: CityDraft) {
     const cityChanged =
       next.origin?.id !== draft.origin?.id ||
       next.destination?.id !== draft.destination?.id;
     session.edit(!cityChanged);
+    travel.session.edit(!cityChanged);
+    if (cityChanged) setAirports(null);
     setStorageMessage(null);
     setStorageError(null);
     setErrors({});
@@ -161,6 +208,7 @@ export function CityRecoveryApp() {
     investigate = true,
     refinement?: string,
     userText?: string,
+    travelMode: "preserve" | "same-day" = "preserve",
   ) {
     const built = buildCityRequest(next, new Date().toISOString(), candidates);
     setErrors(built.errors);
@@ -180,9 +228,51 @@ export function CityRecoveryApp() {
     addTurn(
       "user",
       userText ??
-        `${next.origin.name}, ${next.origin.stateCode} to ${next.destination.name}, ${next.destination.stateCode}. ${built.request.deadlineAt ? "Arrive by the destination-local deadline." : "As soon as possible."}`,
+        `${next.origin.name}, ${next.origin.stateCode} to ${next.destination.name}, ${next.destination.stateCode}. ${
+          built.request.deadlineAt
+            ? "Arrive by the destination-local deadline."
+            : "As soon as possible."
+        }`,
       turnId,
     );
+    if (!refinement) {
+      if (!investigate) travel.session.rerank(built.request.priority);
+      else {
+        const {
+          version: _version,
+          mode: _mode,
+          confirmedOptions: _options,
+          ...trip
+        } = built.request;
+        const active = travel.state.result?.request;
+        const preserve =
+          travelMode === "preserve" &&
+          active &&
+          active.trip.originCityId === trip.originCityId &&
+          active.trip.destinationCityId === trip.destinationCityId;
+        const input = buildTravelRequest(
+          TravelTripSchema.parse(trip),
+          next.origin,
+          from,
+          to,
+          Boolean(preserve && active.overnight),
+        );
+        // Rechecking sources or changing a soft preference does not authorize
+        // a different travel day. Explicit readiness/airport edits rebuild dates.
+        if (
+          input &&
+          preserve &&
+          active.trip.readyAt === trip.readyAt &&
+          active.originAirportIata === from &&
+          active.destinationAirportIata === to
+        ) {
+          input.departureDate = active.departureDate;
+          input.overnight = active.overnight;
+        }
+        if (input) void travel.session.search(input);
+        else travel.session.unavailable();
+      }
+    }
     await session.compare(
       built.request,
       next.origin,
@@ -197,18 +287,33 @@ export function CityRecoveryApp() {
   ) {
     if (state.dirty) return;
     if (kind === "overnight") {
-      addTurn("user", "Explore overnight");
-      addTurn(
-        "assistant",
-        "National hotel rates are unavailable here. I can keep comparing transportation; the separate Boston airport demo has labeled hotel examples.",
-      );
+      const request = state.result?.request;
+      const tripFacts = request
+        ? (({ version: _v, mode: _m, confirmedOptions: _c, ...trip }) => trip)(
+            request,
+          )
+        : travel.state.result?.request.trip;
+      if (tripFacts && draft.origin) {
+        const input = buildTravelRequest(
+          TravelTripSchema.parse(tripFacts),
+          draft.origin,
+          from,
+          to,
+          true,
+        );
+        addTurn("user", "Explore overnight");
+        if (input) void travel.session.search(input);
+        else travel.session.unavailable();
+      }
       return;
     }
     if (
       (kind === "cheapest" || kind === "fewest_transfers") &&
-      !session.canRerank()
+      !session.canRerank() &&
+      !travel.session.usable()
     ) {
       session.expire();
+      travel.session.expire();
       return;
     }
     const next = {
@@ -218,6 +323,11 @@ export function CityRecoveryApp() {
         : { priority: kind }),
     };
     setDraft(next);
+    if (kind !== "no-driving" && !session.canRerank()) {
+      travel.session.rerank(kind);
+      addTurn("user", kind === "cheapest" ? "Cheaper" : "Fewer changes");
+      return;
+    }
     void compare(
       next,
       manual,
@@ -230,7 +340,183 @@ export function CityRecoveryApp() {
           : "Fewer changes",
     );
   }
+  useEffect(() => {
+    const t = travel.state;
+    if (t.busy || !t.result || t.error || t.sequence === travelReported.current)
+      return;
+    travelReported.current = t.sequence;
+    const summary =
+      t.result.assistance?.summary ??
+      `${t.result.flightOffers.length} flight quotes${
+        t.result.request.overnight
+          ? ` and ${t.result.hotelOffers.length} origin hotel quotes`
+          : ""
+      } checked. Confirm transfers and allowances before choosing a complete flight journey.`;
+    addTurn("assistant", summary);
+    const assistance = t.result.assistance;
+    if (
+      assistance?.status === "completed" &&
+      Object.keys(assistance.appliedPreferences).length
+    ) {
+      setDraft((current) => ({ ...current, ...assistance.appliedPreferences }));
+      session.applyPreferences(assistance.appliedPreferences);
+    }
+    const field = t.result.assistance?.clarification?.field;
+    if (
+      field &&
+      ["airport", "readyAt", "deadlineAt", "budget", "preference"].includes(
+        field,
+      )
+    )
+      setEditing(true);
+    if (field === "transfer" || (field === "hotel" && t.hotel))
+      travel.session.reviewFacts();
+  }, [travel.state]);
+  function travelMessage(text: string) {
+    const result = travel.state.result;
+    const turnId = crypto.randomUUID();
+    addTurn("user", text, turnId);
+    let input: TravelRequestBinding | null = result
+      ? {
+          ...result.request,
+          trip: {
+            ...result.request.trip,
+            priority: draft.priority,
+            drivingAllowed: draft.drivingAllowed,
+          },
+          selection: null,
+        }
+      : null;
+    const confirmed = result?.request.selection;
+    const current = buildCityRequest(
+      draft,
+      new Date().toISOString(),
+      manual,
+    ).request;
+    if (
+      input &&
+      result &&
+      confirmed &&
+      current &&
+      travel.session.usable() &&
+      !state.dirty &&
+      !travel.state.editingFacts &&
+      !result.selectionIssue &&
+      result.request.originAirportIata === from &&
+      result.request.destinationAirportIata === to &&
+      Object.entries(result.request.trip).every(
+        ([key, value]) => current[key as keyof typeof current] === value,
+      ) &&
+      travel.state.flight?.id === confirmed.flightOfferId &&
+      travel.state.flight.fingerprint === confirmed.flightFingerprint &&
+      (result.request.overnight
+        ? travel.state.hotel?.id === confirmed.hotelOfferId &&
+          travel.state.hotel.fingerprint === confirmed.hotelFingerprint
+        : confirmed.hotelOfferId === null && travel.state.hotel === null)
+    ) {
+      input.selection = confirmed;
+    }
+    // A hotel keyword alone cannot authorize changing a calendar day.
+    const hotelMention = /\b(overnight|hotel|stay)\b/i.test(text);
+    const negated =
+      /\b(no|not|never|without|avoid|skip|cannot|can't|don't|won't)\b/i.test(
+        text,
+      );
+    // Accept only complete, narrow hotel-search commands. All other prose keeps
+    // its original date binding and can use the explicit Explore overnight action.
+    const explicitOvernightCommand =
+      /^(?:please\s+)?(?:find|search for|explore|show me|check|i need|i want|i would like)\s+(?:(?:a|an|some)\s+)?(?:overnight(?:\s+(?:hotels?|stay|options))?|hotels?|one-night stay)(?:\s+and\s+(?:a\s+)?flights?)?[.!]?$/i.test(
+        text.trim(),
+      );
+    const wantsOvernight = explicitOvernightCommand && !negated;
+    if (hotelMention && !wantsOvernight && !negated)
+      addTurn(
+        "assistant",
+        "Your current flight date is retained. Choose Explore overnight to check one night at your origin and a flight the next day.",
+      );
+    if (draft.origin && (!input || wantsOvernight)) {
+      const built = buildCityRequest(draft, new Date().toISOString(), manual);
+      if (built.request) {
+        const {
+          version: _version,
+          mode: _mode,
+          confirmedOptions: _options,
+          ...trip
+        } = built.request;
+        input = buildTravelRequest(
+          TravelTripSchema.parse(trip),
+          draft.origin,
+          from,
+          to,
+          wantsOvernight,
+        );
+      }
+    }
+    if (!input) {
+      travel.session.unavailable();
+      return;
+    }
+    void travel.session.search({
+      ...input,
+      refinement: text,
+      conversation: conversationContext(turnId, session.revision, turns),
+    });
+  }
+  function refreshTravel(request: TravelRequestBinding) {
+    session.edit();
+    travel.session.edit(false);
+    const saved =
+      record.ok && record.value?.schemaVersion === 3 ? record.value : null;
+    if (
+      !saved ||
+      saved.origin.id !== request.trip.originCityId ||
+      saved.destination.id !== request.trip.destinationCityId
+    )
+      return;
+    const { origin, destination } = saved;
+    const cityRequest = {
+      version: 2 as const,
+      mode: "real" as const,
+      ...request.trip,
+      confirmedOptions: [],
+    };
+    setDraft(draftFromCityRequest(cityRequest, origin, destination));
+    setAirports({
+      from: request.originAirportIata,
+      to: request.destinationAirportIata,
+    });
+    setManual([]);
+    setManualKey((k) => k + 1);
+    setTurns([]);
+    setMessage("");
+    setStarted(true);
+    setEditing(false);
+    void travel.session.search(request);
+  }
   function save() {
+    if (
+      travel.state.selected &&
+      travel.state.result &&
+      travel.session.usable()
+    ) {
+      const snap = travelSnapshot(
+        travel.state.result,
+        new Date().toISOString(),
+      );
+      const saved = snap.ok
+        ? storage((s) => writeTravelSelection(s, snap.value))
+        : snap;
+      if (!saved.ok) {
+        setStorageError(saved.message);
+        return;
+      }
+      setRecord(saved);
+      setStorageError(null);
+      setStorageMessage(
+        "Saved on this device. No tickets or reservations have been purchased.",
+      );
+      return;
+    }
     if (!state.result || !state.selectedId || !session.canUseResult()) return;
     if (session.expired()) {
       setStorageError(
@@ -266,11 +552,14 @@ export function CityRecoveryApp() {
     }
     setRecord(cleared);
     session.clearSaved();
+    travel.session.clearSelection();
     setStorageError(null);
     setStorageMessage("Saved plan deleted from this device.");
   }
   function refresh(saved: CitySavedSelection) {
     session.edit();
+    travel.session.edit(false);
+    setAirports(null);
     const request = refreshCityRequest(saved),
       next = draftFromCityRequest(request, saved.origin, saved.destination);
     setDraft(next);
@@ -311,16 +600,34 @@ export function CityRecoveryApp() {
     ),
     googleSelected = !!selected && containsCityGoogle(selected),
     savedRecord = record.ok ? record.value : null;
-  const canSave = !!selected && session.canUseResult();
+  const canSave =
+    (!!selected && session.canUseResult()) ||
+    (travel.state.selected && travel.session.usable());
   const editor = (
-    <CityStarterForm
-      draft={draft}
-      errors={errors}
-      busy={state.busy}
-      started={started}
-      onChange={edit}
-      onSubmit={() => void compare()}
-    />
+    <>
+      <AirportChoices
+        origin={draft.origin}
+        destination={draft.destination}
+        from={from}
+        to={to}
+        open={
+          travel.state.result?.assistance?.clarification?.field === "airport"
+        }
+        onChange={(from, to) => {
+          setAirports({ from, to });
+          session.edit(true);
+          travel.session.edit(true);
+        }}
+      />
+      <CityStarterForm
+        draft={draft}
+        errors={errors}
+        busy={state.busy}
+        started={started}
+        onChange={edit}
+        onSubmit={() => void compare()}
+      />
+    </>
   );
   // Trip facts are explicitly confirmed in the form. Assistance can only patch driving and priority.
   const clarification = state.assistance?.clarification;
@@ -350,8 +657,8 @@ export function CityRecoveryApp() {
           Start with your cities. We’ll work through the whole journey with you.
         </p>
         <p className="mt-3 rounded-md bg-slate-100 p-3 text-sm font-medium">
-          Ground travel search only. Flights and overnight stays have not been
-          checked.
+          Compare ground travel and flight quotes. Explore an origin overnight
+          when you need it.
         </p>
         {!started ? (
           <section
@@ -395,7 +702,9 @@ export function CityRecoveryApp() {
               {turns.map((turn) => (
                 <article
                   key={turn.id}
-                  className={`conversation-turn rounded-lg px-4 py-3 text-sm leading-relaxed ${turn.role === "user" ? "ml-8 border bg-white" : "mr-3"}`}
+                  className={`conversation-turn rounded-lg px-4 py-3 text-sm leading-relaxed ${
+                    turn.role === "user" ? "ml-8 border bg-white" : "mr-3"
+                  }`}
                 >
                   <p className="mb-1 text-xs font-medium text-muted-foreground">
                     {turn.role === "user" ? "You" : "Recovery companion"}
@@ -460,6 +769,8 @@ export function CityRecoveryApp() {
                         onSelect={() => {
                           setStorageMessage(null);
                           session.select(plan.id);
+                          if (session.getSnapshot().selectedId === plan.id)
+                            travel.session.clearSelection();
                         }}
                       />
                     ))}
@@ -527,6 +838,10 @@ export function CityRecoveryApp() {
                 </details>
               )}
             </section>
+            <TravelRecoveryPanel
+              controller={travel}
+              onChoose={() => session.clearSelection()}
+            />
             <div className="mt-5 space-y-4">
               <div className="flex flex-wrap gap-2" aria-label="Quick replies">
                 {(
@@ -542,10 +857,12 @@ export function CityRecoveryApp() {
                     key={kind}
                     disabled={
                       state.busy ||
+                      travel.state.busy ||
                       state.dirty ||
-                      !state.result ||
+                      (!state.result && !travel.state.result) ||
                       ((kind === "cheapest" || kind === "fewest_transfers") &&
-                        !session.canRerank())
+                        !session.canRerank() &&
+                        !travel.session.usable())
                     }
                     onClick={() => quickReply(kind)}
                   >
@@ -566,7 +883,21 @@ export function CityRecoveryApp() {
                   const text = message.trim();
                   if (!text || state.busy || state.dirty) return;
                   setMessage("");
-                  void compare(draft, manual, true, text, text);
+                  if (
+                    /^(cheaper|cheapest|fewer changes|fewest transfers)[.!?]?$/i.test(
+                      text,
+                    )
+                  ) {
+                    quickReply(
+                      /cheap/i.test(text) ? "cheapest" : "fewest_transfers",
+                    );
+                  } else if (
+                    /flight|fly|airport|hotel|overnight|stay|security|connection|transfer/i.test(
+                      text,
+                    )
+                  )
+                    travelMessage(text);
+                  else void compare(draft, manual, true, text, text);
                 }}
               >
                 <label
@@ -596,7 +927,12 @@ export function CityRecoveryApp() {
                   </p>
                   <Button
                     type="submit"
-                    disabled={state.busy || state.dirty || !message.trim()}
+                    disabled={
+                      state.busy ||
+                      travel.state.busy ||
+                      state.dirty ||
+                      !message.trim()
+                    }
                   >
                     Send message
                   </Button>
@@ -615,6 +951,29 @@ export function CityRecoveryApp() {
               >
                 Recheck available sources
               </Button>
+              {travel.state.result?.request.overnight && (
+                <Button
+                  variant="outline"
+                  disabled={
+                    state.busy ||
+                    travel.state.busy ||
+                    state.dirty ||
+                    travel.state.dirty
+                  }
+                  onClick={() =>
+                    void compare(
+                      draft,
+                      manual,
+                      true,
+                      undefined,
+                      "Search same-day flights",
+                      "same-day",
+                    )
+                  }
+                >
+                  Search same-day flights
+                </Button>
+              )}
               <div className="space-y-2">
                 <Button disabled={!canSave} onClick={save}>
                   Save on this device
@@ -657,13 +1016,21 @@ export function CityRecoveryApp() {
         )}
         {savedRecord && (
           <div className="mt-6">
-            <CityHistoryPanel
-              saved={savedRecord}
-              busy={state.busy}
-              configured={configured}
-              onDelete={deleteSaved}
-              onRefresh={refresh}
-            />
+            {savedRecord.schemaVersion === 3 ? (
+              <TravelHistoryPanel
+                history={savedRecord}
+                onRefresh={refreshTravel}
+                onDelete={deleteSaved}
+              />
+            ) : (
+              <CityHistoryPanel
+                saved={savedRecord}
+                busy={state.busy}
+                configured={configured}
+                onDelete={deleteSaved}
+                onRefresh={refresh}
+              />
+            )}
           </div>
         )}
         <details className="mt-8 border-t pt-5">

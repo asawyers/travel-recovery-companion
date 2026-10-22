@@ -99,7 +99,7 @@ describe("city starter", () => {
       /45 min|Gate arrival|Flight number|Let&#x27;s get you to Portland/,
     );
     expect(html).not.toContain("Add an option you");
-    expect(html).toContain("Ground travel search only. Flights and overnight stays have not been checked.");
+    expect(html).toContain("Compare ground travel and flight quotes. Explore an origin overnight when you need it.");
   });
   it("requires exact selected city records and rejects identical IDs", () => {
     expect(buildCityRequest(emptyCityDraft(), f.now).errors).toMatchObject({
@@ -661,3 +661,22 @@ it("blocks selecting or saving retained cards after a failed recheck even before
   expect(engine.getSnapshot().saved).toBe(false);
   expect(engine.canUseResult()).toBe(false);
 });
+it('synchronizes accepted soft preferences through the local city planner and clears obsolete selection without a POST',async()=>{
+ const {CitySession}=await import('../../src/features/city/session')
+ const engine=new CitySession({now:()=>f.now})
+ await engine.compare(f.request,f.origin,f.destination,false)
+ const original=engine.getSnapshot().result!
+ engine.select(original.plans[0].id);engine.markSaved()
+ engine.applyPreferences({priority:'cheapest',drivingAllowed:false})
+ expect(engine.getSnapshot().result?.request).toMatchObject({priority:'cheapest',drivingAllowed:false,readyAt:original.request.readyAt,deadlineAt:original.request.deadlineAt})
+ expect(engine.getSnapshot().selectedId).toBeNull();expect(engine.getSnapshot().saved).toBe(false)
+ expect(engine.canUseResult()).toBe(true)
+ let release!:(value:any)=>void
+ engine.options.endpoint=()=> 'https://example.test/city'
+ engine.options.transport=()=>new Promise(resolve=>release=resolve)
+ const pending=engine.compare(f.request,f.origin,f.destination,true)
+ engine.applyPreferences({priority:'fewest_transfers'})
+ release({});await pending
+ expect(engine.getSnapshot().dirty).toBe(true)
+ expect(engine.canUseResult()).toBe(false)
+})
