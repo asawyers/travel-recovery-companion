@@ -1,6 +1,6 @@
 # Verification status
 
-The account-free app remains at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app). The current labeled hotel sandbox revision passes clean CI install/checks, 400 unit tests across 24 files, TypeScript/Vite build, Deno checking, seven actual loopback HTTP cases, 39 local Brave cases and 39 hosted Brave cases. Independent backend/UI reviews approved. Vercel and scoped GitHub backend deployments succeeded. Live Google/OpenAI acceptance was verified separately; actual hotel sandbox acceptance is under investigation after confirmed key setup, and production hotel onboarding is deferred. Latest evidence is recorded below.
+The account-free app remains at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app). The current backend amendment passes clean CI install/checks, 401 unit tests across 24 files, TypeScript/Vite build and Deno checking. The prior UI baseline covers seven actual loopback HTTP cases, 39 local Brave cases and 39 hosted Brave cases. A focused actual sandbox discovery/journey/save/history/refresh sequence passed after the backend corrections. Independent reviews approved; Vercel and scoped GitHub backend deployments succeeded. Actual Google/OpenAI acceptance was verified separately. Production hotel onboarding remains deferred. Latest evidence is recorded below.
 
 ## Earlier core revisions
 
@@ -199,3 +199,18 @@ All **39 hosted Brave cases passed in1.8minutes** at the stable HTTPS URL. The f
 The user confirmed `LITEAPI_SANDBOX_KEY` was already saved and requested actual verification. An actual hosted Brave demo returned HTTP200/v5 but no offers because the three-second HTTP helper timed out. A second explicit investigation reached the sandbox response and returned no supported normalized offers. Neither result establishes inventory acceptance; no raw payload or credential was inspected or retained.
 
 The [LiteAPI rates reference](https://docs.liteapi.travel/reference/post_hotels-rates) defines the supplier timeout in seconds and notes additional response-return time. Our request uses six seconds. A reviewed correction gives only sandbox rates eight seconds; Google, production hotel rates and hotel details keep their three-second default, and the shared fifteen-second parent bound remains. Fixed sandbox rejection categories/counts distinguish empty results, incompatible rates and missing property metadata without exposing provider identifiers, amounts or messages. Parsing predicates are unchanged pending actual diagnosis. New regressions failed before their changes, then all400unit tests/24files, build/typecheck and Deno passed. Independent backend review approved.
+
+
+## Actual hotel sandbox acceptance completed — 2026-10-21
+
+The diagnostic revision `7245dec` deployed successfully through main workflow39696691023. An actual Brave response took4699ms and reported three received/inspected records, all rejected by selling-price checks. The production-only SSP check had incorrectly applied to nonbookable sandbox quotes. The narrow correction keeps SSP/public-price checks for production and uses the separately validated USD retail total in sandbox; occupancy, identity, integer cents, consistent totals, test provenance and disabled booking links remain enforced. Higher/unsupported SSP regression cases failed first, then401unit tests/24files, TypeScript/Vite build and Deno passed; independent backend review approved.
+
+Correction `adf534bb0eecdc258ce513ad4876b32e154cf551` was pushed to main/feature. [Main workflow39696938768](https://github.com/asawyers/travel-recovery-companion/actions/runs/39696938768) passed clean checks and deployed the backend; native Vercel `ASEf9AQGpV1sD2Wd8FwQjzrywyu6` succeeded. An isolated actual Brave session, with no response interception, then passed:
+
+- Initial explicit demo: HTTP200/v5 in5198ms, three offers carrying estimated/sandbox evidence and clear test labels. No production booking origin or AI controls/booking links.
+- Selected property plus entered fictional20/25-minute transfers,15-minute check-in and checkout-day bus: refreshed three offers and two feasible plans, including the selected hotel journey.
+- Priority change: zero additional POSTs; saved hotel evidence retained its original timestamps.
+- Device save/reload: sandbox marker and labels retained, no reload POST, no booking links.
+- Explicit refresh: one new sandbox investigation, three offers, saved historical JSON unchanged. The successful sequence made exactly three recovery POSTs, all synthetic+sandbox+investigate:true and no refinement.
+
+Acceptance script `/tmp/travel-live-sandbox-acceptance.mjs` closed its isolated Brave process; no raw provider payloads or credentials were retained. Handler/registry tests establish no Google/model/production source crossover for this mode; the observed UI made only explicit sandbox requests. This completes the challenge's approved sandbox scope. These are actual sandbox test responses, not live production inventory or bookable prices. Production onboarding remains deferred, and no purchase was performed. Prior39local/39hostedBrave fixture regressions remain the UI baseline; the focused actual sequence verifies the backend-only amendments without repeating unrelated UI tests.
