@@ -332,3 +332,8 @@
   .recovery-supporting-content > details { margin-top: 1.5rem; }
   .recovery-supporting-content > footer { margin-top: 1.25rem; padding-inline: 0; }
 }
+
+/* Keep account controls on one line beside chat controls at narrow desktop widths. */
+@media (min-width: 901px) and (max-width: 1023px) {
+  .recovery-app-started .recovery-header-inner [title] { max-width: 4rem; }
+}

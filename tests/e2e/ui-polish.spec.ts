@@ -112,6 +112,7 @@ async function fixtures(page: Page, options: {
 }
 async function start(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Where are you trying to get to?", exact: true })).toBeVisible();
   await page.getByRole("combobox", { name: "From city", exact: true }).fill("San Diego CA");
   await page.getByRole("option", { name: /^San Diego, CA/ }).click();
@@ -304,7 +305,7 @@ test("short desktop viewports keep expanded privacy help and older-source compos
       .getByRole("region", { name: "Conversation history", exact: true })
       .evaluate((node) => node.clientHeight);
     expect(conversationViewportHeight).toBeGreaterThanOrEqual(128);
-    const privacyHelp = page.getByText(/Messages and bounded recent conversation stay in this tab/);
+    const privacyHelp = page.getByText(/Chats and trip details are saved to your signed-in account/);
     await privacyHelp.scrollIntoViewIfNeeded();
     await expect(privacyHelp).toBeInViewport({ ratio: 1 });
     const message = page.getByRole("textbox", { name: "Message about your trip", exact: true });

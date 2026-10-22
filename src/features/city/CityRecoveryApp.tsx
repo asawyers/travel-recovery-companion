@@ -1,4 +1,7 @@
-import { AccountControls } from '@/features/auth/AuthProvider';
+import { ChatHistoryPanel } from '../chats/ChatHistoryPanel';
+import { useChatHistory } from '../chats/useChatHistory';
+import type { StoredTrip } from '../chats/contracts';
+import { AccountControls, useAuth } from '@/features/auth/AuthProvider';
 import { currentAccountStorage } from '@/lib/account-storage';
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CityCandidate, CitySavedSelection } from "@domain/city-contracts";
@@ -35,7 +38,6 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cityRecoveryEndpoint } from "@/lib/city-api";
 import {
-  appendConversation,
   conversationContext,
 } from "../recovery/conversation";
 import type { ConversationTurn } from "../recovery/conversation";
@@ -116,7 +118,11 @@ export function CityRecoveryApp() {
   const [started, setStarted] = useState(false);
   const [manual, setManual] = useState<CityCandidate[]>([]);
   const [message, setMessage] = useState("");
-  const [turns, setTurns] = useState<ConversationTurn[]>([]);
+  const [restoredHistory, setRestoredHistory] = useState(false);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(24);
+  const [answerPrefix] = useState(() => crypto.randomUUID());
+  const restoreGeneration = useRef(0);
+  const restoredDraft = useRef<CityDraft | null>(null);
   const [editing, setEditing] = useState(false);
   const [manualKey, setManualKey] = useState(0);
   const [record, setRecord] = useState(() => storage(readTravelHistory));
@@ -125,6 +131,45 @@ export function CityRecoveryApp() {
   const reported = useRef(0);
   const conversationScroll = useRef<HTMLDivElement>(null);
   const followConversation = useRef(true);
+  const auth = useAuth();
+  const chats = useChatHistory(auth?.session?.user.id ?? null, async (trip, historical) => {
+    const generation = ++restoreGeneration.current;
+    session.edit(false);
+    travel.session.edit(false);
+    nearbyTravel.session.edit(false);
+    setAirports(null);
+    setActiveTravel(null);
+    setManual([]);
+    setManualKey(key => key + 1);
+    setMessage('');
+    setErrors({});
+    setStorageMessage(null);
+    setStorageError(null);
+    const catalog = trip.originCityId || trip.destinationCityId ? await import('@domain/city-catalog') : null;
+    if (generation !== restoreGeneration.current) return;
+    const origin = trip.originCityId ? catalog!.findCity(trip.originCityId) : null;
+    const destination = trip.destinationCityId ? catalog!.findCity(trip.destinationCityId) : null;
+    const restored = { ...emptyCityDraft(), ...trip, origin, destination, drivingAllowed: false };
+    restoredDraft.current = restored;
+    setDraft(restored);
+    setStarted(historical);
+    setEditing(historical && (!origin || !destination));
+    setRestoredHistory(historical);
+    setVisibleMessageCount(24);
+    followConversation.current = true;
+  });
+  const turns = chats.state.messages;
+  useEffect(() => () => { restoreGeneration.current++; }, []);
+  useEffect(() => {
+    if (draft === restoredDraft.current) return;
+    const trip: StoredTrip = {
+      originCityId: draft.origin?.id ?? null, destinationCityId: draft.destination?.id ?? null,
+      goal: draft.goal, readyLocal: draft.readyLocal, readyAt: draft.readyAt,
+      deadlineLocal: draft.deadlineLocal, budget: draft.budget, budgetMode: draft.budgetMode, priority: draft.priority,
+    };
+    const title = draft.origin && draft.destination ? `${draft.origin.name} to ${draft.destination.name}`.slice(0, 120) : 'New chat';
+    chats.controller.setTrip(trip, title);
+  }, [draft, chats.controller, chats.state.initialized]);
   useEffect(() => {
     const panel = conversationScroll.current;
     if (panel && started && !editing && followConversation.current) {
@@ -160,14 +205,8 @@ export function CityRecoveryApp() {
     id = crypto.randomUUID(),
   ) {
     if (role === "user") followConversation.current = true;
-    setTurns((current) =>
-      appendConversation(current, {
-        id,
-        role,
-        content,
-        revision: session.revision,
-      }),
-    );
+    chats.controller.append({ id, role, content, revision: session.revision },
+      role === 'assistant' && (containsTravelGoogleMaps(state.result) || containsTravelGoogleMaps(travel.state.result) || containsTravelGoogleMaps(nearbyTravel.state.result)));
   }
   useEffect(() => {
     const content = cityAnswer(state);
@@ -176,14 +215,9 @@ export function CityRecoveryApp() {
     }
     reported.current = state.sequence;
     const assistance = state.assistance;
-    setTurns((current) =>
-      appendConversation(current, {
-        id: `answer-${state.sequence}`,
-        role: "assistant",
-        content,
-        revision: session.revision,
-      }),
-    );
+    chats.controller.append({
+      id: `${answerPrefix}-answer-${state.sequence}`, role: 'assistant', content, revision: session.revision,
+    }, containsTravelGoogleMaps(state.result) || containsTravelGoogleMaps(travel.state.result) || containsTravelGoogleMaps(nearbyTravel.state.result));
     if (
       assistance?.clarification &&
       assistance.clarification.field !== "hotel"
@@ -222,7 +256,6 @@ export function CityRecoveryApp() {
     if (cityChanged) {
       setManual([]);
       setManualKey((k) => k + 1);
-      setTurns([]);
       setMessage("");
       setDraft({
         ...next,
@@ -248,6 +281,7 @@ export function CityRecoveryApp() {
       return;
     }
     setStarted(true);
+    setRestoredHistory(false);
     setEditing(false);
     setStorageMessage(null);
     setStorageError(null);
@@ -540,7 +574,6 @@ export function CityRecoveryApp() {
     });
     setManual([]);
     setManualKey((k) => k + 1);
-    setTurns([]);
     setMessage("");
     setStarted(true);
     setEditing(false);
@@ -616,7 +649,6 @@ export function CityRecoveryApp() {
     setDraft(next);
     setManual(request.confirmedOptions);
     setManualKey((k) => k + 1);
-    setTurns([]);
     setMessage("");
     setErrors({});
     setStorageMessage(null);
@@ -658,7 +690,7 @@ export function CityRecoveryApp() {
     (travel.state.selected && travel.session.usable()) ||
     (nearbyTravel.state.selected && nearbyTravel.session.usable());
   const editor = (
-    <>
+    <fieldset disabled={!chats.state.initialized}>
       <AirportChoices
         origin={draft.origin}
         destination={draft.destination}
@@ -681,9 +713,9 @@ export function CityRecoveryApp() {
         busy={state.busy}
         started={started}
         onChange={edit}
-        onSubmit={() => void compare()}
+        onSubmit={() => { if (chats.state.initialized) void compare(); }}
       />
-    </>
+    </fieldset>
   );
   // Trip facts are explicitly confirmed in the form. Assistance can patch priority; standalone driving stays disabled.
   const clarification = state.assistance?.clarification;
@@ -752,8 +784,8 @@ export function CityRecoveryApp() {
       </details>
       <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
         Confirm schedules, prices and availability with the operator. Saving
-        keeps one itinerary in this browser on this device. No accounts,
-        tickets or reservations are created.
+        keeps a selected itinerary in this browser on this device. Chats sync to
+        your account. No tickets or reservations are created.
       </p>
       <p className="mt-3 text-xs text-muted-foreground">
         City names and locations:{" "}
@@ -794,9 +826,7 @@ export function CityRecoveryApp() {
             Travel recovery companion
           </a>
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <Badge variant="secondary" className="bg-[#E8F3F1] text-[#126B70]">
-            Device-local saving
-          </Badge>
+            <ChatHistoryPanel state={chats.state} controller={chats.controller} />
             <AccountControls />
           </div>
         </div>
@@ -832,7 +862,7 @@ export function CityRecoveryApp() {
                 <CompanionAvatar />
                 <div>
                   <h2 className="companion-heading font-semibold">Your recovery companion</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">We’ll work through the next step together.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Chats sync. Source quotes are not stored.</p>
                 </div>
               </div>
               <div
@@ -877,7 +907,9 @@ export function CityRecoveryApp() {
                   aria-relevant="additions"
                   className="space-y-5 bg-[#F4F7FA]/60 px-4 py-5"
                 >
-                  {turns.map((turn) => (
+                  {restoredHistory && <div className="rounded-xl border bg-white p-4 text-sm"><p className="font-semibold">Historical conversation</p><p className="mt-1 text-muted-foreground">Chats retain your messages and trip details. Source quotes and route cards are not stored. Check current options before choosing a journey.</p><Button type="button" variant="outline" className="mt-3" disabled={!chats.state.initialized || state.busy || travel.state.busy || nearbyTravel.state.busy} onClick={() => void compare(draft, [], true, undefined, 'Check current options')}>Check current options</Button></div>}
+                  {turns.length > visibleMessageCount && <Button type="button" variant="outline" size="sm" onClick={() => { followConversation.current = false; setVisibleMessageCount(count => count + 24); }}>Show earlier messages</Button>}
+                  {turns.slice(-visibleMessageCount).map((turn) => (
                     <article
                       key={turn.id}
                       className={`conversation-turn flex items-start gap-3 text-sm leading-relaxed ${
@@ -974,9 +1006,11 @@ export function CityRecoveryApp() {
                   onSubmit={(event) => {
                     event.preventDefault();
                     const text = message.trim();
-                    if (!text || state.busy || state.dirty) return;
+                    if (!text || state.busy || state.dirty || !chats.state.initialized) return;
                     setMessage("");
-                    if (
+                    if (restoredHistory) {
+                      void compare(draft, [], true, text, text);
+                    } else if (
                       /^(cheaper|cheapest|fewer changes|fewest transfers)[.!?]?$/i.test(
                         text,
                       )
@@ -1015,7 +1049,7 @@ export function CityRecoveryApp() {
                         travel.state.busy ||
                         nearbyTravel.state.busy ||
                         state.dirty ||
-                        !message.trim()
+                        !message.trim() || !chats.state.initialized
                       }
                     >
                       {(state.busy || travel.state.busy || nearbyTravel.state.busy) && <LoadingSpinner />}
@@ -1028,9 +1062,9 @@ export function CityRecoveryApp() {
                       id="city-conversation-help"
                       className="text-sm leading-relaxed text-muted-foreground"
                     >
-                      Messages and bounded recent conversation stay in this tab
-                      and are sent to enabled assistance. They are never saved
-                      with your itinerary.
+                      Chats and trip details are saved to your signed-in account.
+                      Bounded recent conversation is sent to enabled assistance.
+                      Source quotes, route cards and Google Maps-derived replies are not stored.
                     </p>
                   </details>
                   {!configured && (
@@ -1051,6 +1085,7 @@ export function CityRecoveryApp() {
                 </div>
                 {(state.busy || travel.state.busy || nearbyTravel.state.busy) && <Badge variant="secondary" className="gap-2"><LoadingSpinner /> Checking sources</Badge>}
               </div>
+              {restoredHistory && <div className="rounded-xl border bg-white p-5 text-sm"><p className="font-medium">Check current options to resume this trip</p><p className="mt-2 text-muted-foreground">Saved conversation is history. Current journeys and prices will appear after you check available sources.</p></div>}
               {(state.result || travel.state.result || nearbyTravel.state.result) && (
                 <p className="text-sm text-muted-foreground">
                   Prices and availability may change. Keep planning with these estimates, or refresh sources whenever you like.

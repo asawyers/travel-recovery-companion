@@ -11,7 +11,7 @@ async function chooseHotel(page: Page) {
   await demonstrate(page, "Overnight fictional example");
   await reviewPlan(page, "View Fictional overnight hotel and morning bus");
 }
-test("saves full itinerary locally, restores historical details without network and deletes explicitly", async ({
+test("saves full itinerary locally, restores historical details without provider calls and deletes explicitly", async ({
   page,
 }) => {
   await page.goto("/legacy");
@@ -33,7 +33,7 @@ test("saves full itinerary locally, restores historical details without network 
   expect(Date.now() - Date.parse(saved.selectedAt)).toBeLessThan(10_000);
   const requests: string[] = [];
   page.on("request", (request) => {
-    if (["fetch", "xhr"].includes(request.resourceType()) && !request.url().includes("/auth/v1/"))
+    if (["fetch", "xhr"].includes(request.resourceType()) && !/\/(auth|rest)\/v1\//.test(request.url()))
       requests.push(request.url());
   });
   await page.reload();

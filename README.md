@@ -10,7 +10,11 @@ The motivation was the author's San Diego → Portland journey: a delay on the S
 
 Create your own account with an email and password, or sign in to an existing account. Signup is immediate for this coding challenge; email verification and password-reset delivery are not configured. Your session stays signed in across reloads; use **Sign out** in the header to end it. Recovery API requests require a server-validated Supabase user session. Terms and Privacy remain accessible while signed out.
 
-Saved itineraries remain on this device and are separated by account; they do not sync across devices. Signing out clears the visible trip and conversation. Earlier account-free snapshots remain untouched but are not automatically assigned to a newly created account.
+Chats in the main city planner autosave to your Supabase account and reopen across sessions and devices. Use **Chat history** to reopen a conversation, **New chat** to start another, and **Delete chat** to remove the selected chat. The latest chat restores on sign-in. Restored chats show historical messages and your trip inputs; choose **Check current options** to fetch travel options again. Reopening alone makes no travel-provider or model request. Saving failures keep messages in the current tab with a retry action; wait for **Saved** before closing it. Concurrent edits from another tab require reopening the saved version instead of silently overwriting it.
+
+Chat storage contains plaintext messages and user-entered trip details, not provider responses or quote cards. Google Maps-derived assistant details are replaced with an explicit placeholder in saved history. The complete archive supports up to 1,000 messages (1,000 characters each, with a total size limit), while the display and model context remain bounded; **Show earlier messages** reveals older turns. History lists the 50 most recently updated chats. The separate legacy demo keeps transient chat.
+
+Saved **itineraries** remain on this device and are separated by account; they do not sync across devices. Signing out clears the visible trip and conversation, but retains account chats for the next sign-in. Earlier account-free snapshots remain untouched but are not automatically assigned to a newly created account.
 
 Search either city by place name, county, state name or state code. The pinned offline GeoNames catalog contains 171,671 populated places across all 50 states, Washington DC and five US territories. Small communities are included without a population cutoff. This is broad national coverage, not a guarantee of every settlement or available route. See [city data](docs/CITY_DATA.md) for licensing, source checksums, coverage, regeneration and performance details.
 
@@ -88,18 +92,19 @@ deno check --config supabase/functions/recovery/deno.json supabase/functions/rec
 node --env-file=.env.integration.local --test tests/integration/core.test.mjs tests/integration/city.test.mjs tests/integration/travel.test.mjs tests/integration/minimal-auth.test.mjs
 ```
 
-These suites cover original, city and travel HTTP behavior and reject non-loopback targets. `npm run test:integration` runs the original suite only. The base endpoint is `http://127.0.0.1:54321/functions/v1/recovery`; city requests append `/city`, and flight/hotel requests append `/travel`. Protected HTTP integration requests need a current Supabase user access token in `RECOVERY_ACCESS_TOKEN`; a missing or invalid token must receive 401. Application database rows are not required. The browser uses the existing project URL and publishable browser key from `src/config/public-supabase.ts`; override both with `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for a separate local/development project. Keep provider/model usage disabled in this local test environment.
+These suites cover original, city and travel HTTP behavior and reject non-loopback targets. `npm run test:integration` runs the original suite only. The base endpoint is `http://127.0.0.1:54321/functions/v1/recovery`; city requests append `/city`, and flight/hotel requests append `/travel`. Protected HTTP integration requests need a current Supabase user access token in `RECOVERY_ACCESS_TOKEN`; a missing or invalid token must receive 401. HTTP planner integration tests do not require chat rows. The main UI requires the committed chat migration in its Supabase project. The browser uses the existing project URL and publishable browser key from `src/config/public-supabase.ts`; override both with `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for a separate local/development project. Keep provider/model usage disabled in this local test environment.
 
 To connect Vite, set `VITE_RECOVERY_API_URL=http://127.0.0.1:54321/functions/v1/recovery` in ignored `.env.local` and restart it. Use the base endpoint, since the clients append `/city` and `/travel`. Provider/model keys belong only on the server, never in `VITE_` variables.
 
 ## Code and deployment
 
-The stack is React/Vite/TypeScript, shadcn/ui, Tailwind and a public stateless Supabase Edge Function. DM Sans and Sora are served locally with their [bundled font licenses](docs/FONT_LICENSES.md); no third-party font request is required. The full-stack path is React → validated public HTTP → Google/SerpApi/actual Agents SDK → deterministic shared planner → browser storage. There is no frontend Supabase SDK, product Auth or application database.
+The stack is React/Vite/TypeScript, shadcn/ui, Tailwind, Supabase Auth/Postgres and a stateless Supabase Edge Function that verifies signed-in requests. DM Sans and Sora are served locally with their [bundled font licenses](docs/FONT_LICENSES.md); no third-party font request is required. The planning path is React → authenticated, validated HTTP → Google/SerpApi/actual Agents SDK → deterministic shared planner → browser options. The Supabase browser SDK handles email/password sessions and owner-scoped database chat storage. Eligible itinerary snapshots use separate browser storage.
 
 | Entry point | Responsibility |
 | --- | --- |
 | `src/App.tsx` | National default, explicit `/legacy`, terms/privacy routes. |
 | `src/features/city/CityRecoveryApp.tsx`, `session.ts` | Starter/chat state, draft confirmation, cancellation, freshness and local reranking. |
+| `src/features/chats/`, `supabase/migrations/` | Account history, autosave/retry, input-only restoration and owner-only database policies. |
 | `formModel.ts`, `manualModel.ts`, `savedSelection.ts` in that folder | Canonical trip construction, checked options and versioned history. |
 | `src/lib/city-api.ts`, `src/lib/travel-api.ts` | Endpoint construction, bounded requests, exact bindings and response validation. |
 | `src/features/travel/` | Flight/hotel discovery, progressive journey facts, independent travel session and version 3 history. |
@@ -125,6 +130,7 @@ For challenge submission:
 
 - Supply an accessible deployed app, public source and the local instructions above.
 - Confirm comparison, constraints, selection and eligible device save/reload/delete at the submitted revision.
+- Demonstrate chat autosave, reload/fresh-session restoration, New chat, history and deletion under an individual account.
 - Include a status note with tested frontend/backend revisions, actual-provider evidence and known limitations in [verification status](docs/VERIFICATION.md).
 - Explain the code and evidence labels; AI assistance does not replace the author's understanding.
 - Demonstrate creating an individual account, signing in, session restoration and signing out. Disclose that email verification/recovery delivery, cross-device plan sync and production hotel access remain outside scope; do not imply production-grade account management.

@@ -449,9 +449,14 @@ test("wrong conversation echo and stale city replies never mutate the current tr
   await openTrip(page);
   await selectCity(page, "To city", "Los Angeles CA", /^Los Angeles, CA/);
   await expect(page.getByTestId("city-option-card")).toHaveCount(0);
-  await delayed!.fulfill({ json: response(posts.at(-1)!) }).catch(() => {});
+  const retainedTranscript = await page.getByRole("log").textContent();
+  await delayed!.fulfill({ json: response(posts.at(-1)!, { assistance: {
+    status: "completed", summary: "STALE PORTLAND REPLY MUST NOT APPEAR", appliedPreferences: {}, selectedPlanId: null, activity: [],
+  } }) }).catch(() => {});
   await expect(page.getByTestId("city-option-card")).toHaveCount(0);
-  await expect(page.getByRole("log")).not.toContainText("Portland");
+  await expect(page.getByRole("log")).toContainText("Boston, MA to Portland, ME");
+  await expect(page.getByRole("log")).not.toContainText("STALE PORTLAND REPLY");
+  await expect(page.getByRole("log")).toHaveText(retainedTranscript!);
 });
 test("checked manual plan saves without provider alternatives, reloads exact history and refresh preserves original checks", async ({
   page,

@@ -114,6 +114,7 @@ async function fixtures(page: Page) {
 }
 async function start(page: Page) {
   await page.goto("/");
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Where are you trying to get to?", exact: true })).toBeVisible();
   await page.getByRole("combobox", { name: "From city", exact: true }).fill("San Diego CA");
   await page.getByRole("option", { name: /^San Diego, CA/ }).click();
@@ -238,7 +239,7 @@ test("desktop history fits normal turns and both panels respond independently to
   expect([requests.cityPosts.length, requests.travelPosts.length]).toEqual(requestCounts);
 });
 
-test("a deferred checked answer preserves a reader's position and follows only a reader at the bottom", async ({ page }) => {
+test("a deferred checked answer preserves a reader's position and follows only a reader at the bottom", async ({ page, conversationDatabase }) => {
   const requests = await fixtures(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await start(page);
@@ -284,6 +285,14 @@ test("a deferred checked answer preserves a reader's position and follows only a
   expect([requests.cityPosts.length, requests.travelPosts.length]).toEqual(cappedCounts);
   expect(requests.travelPosts).toHaveLength(1);
   expect(requests.cityPosts.at(-1)?.request).toEqual(requests.cityPosts.at(-2)?.request);
+  await expect.poll(() => [...conversationDatabase.rows.values()][0]?.messages.length ?? 0).toBeGreaterThan(24);
+  const archive = structuredClone([...conversationDatabase.rows.values()][0].messages);
+  expect(archive.some(message => message.content.includes("Compare the checked coach choices, question 1"))).toBe(true);
+  await page.reload();
+  await page.getByRole("button", { name: "Show earlier messages", exact: true }).click();
+  await expect(page.getByRole("log")).toContainText("Compare the checked coach choices, question 1");
+  expect([...conversationDatabase.rows.values()][0].messages).toEqual(archive);
+  expect([requests.cityPosts.length, requests.travelPosts.length]).toEqual(cappedCounts);
 });
 
 test("short desktop workspaces provide useful bounded history and reachable composition", async ({ page }) => {

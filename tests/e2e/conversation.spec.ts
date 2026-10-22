@@ -174,7 +174,7 @@ test("a selected hotel asks focused facts and blocks invalid transfers and servi
 });
 test("sandbox guide completes with explicit fictional defaults, saves and refreshes without model or booking calls", async ({ page }) => {
   const posts:any[]=[], otherCalls:string[]=[];
-  page.on("request",request=>{if(["fetch","xhr"].includes(request.resourceType())&&!request.url().includes("/functions/v1/recovery"))otherCalls.push(request.url());});
+  page.on("request",request=>{if(["fetch","xhr"].includes(request.resourceType())&&!request.url().includes("/functions/v1/recovery")&&!/\/(auth|rest)\/v1\//.test(request.url()))otherCalls.push(request.url());});
   await page.route(endpoint,async route=>{const input=route.request().postDataJSON();posts.push(input);await route.fulfill({json:hotelResponse(input)});});
   await page.goto("/legacy");
   await page.getByText("Try a demonstration",{exact:true}).click();

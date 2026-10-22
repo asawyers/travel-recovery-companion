@@ -37,7 +37,7 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
             </p>
             <p>
               Google Maps route content is available only during the current
-              session and cannot be saved as a device snapshot. Traveler-entered,
+              session and cannot be saved as a device snapshot or account chat detail. Traveler-entered,
               fictional and eligible complete flight itineraries can be saved in
               this browser. Observed flight and hotel search quotes do not
               guarantee seats, rooms or final payable prices.
@@ -63,7 +63,7 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
             </p>
             <p>
               Sending a message sends that text, your current trip inputs and
-              bounded recent conversation from this tab to the public planner
+              bounded recent conversation to the authenticated planner
               and enabled OpenAI assistance. Conversation text is untrusted
               context; only accepted priority and driving preferences change
               trip facts. Other factual changes require your structured
@@ -81,6 +81,9 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
               optional hotel and confirmed complete journey, preserving original
               source dates and checks. Other offers, raw responses and conversation
               are excluded. Supabase stores your account email and authentication data. Passwords are managed by Supabase Auth; the planner does not store them. Session tokens persist in this browser until sign-out or expiry. Saved plans are separated by account on this device and do not sync across devices. No booking record is created.
+            </p>
+            <p>
+              The main city planner automatically stores plaintext chat messages and your entered trip details in Supabase under your account. Chats can be restored on another device and deleted using Chat history. Other accounts cannot read your chats. Provider responses and quote cards are not stored in chat history; Google Maps-derived assistant details are replaced by a placeholder. Reopening history does not fetch current travel options until you request them. The separate legacy demo does not save chats to your account.
             </p>
             <p>
               Provider keys stay on the server. External operator links open

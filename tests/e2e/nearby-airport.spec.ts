@@ -124,6 +124,7 @@ async function setup(page: Page, options: { emptyFlights?: boolean; emptyOnward?
 }
 async function start(page: Page, deadline?: string) {
   await page.goto('/')
+  await page.getByRole('button', { name: 'New chat', exact: true }).click()
   await page.getByRole('combobox', { name: 'From city', exact: true }).fill('San Diego CA')
   await page.getByRole('option', { name: /^San Diego, CA/ }).click()
   await page.getByRole('combobox', { name: 'To city', exact: true }).fill('Portland ME')

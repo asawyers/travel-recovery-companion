@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { AUTH_EMAIL, AUTH_STORAGE_KEY, AUTH_USER_ID, AUTH_SECOND_USER_ID, SAVED_PLAN_KEY, fakeSession } from "./auth-fixture";
+import { AUTH_EMAIL, AUTH_STORAGE_KEY, AUTH_USER_ID, AUTH_SECOND_USER_ID, SAVED_PLAN_KEY, fakeSession, createConversationDatabase, installConversationDatabase } from "./auth-fixture";
 import { demonstrate, reviewPlan, echoConversation } from "./helpers";
 import { overnightFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
@@ -7,6 +7,7 @@ import { ADAPTER_REVISION, RecoveryResponseSchema } from "../../supabase/functio
 
 /** These tests exercise the production SDK and UI against explicitly intercepted test responses. */
 async function authRoutes(page: Page, options: { failPassword?: boolean; confirmationRequired?: boolean } = {}) {
+  await installConversationDatabase(page, createConversationDatabase());
   const calls: { path: string; data: Record<string, unknown> | null }[] = [];
   let session = fakeSession();
   await page.route("**/auth/v1/**", async route => {
