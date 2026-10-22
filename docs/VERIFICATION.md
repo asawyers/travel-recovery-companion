@@ -1,5 +1,21 @@
 # Verification status
 
+## Requested scenario checks — 2026-10-21 (Pacific)
+
+Fresh end-to-end checks ran against production revision `04262fa66cc0f2340db6b5d486032bc92c1d1187` in isolated installed Brave, with actual providers and no response interception. Both user scenarios passed. Application source was unchanged during these checks.
+
+| User scenario | Actual browser result |
+| --- | --- |
+| Delayed San Diego → Boston flight, then recovery from Boston to Portland, Maine after missing an earlier train | With explicit Boston readiness of October 23 at 22:00 America/New_York and ASAP, Google Routes returned a driving estimate and two next-day transit options. The comparisons included Concord Coach or MBTA/FlixBus plus local transfers. All eligible legs started after readiness and remained chronological. Actual model discovery/assessment completed and preserved cities, readiness, deadline and budget. |
+| San Diego, California → Portland, Maine, including an optional overnight | Three observed flight quotes and three origin hotel quotes; the browser confirmed an origin overnight plus two flight segments, received an exact eligible actual SDK recommendation, selected/saved a version-3 journey, reloaded it with zero POSTs and deleted it. Unknown charges remained unknown. |
+| Arrival goal cannot be met | A Boston 23:00 destination-local deadline, one hour after readiness, returned zero eligible journeys and seven unselectable rejected routes. Other hard facts were preserved. |
+| Follow-up controls and storage | Cheaper reranked Boston options with zero extra city or travel POSTs. Attempting to save Google Maps content displayed the explicit retention block and kept storage empty. Selected flight/overnight saving passed separately. |
+| Browser usability and handoffs | Actual Google Maps, Concord Coach, MBTA and FlixBus hrefs were inspected for HTTPS, external target and safe rel attributes. Boston layouts had no horizontal overflow at 390 or 320 px; no uncaught page errors occurred. External checkout or purchases were not exercised. |
+
+Boston acceptance passed all 47 assertions with three city POSTs and two automatic flight-search POSTs. BOS→PWM search returned no flight quotes for the tested late date; ground results remained usable. The San Diego overnight flow used five total planner POSTs. Browsers closed in `finally`; the user's existing Brave window was preserved. Actual transfer/stay arrangements were hypothetical verification inputs, not purchased or reserved services. City-center estimates remain the approved scope; the app does not infer the historical flight delay, prove every earlier train was missed or guarantee seat/room inventory.
+
+Bounded local evidence: `/tmp/travel-boston-user-scenario-summary.json`, `/tmp/travel-boston-user-scenario.log` and `/tmp/travel-user-sandiego-scenario.log`. The Boston script is `/tmp/travel-boston-user-scenario.mjs`; the San Diego script is `/tmp/travel-live-browser-acceptance.mjs`. No keys or raw provider payloads were saved. These fresh actual-provider checks supplement the 81 hosted regression cases recorded below; that broader suite was not rerun for this test-only follow-up.
+
 ## Live flights and origin overnight — 2026-10-22
 
 The flight/overnight flow is deployed and accepted in installed Brave. Start with U.S. cities and an ASAP or destination-local goal, compare ground routes and observed flight quotes, optionally explore one origin night plus next-day flights, confirm a complete journey, then select and save it on this device. Existing provider configuration is working; no further account setup is required.
