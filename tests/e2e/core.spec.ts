@@ -24,7 +24,15 @@ test("real public HTTP compares, refines constraints, saves, restores without HT
       posts.push({ headers: request.headers(), body: request.postDataJSON() });
   });
   await page.goto("/legacy");
-  await daytime(page);
+  const initialResponse = page.waitForResponse(
+    response => new URL(response.url()).pathname === "/functions/v1/recovery" && response.request().method() === "POST",
+    { timeout: 35_000 },
+  );
+  await demonstrate(page, "Daytime fictional example");
+  const response = await initialResponse;
+  expect(response.status()).toBe(200);
+  await response.finished();
+  await expect(page.getByTestId("option-card")).toHaveCount(3);
   expect(posts).toHaveLength(1);
   expect(posts[0].body.investigate).toBe(false);
   expect(posts[0].headers.authorization).toBeUndefined();

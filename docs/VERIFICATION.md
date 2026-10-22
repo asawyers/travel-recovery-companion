@@ -2,7 +2,7 @@
 
 ## U.S. city-first recovery — 2026-10-22
 
-The reviewed city-first frontend is ready for publication; the compatible city API is deployed alongside the unchanged legacy API. Final hosted frontend acceptance is pending below this checkpoint. Earlier sections describe historical revisions.
+The city-first frontend and compatible city API are deployed alongside the legacy flow. All 59 hosted Brave cases, actual national Google/OpenAI acceptance and legacy hotel sandbox UI acceptance passed. Earlier sections describe historical revisions.
 
 The starter asks “Where are you trying to get to?” with searchable From/To selectors, destination-local arrival goals and ASAP selected by default. City-center estimates are disclosed. The GeoNames catalog contains 171,671 populated places across all 50 states, DC and five territories; this is place coverage, not a promise of available ground transport for every pair. National hotel discovery is unavailable; the separate Boston legacy demo retains clearly labeled hotel sandbox support.
 
@@ -13,6 +13,7 @@ The starter asks “Where are you trying to get to?” with searchable From/To s
 | Deno Edge entrypoint | Passed |
 | Actual disabled-provider loopback HTTP | All 17 cases passed (nine legacy, eight city) |
 | Installed Brave local cases | All 59 cases covered: first run 57 passed; two test-only selector/ISO assumptions corrected and both passed separately |
+| Full hosted installed Brave | All 59 cases passed in 2.7 minutes after the reviewed test-only response synchronization fix |
 | Visual and keyboard acceptance | Actual catalog keyboard selection, desktop and 390/320 px layouts passed with no horizontal overflow |
 | Independent review | Domain, catalog, Google adapter, SDK/HTTP, UI, activation, public docs and final integration specification/quality reviews approved |
 
@@ -20,7 +21,24 @@ Backend `23a984b033001311017a8d7fc587be11e8f91098` passed main workflow 39716748
 
 Actual authorized national Google API acceptance returned seven candidates/three plans for New York City–Philadelphia, four/three for Chicago–Indianapolis (different IANA zones), and zero/zero for Anchorage–Honolulu with an honest no-complete-ground-route outcome. Production Google schedule/estimated provenance passed response schemas. No raw provider payload, key or purchase was retained. These API observations are separate from fixture/browser regressions.
 
-All 50 prior browser cases remain, routed to `/legacy`; nine new city cases cover the national flow. Current publication will be followed by the full hosted 59-case Brave gate and actual national Google/OpenAI plus legacy sandbox UI acceptance. No additional cloud setup, authentication or email is required for this approved prototype scope.
+All 50 prior browser cases remain, routed to `/legacy`; nine new city cases cover the national flow. No additional cloud setup, authentication or email is required for this approved prototype scope.
+
+## City-first publication and actual UI acceptance
+
+Frontend `85a477b690b3f135c8b5586e3f1ec35edfbaf73e` passed main workflow 39718831436 and branch workflow 39718831139. Native Vercel deployment 4W9H4LQqQeq6ooJ58EhXhcaBW1zf succeeded. Browser title/description were aligned with the national scope in `6883ea5f9f077b57780684f232ce11e5cc8f77c0`; main workflow 39718901506 (661 tests, build and scoped backend deploy), branch workflow 39718900614 and native Vercel deployment J83PtPRC4ynZojaVTh6Sb31XWtZS all passed. Stable production then served `/assets/index-1z-hW_wl.js` and the national metadata.
+
+Actual isolated installed Brave acceptance, without response interception, passed:
+
+- New York City → Philadelphia, ASAP: 4,554 ms, seven Google candidates/three plans, production schedule/estimated provenance, no traveler fixtures or model message.
+- Actual model deadline clarification: 4,084 ms, typed deadline question and exact conversation echo, unchanged hard facts and unchanged current cards.
+- Structured destination-local deadline: 4,464 ms, correctly converted traveler deadline and seven Google candidates/three plans.
+- Actual no-driving/earliest refinement: 7,991 ms, six Google candidates/three plans without driving, completed discovery/assessment/model activity, eligible recommendation and exact echo. A following Cheaper action made zero extra POSTs.
+- Google saving was blocked, local/session storage stayed empty, and reload cleared transient trip/chat/results without a POST. Exactly four city POSTs were made, two assisted by the actual model. Script: `/tmp/travel-city-live-ui-check.mjs`; bounded output: `/tmp/travel-city-live-ui-check.log`.
+- Separate clean `/legacy` hotel sandbox: 7,448 ms discovery, three estimated sandbox offers, property selection plus explicit fictional transfers produced two plans. Priority/save/reload made zero extra POSTs. Explicit refresh returned three offers while preserving the saved historical JSON and original hotel evidence. No itinerary/saved booking links appeared. Exactly three legacy synthetic+sandbox investigations, no Google/model calls. Script/output: `/tmp/travel-city-legacy-sandbox-check.mjs` and `.log`.
+
+These scripts closed their isolated browsers and retained no raw provider/model payload, credential or purchase artifact. Actual provider/model acceptance is separate from fixture regression coverage. The initial full hosted run passed 58/59 cases in 2.7 minutes. The remaining legacy HTTP case hit its original five-second card assertion: the actual POST took 4,997 ms; the last assertion poll preceded body completion by 189 ms, and the failure snapshot already showed all three cards. The correction waits for the exact successful response/body before preserving every existing plan, security, POST-count and history assertion. Application behavior and provider configuration are unchanged. Independent review approved the test-only fix; three focused repetitions passed in 21.5 seconds, then root ran the complete suite and all 59 cases passed in 2.7 minutes. Final output: `/tmp/travel-city-final-hosted-brave-rerun.log`; artifacts: `/tmp/travel-city-final-hosted-brave-rerun`. No test was skipped or removed. The final verification commit changes only this record and the synchronization test; application source remains the accepted `6883ea5` revision.
+
+Temporary local Vite/Deno verification servers were stopped and their ports released. Actual acceptance browsers closed in `finally`; Playwright closed its isolated test browsers. Private Superpowers, handoff and transferred reference documents remain ignored. Production hotels remain deferred; no author-understanding attestation is made.
 
 # Earlier verification checkpoints
 
