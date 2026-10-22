@@ -1,5 +1,17 @@
 # Verification status
 
+## Conversational split workspace — 2026-10-22 (Pacific)
+
+The requested visual polish is implemented and locally verified. After the short city/ASAP starter, desktop messages and composition are on the left and travel options on the right; smaller screens stack the same accessible regions. A companion identity, differentiated messages, request-driven spinners, and returned activity records make the working flow visible. Qualified fares and arrival details have stronger type/color hierarchy, while full source, connection, fee and policy details remain available in disclosures. DM Sans and Sora are self-hosted with their [bundled licenses](FONT_LICENSES.md); no runtime font request is sent to Google.
+
+Local checks passed 980 unit/domain/provider/controller/SDK/UI tests across 48 files, production TypeScript/Vite build, and all 88 installed-Brave regression cases against an immutable production preview (1.9 minutes). This retains the existing 81 browser cases and adds seven cases covering loading settlement, cancellation, visible qualified and unknown fares, desktop column positions, mobile composition, actual returned activity, reduced motion, and short-window access. The seven focused cases passed separately in 24.3 seconds. The local preview main JS was 895.83 kB / 263.77 kB gzip; the existing chunk-size warning remains.
+
+Desktop screenshots were reviewed at 1280/1440 widths; mobile at 390/320 widths. Expanded message privacy and expired sources were tested at 1280×600, 1024×600, 901×700 and 1024×700. The conversation retains a minimum visible scroll area at the sticky-layout boundary, and input/help/send controls remain reachable. Reduced motion stops spinner rotation while retaining readable status text. Source activity shows only returned records, with each record's tool, status, message and timestamp; there is no invented progress or reasoning stream.
+
+Independent specification and quality reviews approved the foundation, conversation layout, travel presentation and browser coverage. Review/meaningful regressions corrected unknown ground costs appearing as zero, hidden next-day flight arrival dates, lost per-record tool attribution and clipped short-window controls. The first full browser run passed 86/88: it exposed a hidden unavailable-source message and missing ongoing scope copy. Both were corrected, retaining the assertions; the final full run passed 88/88. Unavailable, limited and empty source results stay visible, while successful technical source updates remain expandable.
+
+This is a presentation change over the existing controllers, planners, APIs, provider configuration, booking boundaries and versioned device history. Publication, hosted regression and fresh actual-provider scenario checks are pending at this checkpoint. Historical actual-provider evidence below describes the preceding interface, not acceptance of this revision. Before/after screenshots and bounded test outputs are under `/tmp/travel-polish-*`; no credentials or raw provider payloads were retained.
+
 ## Requested scenario checks — 2026-10-21 (Pacific)
 
 Fresh end-to-end checks ran against production revision `04262fa66cc0f2340db6b5d486032bc92c1d1187` in isolated installed Brave, with actual providers and no response interception. Both user scenarios passed. Application source was unchanged during these checks.

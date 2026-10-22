@@ -1,3 +1,4 @@
+import { LoadingSpinner } from "@/components/ui/companion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +30,7 @@ export function CityStarterForm({
       }}
       noValidate
     >
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className={`grid gap-5 ${started ? "" : "sm:grid-cols-2"}`}>
         <CityPicker
           label="From city"
           value={draft.origin}
@@ -48,7 +49,7 @@ export function CityStarterForm({
           When do you need to get there?
         </legend>
         <div className="flex flex-wrap gap-5">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 rounded-lg border bg-[#F4F7FA] px-3 py-2 text-sm">
             <input
               type="radio"
               name="arrival-goal"
@@ -59,7 +60,7 @@ export function CityStarterForm({
             />
             As soon as possible
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 rounded-lg border bg-[#F4F7FA] px-3 py-2 text-sm">
             <input
               type="radio"
               name="arrival-goal"
@@ -143,7 +144,7 @@ export function CityStarterForm({
           <summary className="cursor-pointer text-sm font-medium">
             Budget and travel preferences
           </summary>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 grid gap-4">
             <div className="space-y-2">
               <Label htmlFor="city-budget">Budget (USD, optional)</Label>
               <Input
@@ -177,7 +178,7 @@ export function CityStarterForm({
                 <option value="hard">Hard limit</option>
               </select>
             </div>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex min-h-11 items-center gap-2 rounded-lg border bg-[#F4F7FA] px-3 py-2 text-sm">
               <input
                 type="checkbox"
                 checked={draft.drivingAllowed}
@@ -208,7 +209,8 @@ export function CityStarterForm({
           </div>
         </details>
       )}
-      <Button type="submit" disabled={busy}>
+      <Button type="submit" disabled={busy} className="min-h-11 h-auto w-full whitespace-normal px-5 py-3 sm:w-auto">
+        {busy && <LoadingSpinner />}
         {started ? "Confirm trip facts and update options" : "Find my options"}
       </Button>
       <p className="text-xs leading-relaxed text-muted-foreground">

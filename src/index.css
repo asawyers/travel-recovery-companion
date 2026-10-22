@@ -61,9 +61,28 @@
   }
 }
 
+/* Official Latin variable builds, served from this application. Other scripts use the system fallback. */
+@font-face {
+  font-family: "DM Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/dm-sans-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Sora";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/sora-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-heading: "Sora", "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -94,27 +113,35 @@
 
 :root {
   color-scheme: light;
-  --background: #F1F5F9;
-  --foreground: #153247;
+  --background: #F4F7FA;
+  --foreground: #173247;
   --card: #FFFFFF;
-  --card-foreground: #153247;
+  --card-foreground: #173247;
   --popover: #FFFFFF;
-  --popover-foreground: #153247;
-  --primary: #1D4ED8;
+  --popover-foreground: #173247;
+  --primary: #126B70;
   --primary-foreground: #FFFFFF;
-  --secondary: #F1F5F9;
-  --secondary-foreground: #153247;
-  --muted: #F1F5F9;
-  --muted-foreground: #475569;
+  --secondary: #F4F7FA;
+  --secondary-foreground: #173247;
+  --muted: #F4F7FA;
+  --muted-foreground: #60717C;
   --accent: #E2E8F0;
-  --accent-foreground: #153247;
+  --accent-foreground: #173247;
   --destructive: #B91C1C;
   --border: #CBD5E1;
   --input: #94A3B8;
-  --ring: #1D4ED8;
+  --ring: #126B70;
   --radius: 0.5rem;
-  --warning: #B45309;
+  --warning: #A35B12;
   --success: #166534;
+  --companion-paper: #F4F7FA;
+  --companion-surface: #FFFFFF;
+  --companion-ink: #173247;
+  --companion-teal: #126B70;
+  --companion-arrival: #285FCB;
+  --companion-caution: #A35B12;
+  --companion-muted: #60717C;
+  --companion-border: #D9E3E9;
 }
 
 @layer base {
@@ -136,3 +163,77 @@
 
 .recovery-select { width: 100%; min-height: 2.75rem; border: 1px solid var(--input); border-radius: var(--radius); padding: .5rem .75rem; background: white; font-size: .875rem; }
 .conversation-turn { max-width: 75ch; overflow-wrap: anywhere; }
+
+/* Shared companion primitives: page layouts opt into these classes explicitly. */
+.companion-workspace { min-width: 320px; }
+.companion-heading { font-family: var(--font-heading); letter-spacing: -0.035em; }
+.companion-avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 1rem 1rem 1rem .35rem;
+  background: var(--companion-teal);
+  color: white;
+}
+.companion-avatar svg { width: 1.75rem; height: 1.75rem; }
+.companion-avatar-sm { width: 2rem; height: 2rem; border-radius: .7rem .7rem .7rem .25rem; }
+.companion-avatar-sm svg { width: 1.35rem; height: 1.35rem; }
+.companion-spinner {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  animation: companion-spin 900ms linear infinite;
+}
+@keyframes companion-spin { to { transform: rotate(360deg); } }
+.companion-status {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  padding: 1rem;
+  border: 1px solid var(--companion-border);
+  border-radius: .9rem;
+  background: var(--companion-surface);
+  color: var(--companion-teal);
+}
+.companion-status .companion-spinner { margin-top: .125rem; }
+.companion-status-label { margin: 0; color: var(--companion-ink); font-size: .9375rem; font-weight: 600; line-height: 1.5; }
+.companion-status-detail { margin: .25rem 0 0; color: var(--companion-muted); font-size: .875rem; line-height: 1.5; }
+.companion-price-block { min-width: 0; overflow-wrap: anywhere; }
+.companion-price-label { margin: 0 0 .3rem; color: var(--companion-muted); font-size: .8125rem; line-height: 1.5; }
+.companion-price {
+  margin: 0;
+  color: var(--companion-teal);
+  font-family: var(--font-heading);
+  font-size: clamp(1.875rem, 2.5vw, 2.25rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.05em;
+  line-height: 1.2;
+}
+.companion-price-unknown { font-size: 1.25rem; letter-spacing: -.025em; }
+.companion-price-qualifier { margin: .35rem 0 0; color: var(--companion-muted); font-size: .75rem; line-height: 1.5; }
+.companion-activity { min-width: 0; font-size: .8125rem; }
+.companion-activity-label { margin: 0 0 .5rem; color: var(--companion-muted); font-weight: 500; }
+.companion-activity-summary { display: grid; gap: .4rem; list-style: none; margin: 0; padding: 0; }
+.companion-activity-item { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; color: var(--companion-ink); line-height: 1.5; }
+.companion-activity-item > svg { width: .95rem; height: .95rem; flex: 0 0 auto; color: var(--companion-teal); }
+.companion-activity-item[data-activity-status="unavailable"] > svg,
+.companion-activity-item[data-activity-status="limited"] > svg { color: var(--companion-caution); }
+.companion-activity-status { margin-left: auto; color: var(--companion-muted); font-size: .75rem; }
+.companion-activity-details { margin-top: .4rem; }
+.companion-activity-details summary { display: list-item; width: fit-content; min-height: 2.75rem; padding: .7rem .2rem; color: var(--companion-teal); cursor: pointer; }
+.companion-activity-details ol { display: grid; gap: .75rem; margin: .35rem 0 0; padding-left: 1.25rem; }
+.companion-activity-details li { overflow-wrap: anywhere; }
+.companion-activity-details p { margin: 0; }
+.companion-activity-record-meta { margin-top: .2rem !important; color: var(--companion-muted); font-size: .75rem; }
+.companion-activity-record-meta time { display: inline-block; }
+
+@media (prefers-reduced-motion: reduce) {
+  .companion-spinner {
+    animation: none !important;
+    transition: none !important;
+  }
+}

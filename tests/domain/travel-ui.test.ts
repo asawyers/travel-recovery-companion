@@ -211,3 +211,85 @@ describe('complete journey presentation', () => {
     expect(blocked).toMatch(/<button[^>]*disabled/)
   })
 })
+
+describe('qualified travel summaries', () => {
+  it('puts an observed flight fare beside its incomplete journey qualifier', async () => {
+    const ui = await flightUI(); expect(ui).not.toBeNull()
+    const f = travelFixture()
+    const html = renderToStaticMarkup(createElement(ui!.FlightOffers, { offers: [f.flight], onPlan: () => {} }))
+    expect(html).toContain('Observed flight fare')
+    expect(html).toContain('Flight details')
+    expect(html).toContain('Journey total still needs transfers and additional fees')
+    expect(html).toContain('$250.00')
+    for (const segment of f.flight.segments) {
+      expect(html).toContain(segment.carrier)
+      expect(html).toContain(segment.flightNumber)
+      expect(html).toContain(segment.originAirport.timeZone)
+      expect(html).toContain(segment.destinationAirport.timeZone)
+    }
+  })
+  it('keeps an entirely unknown quote unknown instead of presenting a zero fare', async () => {
+    const ui = await flightUI(); expect(ui).not.toBeNull()
+    const f = travelFixture()
+    f.flight.costs = [{ label: 'Flight fare unknown', cents: null, currency: 'USD', includedInOtherCharge: false }]
+    const html = renderToStaticMarkup(createElement(ui!.FlightOffers, { offers: [f.flight], onPlan: () => {} }))
+    expect(html).toContain('Observed flight fare')
+    expect(html).toContain('Unknown')
+    expect(html).not.toContain('$0.00')
+  })
+  it('qualifies the prominent hotel quote and retains its original charge labels', async () => {
+    const ui = await hotelUI(); expect(ui).not.toBeNull()
+    const f = travelFixture()
+    const html = renderToStaticMarkup(createElement(ui!.HotelOffers, { offers: [f.hotel], selectedId: f.hotel.id, onPlan: () => {} }))
+    expect(html).toContain('Observed overnight quote')
+    expect(html).toContain('One night total quote')
+    expect(html).toContain('Selected overnight')
+    expect(html).toContain('Property details')
+  })
+  it('makes the complete journey known amount distinct from its incomplete total', async () => {
+    const ui = await journeyUI(); expect(ui).not.toBeNull()
+    const f = travelFixture(), journey = composeTravelJourney(f.input, f.flight, null, f)
+    journey.priceComplete = false
+    const html = renderToStaticMarkup(createElement(ui!.TravelJourneyCard, { journey, onSelect: () => {} }))
+    expect(html).toContain('Known costs')
+    expect(html).toContain('total incomplete; unknown costs remain')
+    expect(html).toContain('Final city arrival')
+    expect(html).toContain('Costs, assumptions and source for this leg')
+  })
+  it('shows a spinner only while the facts form is actually busy', async () => {
+    const ui = await factsUI(); expect(ui).not.toBeNull()
+    const f = travelFixture()
+    const render = (busy: boolean) => renderToStaticMarkup(createElement(ui!.JourneyFactsForm, { flight: f.flight, busy, onConfirm: () => {} }))
+    expect(render(true)).toContain('companion-spinner')
+    expect(render(false)).not.toContain('companion-spinner')
+    expect(render(false)).toContain('How long will it take you to reach')
+  })
+})
+
+describe('travel request activity', () => {
+  it('does not animate a disabled fact form when no request is pending', async () => {
+    const ui = await factsUI(); expect(ui).not.toBeNull()
+    const f = travelFixture()
+    const html = renderToStaticMarkup(createElement(ui!.JourneyFactsForm, { flight: f.flight, busy: true, pending: false, onConfirm: () => {} }))
+    expect(html).toContain('disabled=""')
+    expect(html).not.toContain('companion-spinner')
+    expect(html).not.toContain('aria-busy="true"')
+  })
+})
+
+describe('flight overview dates', () => {
+  it('shows the overnight arrival local date without opening any disclosure', async () => {
+    const ui = await flightUI(); expect(ui).not.toBeNull()
+    const f = travelFixture()
+    // The source instant is Nov 21 in UTC, but arrival is Nov 20 in New York.
+    f.flight.segments.at(-1)!.arrivalAt = '2026-11-21T02:30:00Z'
+    const html = renderToStaticMarkup(createElement(ui!.FlightOffers, { offers: [f.flight], onPlan: () => {} }))
+    const visibleOverview = html.replace(/<details\b[\s\S]*?<\/details>/g, '').replace(/<[^>]*>/g, '')
+    expect(visibleOverview).toContain('2026-11-19')
+    expect(visibleOverview).toContain('2026-11-20')
+    expect(visibleOverview).not.toContain('2026-11-21')
+    expect(visibleOverview).toContain('21:30')
+    expect(visibleOverview).toContain('Arrival local time')
+    expect(html).toContain('2026-11-20 21:30 -05:00 · America/New_York')
+  })
+})

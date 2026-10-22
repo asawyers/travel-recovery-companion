@@ -12,7 +12,7 @@ Search either city by place name, county, state name or state code. The pinned o
 
 The starter plans for **one adult between estimated city centers**. **As soon as possible** is the default; **By a date and time** requires a deadline in the destination's local time. Leaving defaults to now and can be edited in the origin's time zone. The default flow has no flight number, gate-arrival field or airport-exit allowance. Optional preferences cover budget, ranking and driving.
 
-**Find my options** opens one conversation containing results, follow-up messages and contextual fact confirmations. **Add an option you've checked** progressively opens a manual bus/train editor with service times, access, boarding and final-transfer allowances and costs. Enter zero explicitly for a zero allowance or charge; missing costs remain unknown. Complete journeys must connect in place and time, meet the actual destination deadline and satisfy any hard budget. Unknown prices cannot satisfy a hard budget.
+**Find my options** opens a conversation workspace: messages and the composer on the left, travel options on the right on desktop, stacked on smaller screens. Loading indicators follow active requests, and returned agent activity shows what was actually checked. Qualified fares and arrival times are emphasized; full dates, connections, charges and source checks remain available in expandable details. Follow-up messages and one-at-a-time fact confirmations help build a complete journey. **Add an option you've checked** progressively opens a manual bus/train editor with service times, access, boarding and final-transfer allowances and costs. Enter zero explicitly for a zero allowance or charge; missing costs remain unknown. Complete journeys must connect in place and time, meet the actual destination deadline and satisfy any hard budget. Unknown prices cannot satisfy a hard budget.
 
 **Cheaper** and **Fewer changes** rerank fresh eligible current-tab facts with zero HTTP POSTs, provider calls or model calls. Missing or expired facts require an explicit **Recheck available sources**. **No driving** can investigate again. Typed hard-fact changes require structured confirmation. Draft changes to non-city facts retain the existing cards until confirmation; accepting a replacement archives the prior conversation result and clears its selection. Changing either city clears trip facts and results so facts from the previous pair cannot carry over.
 
@@ -88,7 +88,7 @@ To connect Vite, set `VITE_RECOVERY_API_URL=http://127.0.0.1:54321/functions/v1/
 
 ## Code and deployment
 
-The stack is React/Vite/TypeScript, shadcn/ui, Tailwind and a public stateless Supabase Edge Function. The full-stack path is React → validated public HTTP → Google/SerpApi/actual Agents SDK → deterministic shared planner → browser storage. There is no frontend Supabase SDK, product Auth or application database.
+The stack is React/Vite/TypeScript, shadcn/ui, Tailwind and a public stateless Supabase Edge Function. DM Sans and Sora are served locally with their [bundled font licenses](docs/FONT_LICENSES.md); no third-party font request is required. The full-stack path is React → validated public HTTP → Google/SerpApi/actual Agents SDK → deterministic shared planner → browser storage. There is no frontend Supabase SDK, product Auth or application database.
 
 | Entry point | Responsibility |
 | --- | --- |

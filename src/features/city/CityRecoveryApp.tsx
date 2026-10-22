@@ -21,6 +21,12 @@ import {
 } from "../travel/savedSelection";
 import { cityAnswer, cityResultCount } from "./conversationModel";
 import { Badge } from "@/components/ui/badge";
+import {
+  AgentActivityList,
+  CompanionAvatar,
+  CompanionStatus,
+  LoadingSpinner,
+} from "@/components/ui/companion";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cityRecoveryEndpoint } from "@/lib/city-api";
@@ -106,6 +112,11 @@ export function CityRecoveryApp() {
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const reported = useRef(0);
+  const conversationScroll = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const panel = conversationScroll.current;
+    if (panel && started && !editing) panel.scrollTop = panel.scrollHeight;
+  }, [turns.length, state.busy, travel.state.busy, started, editing]);
   useEffect(() => () => session.dispose(), [session]);
   useEffect(() => {
     if (!state.result) return;
@@ -631,6 +642,47 @@ export function CityRecoveryApp() {
   );
   // Trip facts are explicitly confirmed in the form. Assistance can only patch driving and priority.
   const clarification = state.assistance?.clarification;
+  const savedPlan = (
+    <>
+      {storageMessage && (
+        <p role="status" className="mt-4 text-sm text-green-800">
+          {storageMessage}
+        </p>
+      )}
+      {(storageError || !record.ok) && (
+        <Alert role="alert" className="mt-4">
+          <AlertTitle>Device storage</AlertTitle>
+          <AlertDescription>
+            {storageError || (!record.ok ? record.message : "")}
+          </AlertDescription>
+          {!savedRecord && (
+            <Button variant="outline" className="mt-3" onClick={deleteSaved}>
+              Delete saved plan
+            </Button>
+          )}
+        </Alert>
+      )}
+      {savedRecord && (
+        <div className="mt-6">
+          {savedRecord.schemaVersion === 3 ? (
+            <TravelHistoryPanel
+              history={savedRecord}
+              onRefresh={refreshTravel}
+              onDelete={deleteSaved}
+            />
+          ) : (
+            <CityHistoryPanel
+              saved={savedRecord}
+              busy={state.busy}
+              configured={configured}
+              onDelete={deleteSaved}
+              onRefresh={refresh}
+            />
+          )}
+        </div>
+      )}
+    </>
+  );
   return (
     <>
       <a
@@ -639,120 +691,259 @@ export function CityRecoveryApp() {
       >
         Skip to trip details
       </a>
-      <header className="border-b border-t-4 border-t-[#153247] bg-white">
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <a href="/" className="font-semibold">
+      <header className="border-b bg-white">
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+          <a href="/" className="flex items-center gap-3 font-semibold text-[#173247]">
+            <CompanionAvatar size="sm" />
             Travel recovery companion
           </a>
-          <Badge variant="secondary" className="text-green-800">
+          <Badge variant="secondary" className="bg-[#E8F3F1] text-[#126B70]">
             Device-local saving
           </Badge>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Where are you trying to get to?
-        </h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Start with your cities. We’ll work through the whole journey with you.
-        </p>
-        <p className="mt-3 rounded-md bg-slate-100 p-3 text-sm font-medium">
-          Compare ground travel and flight quotes. Explore an origin overnight
-          when you need it.
-        </p>
+      <main className={`mx-auto px-4 py-8 sm:px-6 ${started ? "max-w-[1280px]" : "max-w-3xl sm:py-12"}`}>
+        <div className={started ? "mb-6" : "mb-8 max-w-xl"}>
+          <h1 className={started ? "companion-heading text-2xl font-semibold tracking-tight" : "companion-heading text-3xl font-semibold tracking-tight sm:text-4xl"}>
+            Where are you trying to get to?
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            {started ? "Talk through your next step here, and compare the journey options alongside." : "Start with your cities. We’ll work through the whole journey with you."}
+          </p>
+          {!started && (
+            <p className="mt-4 text-sm leading-relaxed text-[#126B70]">
+              Compare ground travel and flight quotes. Explore an origin overnight when you need it.
+            </p>
+          )}
+        </div>
         {!started ? (
-          <section
-            className="mt-7 rounded-lg border bg-white p-5 sm:p-7"
-            aria-label="Start your recovery"
-          >
-            {editor}
-          </section>
-        ) : (
           <>
-            <div className="mt-6 border-l-4 border-primary bg-white px-4 py-3 text-sm">
-              <strong>
-                {draft.origin?.name}, {draft.origin?.stateCode} to{" "}
-                {draft.destination?.name}, {draft.destination?.stateCode}
-              </strong>
-              <p className="mt-1">
-                City center estimates for one adult. Sources may be unavailable;
-                each option shows what was checked.
-              </p>
-            </div>
-            <details
-              open={editing}
-              onToggle={(event) => setEditing(event.currentTarget.open)}
-              className="my-5 rounded-md border bg-white p-4"
-            >
-              <summary className="cursor-pointer text-sm font-medium">
-                Edit trip
-                {clarification && clarification.field !== "hotel"
-                  ? " · Confirm the requested facts"
-                  : ""}
-              </summary>
-              <div className="mt-5">{editor}</div>
-            </details>
             <section
-              role="log"
-              aria-label="Recovery conversation"
-              aria-live="polite"
-              aria-relevant="additions"
-              className="space-y-5"
+              className="rounded-2xl border bg-white p-5 shadow-sm sm:p-8"
+              aria-label="Start your recovery"
             >
-              {turns.map((turn) => (
-                <article
-                  key={turn.id}
-                  className={`conversation-turn rounded-lg px-4 py-3 text-sm leading-relaxed ${
-                    turn.role === "user" ? "ml-8 border bg-white" : "mr-3"
-                  }`}
+              {editor}
+            </section>
+            {savedPlan}
+          </>
+        ) : (
+          <div className="grid items-start gap-6 min-[901px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <aside aria-label="Trip conversation" className="min-w-0 overflow-y-auto rounded-2xl border bg-white shadow-sm min-[901px]:[@media(min-height:700px)]:sticky min-[901px]:[@media(min-height:700px)]:top-6 min-[901px]:[@media(min-height:700px)]:flex min-[901px]:[@media(min-height:700px)]:max-h-[calc(100dvh-14rem)] min-[901px]:[@media(min-height:700px)]:flex-col">
+              <div className="flex shrink-0 items-center gap-3 border-b px-5 py-4">
+                <CompanionAvatar />
+                <div>
+                  <h2 className="companion-heading font-semibold">Your recovery companion</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">We’ll work through the next step together.</p>
+                </div>
+              </div>
+              <div ref={conversationScroll} className="min-h-0 min-[901px]:[@media(min-height:700px)]:min-h-32 min-[901px]:[@media(min-height:700px)]:flex-1 min-[901px]:[@media(min-height:700px)]:overflow-y-auto min-[901px]:[@media(min-height:700px)]:overscroll-contain">
+                <div className="border-b bg-[#F4F7FA] px-5 py-4 text-sm">
+                  <strong>
+                    {draft.origin?.name}, {draft.origin?.stateCode} to{" "}
+                    {draft.destination?.name}, {draft.destination?.stateCode}
+                  </strong>
+                  <p className="mt-1">
+                    City center estimates for one adult. Sources may be unavailable;
+                    each option shows what was checked.
+                  </p>
+                </div>
+                <details
+                  open={editing}
+                  onToggle={(event) => setEditing(event.currentTarget.open)}
+                  className="border-b bg-white px-5 py-3"
                 >
-                  <p className="mb-1 text-xs font-medium text-muted-foreground">
-                    {turn.role === "user" ? "You" : "Recovery companion"}
-                  </p>
-                  <p className="whitespace-pre-wrap">{turn.content}</p>
-                </article>
-              ))}
-              <p role="status" className="text-sm">
-                {state.busy
-                  ? "Checking available journey facts…"
-                  : state.result
-                    ? cityResultCount(state.result)
-                    : "Confirm your trip details to compare options."}
-              </p>
-              {state.dirty && (
-                <p role="status" className="text-sm">
-                  Your previous comparison is shown below. Confirm the edited
-                  trip facts to update it.
-                </p>
-              )}
-              {state.error && (
-                <Alert role="alert">
-                  <AlertTitle>Comparison unavailable</AlertTitle>
-                  <AlertDescription>{state.error}</AlertDescription>
-                </Alert>
-              )}
-              {state.assistance && (
-                <details className="text-sm">
-                  <summary className="cursor-pointer font-medium">
-                    Source and assessment activity
+                  <summary className="cursor-pointer text-sm font-medium">
+                    Edit trip
+                    {clarification && clarification.field !== "hotel"
+                      ? " · Confirm the requested facts"
+                      : ""}
                   </summary>
-                  <p className="mt-2">
-                    {state.assistance.status === "completed"
-                      ? "Refinement complete"
-                      : state.assistance.status === "limited"
-                        ? "Limited assistance"
-                        : "Assistance unavailable"}
-                  </p>
-                  {state.assistance.activity.map((item, index) => (
-                    <p key={index} className="mt-2">
-                      {item.tool.replaceAll("_", " ")} · {item.status}:{" "}
-                      {item.message}
-                      <span className="block text-xs text-muted-foreground">
-                        Checked {item.checkedAt}
-                      </span>
-                    </p>
-                  ))}
+                  <div className="mt-5">{editor}</div>
                 </details>
+
+                <section
+                  role="log"
+                  aria-label="Recovery conversation"
+                  aria-live="polite"
+                  aria-relevant="additions"
+                  className="space-y-5 bg-[#F4F7FA]/60 px-4 py-5"
+                >
+                  {turns.map((turn) => (
+                    <article
+                      key={turn.id}
+                      className={`conversation-turn flex items-start gap-3 text-sm leading-relaxed ${
+                        turn.role === "user" ? "ml-8 flex-row-reverse" : "mr-2"
+                      }`}
+                    >
+                      {turn.role === "assistant" ? (
+                        <CompanionAvatar size="sm" className="mt-1 shrink-0" />
+                      ) : (
+                        <span aria-hidden="true" className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#E5EDF7] text-xs font-semibold text-[#285FCB]">Y</span>
+                      )}
+                      <div className={`min-w-0 rounded-2xl px-4 py-3 ${turn.role === "user" ? "rounded-tr-sm bg-[#EAF1FB] text-[#173247]" : "rounded-tl-sm border bg-white"}`}>
+                        <p className="mb-1 text-xs font-semibold text-muted-foreground">
+                          {turn.role === "user" ? "You" : "Recovery companion"}
+                        </p>
+                        <p className="whitespace-pre-wrap break-words">{turn.content}</p>
+                      </div>
+                    </article>
+                  ))}
+                  {state.busy ? (
+                    <CompanionStatus label="Checking available journey facts…" />
+                  ) : !state.result ? (
+                    <p className="text-sm text-muted-foreground">
+                      Confirm your trip details to compare options.
+                    </p>
+                  ) : null}
+                  {travel.state.busy && (
+                    <CompanionStatus label="Checking flight and hotel options…" />
+                  )}
+                  {state.error && (
+                    <Alert role="alert">
+                      <AlertTitle>Comparison unavailable</AlertTitle>
+                      <AlertDescription>{state.error}</AlertDescription>
+                    </Alert>
+                  )}
+                  {state.assistance && (
+                    <details className="rounded-xl border bg-white p-3 text-sm">
+                      <summary className="cursor-pointer font-medium">
+                        Source and assessment activity
+                      </summary>
+                      <p className="mt-2 text-muted-foreground">
+                        {state.assistance.status === "completed"
+                          ? "Refinement complete"
+                          : state.assistance.status === "limited"
+                            ? "Limited assistance"
+                            : "Assistance unavailable"}
+                      </p>
+                      <AgentActivityList activity={state.assistance.activity} />
+                    </details>
+                  )}
+
+                </section>
+              </div>
+              <div className="shrink-0 space-y-3 border-t bg-white p-4">
+                <div className="flex flex-wrap gap-2" aria-label="Quick replies">
+                  {(
+                    [
+                      ["cheapest", "Cheaper"],
+                      ["no-driving", "No driving"],
+                      ["fewest_transfers", "Fewer changes"],
+                      ["overnight", "Explore overnight"],
+                    ] as const
+                  ).map(([kind, label]) => (
+                    <Button
+                      variant="outline"
+                      key={kind}
+                      disabled={
+                        state.busy ||
+                        travel.state.busy ||
+                        state.dirty ||
+                        (!state.result && !travel.state.result) ||
+                        ((kind === "cheapest" || kind === "fewest_transfers") &&
+                          !session.canRerank() &&
+                          !travel.session.usable())
+                      }
+                      onClick={() => quickReply(kind)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                {!state.dirty && state.result && !session.canRerank() && (
+                  <p className="text-sm text-muted-foreground">
+                    Source checks need refreshing. Choose “Recheck available
+                    sources” before changing priorities.
+                  </p>
+                )}
+                <form
+                  className="space-y-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const text = message.trim();
+                    if (!text || state.busy || state.dirty) return;
+                    setMessage("");
+                    if (
+                      /^(cheaper|cheapest|fewer changes|fewest transfers)[.!?]?$/i.test(
+                        text,
+                      )
+                    ) {
+                      quickReply(
+                        /cheap/i.test(text) ? "cheapest" : "fewest_transfers",
+                      );
+                    } else if (
+                      /flight|fly|airport|hotel|overnight|stay|security|connection|transfer/i.test(
+                        text,
+                      )
+                    )
+                      travelMessage(text);
+                    else void compare(draft, manual, true, text, text);
+                  }}
+                >
+                  <label
+                    htmlFor="city-message"
+                    className="block text-sm font-medium"
+                  >
+                    Message about your trip
+                  </label>
+                  <textarea
+                    id="city-message"
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    maxLength={500}
+                    rows={2}
+                    className="min-h-20 w-full resize-y rounded-xl border bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="What would make this journey work better?"
+                    aria-describedby="city-conversation-help"
+                  />
+                  <div className="flex flex-wrap items-center justify-end gap-3">
+                    <Button
+                      type="submit"
+                      disabled={
+                        state.busy ||
+                        travel.state.busy ||
+                        state.dirty ||
+                        !message.trim()
+                      }
+                    >
+                      {(state.busy || travel.state.busy) && <LoadingSpinner />}
+                      Send message
+                    </Button>
+                  </div>
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">About messages and privacy</summary>
+                    <p
+                      id="city-conversation-help"
+                      className="text-xs leading-relaxed text-muted-foreground"
+                    >
+                      Messages and bounded recent conversation stay in this tab
+                      and are sent to enabled assistance. They are never saved
+                      with your itinerary.
+                    </p>
+                  </details>
+                  {!configured && (
+                    <p className="text-xs text-muted-foreground">
+                      Assisted refinement is unavailable. Confirm trip facts or
+                      add an option you checked.
+                    </p>
+                  )}
+                </form>
+
+              </div>
+            </aside>
+            <section aria-label="Travel options" className="min-w-0 space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
+                <div>
+                  <h2 className="companion-heading text-xl font-semibold">Travel options</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Compare ground travel and flight quotes. Explore an origin overnight when you need it.</p>
+                </div>
+                {(state.busy || travel.state.busy) && <Badge variant="secondary" className="gap-2"><LoadingSpinner /> Checking sources</Badge>}
+              </div>
+              {state.result && <p role="status" className="text-sm text-muted-foreground">{cityResultCount(state.result)}</p>}
+              {state.dirty && (
+                <p role="status" className="rounded-xl border border-[#DCC5A7] bg-[#FFF8EE] p-4 text-sm text-[#A35B12]">
+                  Your previous comparison is shown below. Confirm the edited trip facts to update it.
+                </p>
               )}
               {state.result && (
                 <>
@@ -837,200 +1028,67 @@ export function CityRecoveryApp() {
                   ))}
                 </details>
               )}
-            </section>
-            <TravelRecoveryPanel
-              controller={travel}
-              onChoose={() => session.clearSelection()}
-            />
-            <div className="mt-5 space-y-4">
-              <div className="flex flex-wrap gap-2" aria-label="Quick replies">
-                {(
-                  [
-                    ["cheapest", "Cheaper"],
-                    ["no-driving", "No driving"],
-                    ["fewest_transfers", "Fewer changes"],
-                    ["overnight", "Explore overnight"],
-                  ] as const
-                ).map(([kind, label]) => (
-                  <Button
-                    variant="outline"
-                    key={kind}
-                    disabled={
-                      state.busy ||
-                      travel.state.busy ||
-                      state.dirty ||
-                      (!state.result && !travel.state.result) ||
-                      ((kind === "cheapest" || kind === "fewest_transfers") &&
-                        !session.canRerank() &&
-                        !travel.session.usable())
-                    }
-                    onClick={() => quickReply(kind)}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-              {!state.dirty && state.result && !session.canRerank() && (
-                <p className="text-sm text-muted-foreground">
-                  Source checks need refreshing. Choose “Recheck available
-                  sources” before changing priorities.
-                </p>
-              )}
-              <form
-                className="space-y-3 rounded-lg border bg-white p-4"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const text = message.trim();
-                  if (!text || state.busy || state.dirty) return;
-                  setMessage("");
-                  if (
-                    /^(cheaper|cheapest|fewer changes|fewest transfers)[.!?]?$/i.test(
-                      text,
-                    )
-                  ) {
-                    quickReply(
-                      /cheap/i.test(text) ? "cheapest" : "fewest_transfers",
-                    );
-                  } else if (
-                    /flight|fly|airport|hotel|overnight|stay|security|connection|transfer/i.test(
-                      text,
-                    )
-                  )
-                    travelMessage(text);
-                  else void compare(draft, manual, true, text, text);
-                }}
-              >
-                <label
-                  htmlFor="city-message"
-                  className="block text-sm font-medium"
-                >
-                  Message about your trip
-                </label>
-                <textarea
-                  id="city-message"
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  maxLength={500}
-                  rows={2}
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                  placeholder="What would make this journey work better?"
-                  aria-describedby="city-conversation-help"
-                />
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p
-                    id="city-conversation-help"
-                    className="max-w-sm text-xs leading-relaxed text-muted-foreground"
-                  >
-                    Messages and bounded recent conversation stay in this tab
-                    and are sent to enabled assistance. They are never saved
-                    with your itinerary.
-                  </p>
-                  <Button
-                    type="submit"
-                    disabled={
-                      state.busy ||
-                      travel.state.busy ||
-                      state.dirty ||
-                      !message.trim()
-                    }
-                  >
-                    Send message
-                  </Button>
-                </div>
-                {!configured && (
-                  <p className="text-xs text-muted-foreground">
-                    Assisted refinement is unavailable. Confirm trip facts or
-                    add an option you checked.
-                  </p>
-                )}
-              </form>
-              <Button
-                variant="outline"
-                disabled={state.busy || state.dirty}
-                onClick={() => void compare(draft, manual, true)}
-              >
-                Recheck available sources
-              </Button>
-              {travel.state.result?.request.overnight && (
+              <TravelRecoveryPanel
+                controller={travel}
+                onChoose={() => session.clearSelection()}
+              />
+
+              <div className="flex flex-wrap items-start gap-3 rounded-xl border bg-white p-4">
                 <Button
                   variant="outline"
-                  disabled={
-                    state.busy ||
-                    travel.state.busy ||
-                    state.dirty ||
-                    travel.state.dirty
-                  }
-                  onClick={() =>
-                    void compare(
-                      draft,
-                      manual,
-                      true,
-                      undefined,
-                      "Search same-day flights",
-                      "same-day",
-                    )
-                  }
+                  disabled={state.busy || state.dirty}
+                  onClick={() => void compare(draft, manual, true)}
                 >
-                  Search same-day flights
+                  {state.busy && <LoadingSpinner />}
+                  Recheck available sources
                 </Button>
-              )}
-              <div className="space-y-2">
-                <Button disabled={!canSave} onClick={save}>
-                  Save on this device
-                </Button>
-                {googleSelected && (
-                  <p className="text-sm text-amber-900">
-                    {GOOGLE_SAVE_MESSAGE}
-                  </p>
+                {travel.state.result?.request.overnight && (
+                  <Button
+                    variant="outline"
+                    disabled={
+                      state.busy ||
+                      travel.state.busy ||
+                      state.dirty ||
+                      travel.state.dirty
+                    }
+                    onClick={() =>
+                      void compare(
+                        draft,
+                        manual,
+                        true,
+                        undefined,
+                        "Search same-day flights",
+                        "same-day",
+                      )
+                    }
+                  >
+                    Search same-day flights
+                  </Button>
                 )}
+                <div className="space-y-2">
+                  <Button disabled={!canSave} onClick={save}>
+                    Save on this device
+                  </Button>
+                  {googleSelected && (
+                    <p className="text-sm text-amber-900">
+                      {GOOGLE_SAVE_MESSAGE}
+                    </p>
+                  )}
+                </div>
+
               </div>
-            </div>
-            {draft.origin && draft.destination && (
-              <ManualCityOption
-                key={manualKey}
-                origin={draft.origin}
-                destination={draft.destination}
-                busy={state.busy || state.dirty}
-                onAdd={addManual}
-              />
-            )}
-          </>
-        )}
-        {storageMessage && (
-          <p role="status" className="mt-4 text-sm text-green-800">
-            {storageMessage}
-          </p>
-        )}
-        {(storageError || !record.ok) && (
-          <Alert role="alert" className="mt-4">
-            <AlertTitle>Device storage</AlertTitle>
-            <AlertDescription>
-              {storageError || (!record.ok ? record.message : "")}
-            </AlertDescription>
-            {!savedRecord && (
-              <Button variant="outline" className="mt-3" onClick={deleteSaved}>
-                Delete saved plan
-              </Button>
-            )}
-          </Alert>
-        )}
-        {savedRecord && (
-          <div className="mt-6">
-            {savedRecord.schemaVersion === 3 ? (
-              <TravelHistoryPanel
-                history={savedRecord}
-                onRefresh={refreshTravel}
-                onDelete={deleteSaved}
-              />
-            ) : (
-              <CityHistoryPanel
-                saved={savedRecord}
-                busy={state.busy}
-                configured={configured}
-                onDelete={deleteSaved}
-                onRefresh={refresh}
-              />
-            )}
+              {draft.origin && draft.destination && (
+                <ManualCityOption
+                  key={manualKey}
+                  origin={draft.origin}
+                  destination={draft.destination}
+                  busy={state.busy || state.dirty}
+                  onAdd={addManual}
+                />
+              )}
+
+              {savedPlan}
+            </section>
           </div>
         )}
         <details className="mt-8 border-t pt-5">

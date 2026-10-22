@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { City } from "@domain/city-types";
+import { LoadingSpinner } from "@/components/ui/companion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { searchCityCatalog } from "./citySearch";
@@ -76,11 +77,12 @@ export function CityPicker({
     setStatus("");
   }
   return (
-    <div className="relative space-y-2">
+    <div className="relative min-w-0 space-y-2">
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
         role="combobox"
+        className="h-12 rounded-xl bg-[#F4F7FA]/60 text-base"
         autoComplete="off"
         value={query}
         aria-expanded={open && cities.length > 0}
@@ -125,7 +127,8 @@ export function CityPicker({
           : "Search U.S. cities, then choose a city and state."}
       </p>
       {status && (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+          {status === "Searching cities…" && <LoadingSpinner />}
           {status}
         </p>
       )}
@@ -139,7 +142,7 @@ export function CityPicker({
           id={`${id}-list`}
           role="listbox"
           aria-label={`${label} results`}
-          className="absolute z-20 max-h-80 w-full overflow-auto rounded-md border bg-white shadow-lg"
+          className="absolute z-20 max-h-80 w-full overflow-auto rounded-xl border bg-white shadow-lg"
         >
           {cities.map((city, index) => (
             <li
@@ -147,7 +150,7 @@ export function CityPicker({
               aria-selected={index === active}
               id={`${id}-${index}`}
               key={city.id}
-              className={`cursor-pointer px-3 py-3 text-sm ${index === active ? "bg-slate-100" : ""}`}
+              className={`cursor-pointer px-3 py-3 text-sm ${index === active ? "bg-[#E8F3F1] text-[#126B70]" : "hover:bg-[#F4F7FA]"}`}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => choose(city)}
             >

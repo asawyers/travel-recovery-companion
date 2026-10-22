@@ -39,6 +39,27 @@ function drivingFixture(minutes: number) {
 }
 
 describe("informational long driving estimates", () => {
+  it("shows unknown pricing for a short journey with no known payable cost", () => {
+    const fixture = drivingFixture(120);
+    const result = planCityRecovery(fixture.request, fixture.candidates, fixture);
+    const html = renderToStaticMarkup(createElement(CityPlanCard, {
+      plan: result.plans[0], origin: fixture.origin, destination: fixture.destination,
+    }));
+    expect(html).toContain("Total trip cost unknown");
+    expect(html).toContain("Price unknown");
+    expect(html).not.toContain("$0.00");
+  });
+  it("keeps an explicitly confirmed zero payable cost as a zero price", () => {
+    const fixture = drivingFixture(120);
+    fixture.candidates[0].costs[0].cents = 0;
+    const result = planCityRecovery(fixture.request, fixture.candidates, fixture);
+    const html = renderToStaticMarkup(createElement(CityPlanCard, {
+      plan: result.plans[0], origin: fixture.origin, destination: fixture.destination,
+    }));
+    expect(html).toContain("$0.00");
+    expect(html).not.toContain("Price unknown");
+  });
+
   it("shows driving time and unknown costs without presenting continuous arrival as a planned journey", () => {
     const fixture = drivingFixture(2880);
     const result = planCityRecovery(fixture.request, fixture.candidates, fixture);

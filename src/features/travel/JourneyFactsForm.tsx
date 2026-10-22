@@ -3,6 +3,7 @@ import { Temporal } from '@js-temporal/polyfill'
 import { TravelJourneyFactsSchema, type FlightOffer, type NationalHotelOffer, type TravelJourneyFacts } from '@domain/travel-contracts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { CompanionAvatar, LoadingSpinner } from '@/components/ui/companion'
 import { formatTravelTime } from './FlightOffers'
 
 export type JourneyFactsDraft = {
@@ -86,13 +87,13 @@ export function buildJourneyFacts(draft: JourneyFactsDraft, flight: FlightOffer,
     arrivalProcessingMinutes: minutes(draft.arrivalProcessingMinutes, 'Arrival processing allowance', true), connections,
     flightExtrasCents: amount(draft.flightExtras), stay, checkedAt })
 }
-type Props = { flight: FlightOffer; hotel?: NationalHotelOffer | null; initialFacts?: TravelJourneyFacts | null; busy?: boolean;
+type Props = { flight: FlightOffer; hotel?: NationalHotelOffer | null; initialFacts?: TravelJourneyFacts | null; busy?: boolean; pending?: boolean;
   onConfirm: (facts: TravelJourneyFacts) => void; onCancel?: () => void }
 type Step = 'origin' | 'hotelArrival' | 'hotelDeparture' | 'checkin' | 'hotelAirport' | 'arrangements' | 'airport' | `connection:${number}` | 'arrival' | 'destination' | 'review'
 export function JourneyFactsForm(props: Props) {
   return <FactsEditor key={`${props.flight.fingerprint}:${props.hotel?.fingerprint ?? 'no-stay'}`} {...props} />
 }
-function FactsEditor({ flight, hotel = null, initialFacts, busy = false, onConfirm, onCancel }: Props) {
+function FactsEditor({ flight, hotel = null, initialFacts, busy = false, pending = busy, onConfirm, onCancel }: Props) {
   const [draft, setDraft] = useState(() => createJourneyFactsDraft(flight, hotel, initialFacts))
   const [stepIndex, setStepIndex] = useState(0)
   const [error, setError] = useState('')
@@ -146,8 +147,21 @@ function FactsEditor({ flight, hotel = null, initialFacts, busy = false, onConfi
       else setStepIndex(index => index + 1)
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Check this fact before continuing.') }
   }
-  return <form onSubmit={advance} aria-label="Complete journey facts" className="rounded-lg border bg-white p-5 space-y-4">
-    <div><h2 className="text-lg font-semibold">Let’s check the rest of your journey</h2><p className="text-sm text-muted-foreground">Step {stepIndex + 1} of {steps.length}. These are your planning allowances; confirm them for this trip.</p></div>
+  const question = step === 'origin' ? `How long will it take you to reach ${hotel ? hotel.name : `${flight.originAirportIata} airport`}?`
+    : step === 'hotelArrival' ? 'When have you arranged to arrive at the hotel?'
+    : step === 'hotelDeparture' ? 'When will you leave the hotel?'
+    : step === 'checkin' ? 'How much time will you need to check in?'
+    : step === 'hotelAirport' ? 'How long will your transfer to the airport take?'
+    : step === 'arrangements' ? 'Have you confirmed these arrangements with the property?'
+    : step === 'airport' ? 'How much time do you need before your flight?'
+    : step.startsWith('connection:') ? 'What allowance do you need for this connection?'
+    : step === 'arrival' ? 'How much time will you need after landing?'
+    : step === 'destination' ? 'How long will it take to reach your destination city?'
+    : 'Does the rest of your journey look right?'
+  return <form onSubmit={advance} aria-label="Complete journey facts" aria-busy={pending} className="min-w-0 rounded-2xl border border-[var(--companion-border)] bg-white p-4 space-y-4 shadow-sm sm:p-5">
+    <div className="flex items-start gap-3"><CompanionAvatar size="sm" /><div className="min-w-0 space-y-2"><p className="text-xs font-medium uppercase tracking-wider text-[var(--companion-teal)]">Step {stepIndex + 1} of {steps.length}</p><h2 className="companion-heading text-lg font-semibold">Let’s check the rest of your journey</h2><p className="text-sm text-muted-foreground">These are your planning allowances; confirm them for this trip.</p></div></div>
+    <div role="progressbar" aria-label="Journey facts progress" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={stepIndex + 1} className="h-1 overflow-hidden rounded-full bg-[var(--companion-paper)]"><div className="h-full rounded-full bg-[var(--companion-teal)]" style={{ width: `${(stepIndex + 1) / steps.length * 100}%` }} /></div>
+    <p className="companion-heading text-base font-medium">{question}</p>
     {step === 'origin' && <>{field('originMinutes', 'Origin transfer minutes')}<p className="text-xs text-muted-foreground">From your selected origin city to {hotel ? hotel.name : `${flight.originAirportIata} airport`}. Confirm the actual transfer.</p>{optionalCost('originCost', 'Origin transfer cost')}</>}
     {step === 'hotelArrival' && <><p className="text-sm">{hotel!.name} · {hotel!.checkin} to {hotel!.checkout}</p>{field('hotelArrivalLocal', `Hotel arrival local date and time (${hotel!.timeZone}, estimated)`, 'datetime-local')}<p className="text-xs text-muted-foreground">Enter the arrival you arranged on {hotel!.checkin}. No check-in time is assumed.</p></>}
     {step === 'hotelDeparture' && <>{field('hotelDepartureLocal', `Hotel departure local date and time (${hotel!.timeZone}, estimated)`, 'datetime-local')}<p className="text-xs text-muted-foreground">Enter your arranged departure on {hotel!.checkout}.</p></>}
@@ -167,6 +181,6 @@ function FactsEditor({ flight, hotel = null, initialFacts, busy = false, onConfi
       <p>Confirm these facts to check the complete journey. Availability and final prices still need provider confirmation.</p>
     </div>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    <div className="flex flex-wrap gap-2">{stepIndex > 0 && <Button type="button" variant="outline" disabled={busy} onClick={() => { setStepIndex(index => index - 1); setError('') }}>Back</Button>}<Button type="submit" disabled={busy}>{step === 'review' ? 'Confirm facts and check journey' : 'Confirm and continue'}</Button>{onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>}</div>
+    <div className="flex flex-wrap gap-2">{stepIndex > 0 && <Button type="button" variant="outline" disabled={busy} onClick={() => { setStepIndex(index => index - 1); setError('') }}>Back</Button>}<Button className="h-auto min-h-10 whitespace-normal" type="submit" disabled={busy}>{pending && <LoadingSpinner />}{step === 'review' ? 'Confirm facts and check journey' : 'Confirm and continue'}</Button>{onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>}</div>
   </form>
 }

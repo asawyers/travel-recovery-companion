@@ -1,4 +1,6 @@
 import type { City, CityPlan } from "@domain/city-contracts";
+import { PriceHighlight } from "@/components/ui/companion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { containsCityGoogle } from "./savedSelection";
 import { cityDrivingMinutes } from "./conversationModel";
@@ -51,6 +53,9 @@ export function CityPlanCard({
   const drivingMinutes = cityDrivingMinutes(plan),
     longDrive = drivingMinutes > 480,
     google = containsCityGoogle(plan),
+    unknownPrice = !plan.priceComplete && !plan.costs.some(
+      (cost) => cost.cents !== null && cost.currency === "USD" && !cost.includedInOtherCharge,
+    ),
     operators = [
       ...new Set(
         plan.legs.flatMap((leg) => (leg.operator ? [leg.operator] : [])),
@@ -59,35 +64,38 @@ export function CityPlanCard({
   return (
     <article
       data-testid={historical ? "historical-city-option" : "city-option-card"}
-      className={`space-y-4 rounded-lg border bg-white p-5 ${selected ? "border-blue-700 ring-1 ring-blue-700" : ""}`}
+      className={`min-w-0 space-y-4 rounded-2xl border bg-white p-5 shadow-sm ${selected ? "border-[#126B70] ring-2 ring-[#126B70]/20" : ""}`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold">{plan.title}</h3>
-          <p className="mt-1 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 basis-56">
+          <h3 className="companion-heading text-lg font-semibold leading-snug">{plan.title}</h3>
+          <p className={`mt-3 text-sm leading-relaxed ${longDrive ? "text-[#A35B12]" : "font-semibold text-[#285FCB]"}`}>
             {longDrive
               ? "Arrival time has not been planned. Breaks, overnight stops and vehicle arrangements are still required."
               : `Arrive ${cityTime(plan.finalArrivalAt, destination.timeZone)}`}
           </p>
         </div>
-        <p className="text-sm font-semibold">
-          {plan.priceComplete
-            ? cityMoney(plan.knownCostCents)
-            : longDrive && plan.knownCostCents === 0
-              ? "Total trip cost unknown"
-              : `At least ${cityMoney(plan.knownCostCents)} + unknown costs`}
-        </p>
+        <PriceHighlight
+          amountCents={unknownPrice ? null : plan.knownCostCents}
+          label={plan.priceComplete ? "Complete journey price" : unknownPrice ? "Total trip cost unknown" : "Known journey costs"}
+          qualifier={plan.priceComplete ? undefined : unknownPrice ? "Confirm all payable costs" : `At least ${cityMoney(plan.knownCostCents)} + unknown costs`}
+          className="max-w-full"
+        />
       </div>
-      <p className="text-sm text-muted-foreground">
-        {longDrive
-          ? `${Math.round(drivingMinutes / 6) / 10} hours of driving time before breaks and overnight stops · Informational estimate · Not a selectable journey · `
-          : `${Math.round(plan.durationMinutes)} minutes · ${plan.transfers} ${plan.transfers === 1 ? "change" : "changes"} · `}
-        {plan.feasibility === "requires_confirmation"
-          ? "Requires confirmation"
-          : plan.feasibility === "infeasible"
-            ? "Does not meet your trip facts"
-            : "Schedule feasible"}
-      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="min-w-0 text-sm text-muted-foreground">
+          {longDrive
+            ? `${Math.round(drivingMinutes / 6) / 10} hours of driving time before breaks and overnight stops · Informational estimate · Not a selectable journey`
+            : `${Math.round(plan.durationMinutes)} minutes · ${plan.transfers} ${plan.transfers === 1 ? "change" : "changes"}`}
+        </p>
+        <Badge variant="secondary" className={plan.feasibility === "schedule_feasible" ? "bg-[#E8F3F1] text-[#126B70]" : "bg-[#FFF2E2] text-[#A35B12]"}>
+          {plan.feasibility === "requires_confirmation"
+            ? "Requires confirmation"
+            : plan.feasibility === "infeasible"
+              ? "Does not meet your trip facts"
+              : "Schedule feasible"}
+        </Badge>
+      </div>
       {plan.violations.length > 0 && (
         <ul className="list-disc space-y-1 pl-5 text-sm text-destructive">
           {plan.violations.map((v) => (
@@ -95,7 +103,7 @@ export function CityPlanCard({
           ))}
         </ul>
       )}
-      <details>
+      <details className="border-t pt-4">
         <summary className="cursor-pointer text-sm font-medium">
           Journey details and sources
         </summary>
@@ -201,7 +209,8 @@ export function CityPlanCard({
         <div className="flex flex-wrap items-center gap-3">
           {onSelect && plan.selectable && (
             <Button
-              variant={selected ? "secondary" : "outline"}
+              variant={selected ? "secondary" : "default"}
+              className="h-auto min-h-10 max-w-full whitespace-normal py-2"
               disabled={busy}
               onClick={onSelect}
             >
