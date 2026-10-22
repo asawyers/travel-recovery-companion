@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { TravelOnwardOffer } from '@domain/travel-contracts'
 import { containsTravelGoogleMaps } from './savedSelectionSchema'
+import { isTransferDetail, travelModeLabel, WalkingAccessSummary } from './TransferDetails'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatTravelTime, TravelCosts, TravelEvidence, travelEvidenceFresh } from './FlightOffers'
@@ -40,11 +41,14 @@ export function OnwardOffers({ offers, busy = false, expiresAt, onChoose, onExpi
     {!offers.length && <p role="status">No onward option is available from the checked sources for this flight and arrival allowance. Try another flight or recheck sources.</p>}
     {offers.map(offer => {
       const last = offer.legs.at(-1)
+      const hasTransfers = offer.legs.some(leg => isTransferDetail(leg.mode))
       return <article key={offer.id} className="space-y-3 rounded-2xl border bg-white p-4">
         <h4 className="font-semibold">{offer.kind === 'drive' ? 'Driving estimate' : 'Bus / rail onward itinerary'}</h4>
         <p className="text-sm">From {offer.arrivalAirportIata} · airport ready {formatTravelTime(offer.airportReadyAt, offer.legs[0]?.departureTimeZone ?? 'UTC')}</p>
         {last && <p className="text-sm font-medium">Final city arrival: {last.to.name} · {formatTravelTime(last.endAt, last.arrivalTimeZone)}</p>}
-        <ol className="space-y-2 text-sm">{offer.legs.map(leg => <li key={leg.id}><p className="font-medium">{leg.mode} · {leg.operator} {leg.service}</p><p>{leg.from.name} · {formatTravelTime(leg.startAt, leg.departureTimeZone)}</p><p>{leg.to.name} · {formatTravelTime(leg.endAt, leg.arrivalTimeZone)}</p>{leg.assumptions.map(note => <p className="text-xs text-muted-foreground" key={note}>{note}</p>)}</li>)}</ol>
+        <WalkingAccessSummary legs={offer.legs} />
+        <ol className="space-y-3 text-sm">{offer.legs.filter(leg => !isTransferDetail(leg.mode)).map(leg => <li key={leg.id} className="space-y-1 [overflow-wrap:anywhere]"><p className="font-medium">{travelModeLabel(leg.mode)} · {leg.operator} {leg.service}</p><p>{leg.from.name} · {formatTravelTime(leg.startAt, leg.departureTimeZone)}</p><p>{leg.to.name} · {formatTravelTime(leg.endAt, leg.arrivalTimeZone)}</p></li>)}</ol>
+        {(hasTransfers || offer.legs.some(leg => leg.assumptions.length > 0)) && <details className="rounded-xl border border-[var(--companion-border)] text-sm"><summary className="cursor-pointer px-3 py-3 font-medium">{hasTransfers ? 'Transfer details' : 'Route details'}</summary><div className="space-y-3 px-3 pb-3"><p className="text-xs text-muted-foreground">Full route in travel order, including walking and waiting where supplied.</p><ol className="space-y-3">{offer.legs.map(leg => <li key={leg.id} className="space-y-1 [overflow-wrap:anywhere]"><p className="font-medium">{travelModeLabel(leg.mode)} · {leg.operator} {leg.service}</p><p>{leg.from.name} · {formatTravelTime(leg.startAt, leg.departureTimeZone)}</p><p>{leg.to.name} · {formatTravelTime(leg.endAt, leg.arrivalTimeZone)}</p>{leg.assumptions.map(note => <p className="text-xs text-muted-foreground" key={note}>{note}</p>)}</li>)}</ol></div></details>}
         <TravelCosts costs={offer.costs} />
         {offer.confirmations.map(note => <p key={note} className="text-sm text-muted-foreground">{note}</p>)}
         {offer.kind === 'drive' && <><p className="text-sm text-muted-foreground">Road travel time is an estimate. It does not include rental inventory, vehicle availability or a reserved ride.</p><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed[offer.id] ?? false} onChange={event => setConfirmed(current => ({ ...current, [offer.id]: event.target.checked }))} disabled={busy} /><span>I have confirmed a vehicle and driver for this onward trip.</span></label></>}

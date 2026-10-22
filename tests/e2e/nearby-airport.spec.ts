@@ -32,14 +32,31 @@ function groundQuotes(input: TravelRecoveryInput, flight: FlightOffer): TravelOn
   const from = { name: 'Boston Logan International Airport (BOS)', latitude: airport.latitude, longitude: airport.longitude }
   const to = { name: 'Portland, ME city center', latitude: f.destination.latitude, longitude: f.destination.longitude }
   return (['rail', 'bus', 'drive'] as const).map((mode, index) => {
+    const at = (minutes: number) => new Date(Date.parse(ready) + minutes * 60000).toISOString()
+    const duration = [195, 180, 120][index]
+    const station = { ...from, name: `Airport ${mode} station` }
+    const arrivalStation = { ...to, name: `Portland ${mode} station` }
+    const commonLeg = { departureTimeZone: 'America/New_York', arrivalTimeZone: 'America/New_York',
+      operator: null, service: null, vehicleId: null,
+      assumptions: ['Deterministic airport-to-city fixture; no live service was checked.'] }
+    const mainLeg = { ...commonLeg, id: `onward-${mode}`, mode, from: mode === 'drive' ? from : station,
+      to: mode === 'drive' ? to : arrivalStation, startAt: mode === 'drive' ? ready : at(15),
+      endAt: at(mode === 'drive' ? duration : duration - 4),
+      operator: mode === 'drive' ? null : 'Fixture Ground', service: `Fixture ${mode} to Portland`,
+      vehicleId: `fixture-${mode}-vehicle` }
+    const legs: TravelOnwardOffer['legs'] = mode === 'drive' ? [mainLeg] : [
+      { ...commonLeg, id: `walk-to-${mode}`, mode: 'walk', from, to: station,
+        startAt: ready, endAt: at(7), service: `Walk to airport ${mode} station` },
+      { ...commonLeg, id: `wait-for-${mode}`, mode: 'wait', from: station, to: station,
+        startAt: at(7), endAt: at(15), service: `Wait for ${mode} boarding` },
+      mainLeg,
+      { ...commonLeg, id: `walk-from-${mode}`, mode: 'walk', from: arrivalStation, to,
+        startAt: at(duration - 4), endAt: at(duration), service: `Walk from Portland ${mode} station` },
+    ]
     const offer: TravelOnwardOffer = {
       id: 'pending', flightOfferId: flight.id, flightFingerprint: flight.fingerprint, arrivalAirportIata: airport.iata,
       destinationCityId: f.destination.id, airportReadyAt: ready, kind: mode === 'drive' ? 'drive' : 'transit',
-      legs: [{ id: `onward-${mode}`, mode, from, to, startAt: ready,
-        endAt: new Date(Date.parse(ready) + [195, 180, 120][index] * 60000).toISOString(),
-        departureTimeZone: 'America/New_York', arrivalTimeZone: 'America/New_York',
-        operator: mode === 'drive' ? null : 'Fixture Ground', service: `Fixture ${mode} to Portland`,
-        vehicleId: `fixture-${mode}-vehicle`, assumptions: ['Deterministic airport-to-city fixture; no live service was checked.'] }],
+      legs,
       costs: [{ label: `Fixture ${mode} fare`, cents: [3500, 2800, 6000][index], currency: 'USD', includedInOtherCharge: false }],
       evidence: [{ ...f.flight.evidence[0], checkedAt: now, expiresAt: expiry, serviceDate: input.departureDate }],
       confirmations: mode === 'drive' ? ['Confirm vehicle, driver, rental fees and road conditions.'] : [],
@@ -229,4 +246,53 @@ test('explicitly choosing BOS as the arrival airport still requires actual onwar
   await expect(journey.getByRole('button', { name: 'Choose this journey', exact: true })).toBeEnabled()
   expect(posts.at(-1)).toMatchObject({ destinationAirportIata: 'BOS', trip: { destinationCityId: 'geonames:4975802', drivingAllowed: false }, onwardFlight: { arrivalProcessingMinutes: 45 } })
   expect(posts.at(-1)?.selection?.onwardOfferId).toBeTruthy()
+})
+
+
+test('on a phone, rail and bus show the main ride while transfer details stay collapsed through journey selection', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const { posts } = await setup(page)
+  await start(page)
+  const onward = await discoverOnward(page)
+  const quotes = onward.getByRole('article')
+  for (const [index, mode, arrival, fare] of [[0, 'rail', '22:00', '35.00'], [1, 'bus', '21:45', '28.00']] as const) {
+    const quote = quotes.nth(index)
+    await expect(quote.getByText(new RegExp(`Fixture Ground Fixture ${mode} to Portland`)).first()).toBeVisible()
+    await expect(quote.getByText('Includes 11 min walking; consider luggage and station access.', { exact: true })).toBeVisible()
+    await expect(quote.getByText(new RegExp(`Walk to airport ${mode} station`))).toBeHidden()
+    await expect(quote.getByText(new RegExp(`Wait for ${mode} boarding`))).toBeHidden()
+    await expect(quote.getByText(new RegExp(`Walk from Portland ${mode} station`))).toBeHidden()
+    await expect(quote.getByText(new RegExp(`Final city arrival:.*2026-11-18 ${arrival} -05:00`))).toBeVisible()
+    await expect(quote.getByText(`Fixture ${mode} fare: $${fare} USD`, { exact: true })).toBeVisible()
+  }
+  const rail = quotes.first()
+  await rail.screenshot({ path: test.info().outputPath('rail-onward-collapsed.png') })
+  await rail.getByText('Transfer details', { exact: true }).click()
+  await expect(rail.getByText(/Walk to airport rail station/)).toBeVisible()
+  await expect(rail.getByText(/Wait for rail boarding/)).toBeVisible()
+  await expect(rail.getByText(/Walk from Portland rail station/)).toBeVisible()
+  await rail.getByText('Transfer details', { exact: true }).click()
+  await rail.getByRole('button', { name: 'Use this onward option', exact: true }).click()
+  await confirmFacts(alternate(page))
+  const journey = alternate(page).getByRole('article', { name: 'Complete journey', exact: true })
+  await expect(journey.getByText(/Fixture Ground Fixture rail to Portland/).first()).toBeVisible()
+  await expect(journey.getByText('Includes 11 min walking; consider luggage and station access.', { exact: true })).toBeVisible()
+  await expect(journey.getByText(/Walk to airport rail station/)).toBeHidden()
+  await expect(journey.getByText(/Wait for rail boarding/)).toBeHidden()
+  await expect(journey.getByText(/Walk from Portland rail station/)).toBeHidden()
+  await expect(journey.getByText('2026-11-18 22:00 -05:00 · America/New_York', { exact: true })).toBeVisible()
+  await expect(journey.getByText('$285.00', { exact: true })).toBeVisible()
+  const selected = posts.at(-1)!, selectedOffer = groundQuotes(selected, flightQuote(selected))[0]
+  expect(selected.selection?.onwardOfferId).toBe(selectedOffer.id)
+  expect(selectedOffer.airportReadyAt).toBe('2026-11-18T23:45:00.000Z')
+  expect(selectedOffer.legs.at(-1)?.endAt).toBe('2026-11-19T03:00:00.000Z')
+  expect(selectedOffer.costs[0].cents).toBe(3500)
+  await journey.screenshot({ path: test.info().outputPath('complete-journey-collapsed.png') })
+  await journey.getByText('Transfer details', { exact: true }).click()
+  await expect(journey.getByText(/Walk to airport rail station/)).toBeVisible()
+  await expect(journey.getByText(/Wait for rail boarding/)).toBeVisible()
+  await expect(journey.getByText(/Walk from Portland rail station/)).toBeVisible()
+  await journey.getByRole('button', { name: 'Choose this journey', exact: true }).click()
+  await expect(journey.getByRole('button', { name: 'Chosen journey', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { travelFixture, overnightTravelFixture } from '@domain/travel-fixtures'
-import { travelRequestBinding } from '@domain/travel-contracts'
+import { travelRequestBinding, type TravelOnwardOffer, type TravelLeg } from '@domain/travel-contracts'
 import { composeTravelJourney } from '@domain/travel-planner'
 const api = () => import('../../src/lib/travel-api').catch(() => null)
 const flightUI = () => import('../../src/features/travel/FlightOffers').catch(() => null)
@@ -187,12 +187,13 @@ describe('progressive journey facts', () => {
   })
 })
 describe('complete journey presentation', () => {
-  it('attributes the source label and checked timestamp to every actual leg', async () => {
+  it('attributes the source label and checked timestamp to every actual leg in the full journey details', async () => {
     const ui = await journeyUI(); expect(ui).not.toBeNull()
     const f = travelFixture(), journey = composeTravelJourney(f.input, f.flight, null, f)
     const html = renderToStaticMarkup(createElement(ui!.TravelJourneyCard, { journey, onSelect: () => {} }))
-    const legsHtml = html.match(/<ol[^>]*>([\s\S]*?)<\/ol>/)?.[1] ?? ''
-    const legRegions = legsHtml.split(/aria-label="Journey leg \d+"/).slice(1)
+    const fullDetails = html.slice(html.indexOf('>Transfer details</summary>'))
+    const legsHtml = fullDetails.match(/<ol[^>]*>([\s\S]*?)<\/ol>/)?.[1] ?? ''
+    const legRegions = legsHtml.split(/aria-label="Full journey leg \d+"/).slice(1)
     expect(legRegions).toHaveLength(journey.legs.length)
     journey.legs.forEach((leg, index) => {
       for (const evidence of leg.evidence) {
@@ -344,4 +345,90 @@ it('offers BOS alongside the nearest Portland airports and retains it after expl
     for (const airport of ['PWM', 'PSM', 'AUG', 'BOS']) expect(html).toContain(`value="${airport}"`)
     if (to === 'BOS') expect(html).toContain('value="BOS" selected=""')
   }
+})
+
+
+function withoutClosedDetails(html: string): string {
+  let depth = 0
+  return html.split(/(<details\b[^>]*>|<\/details>)/g).map(part => {
+    if (/^<details\b/.test(part)) { depth++; return '' }
+    if (part === '</details>') { depth--; return '' }
+    return depth === 0 ? part : ''
+  }).join('')
+}
+function walkingOnwardFixture(): TravelOnwardOffer {
+  const f = travelFixture()
+  const airport = { name: 'Airport terminal', latitude: 42.36, longitude: -71.01 }
+  const station = { name: 'Airport bus station', latitude: 42.37, longitude: -71.02 }
+  const stop = { name: 'Portland bus terminal', latitude: 43.66, longitude: -70.25 }
+  const city = { name: 'Portland city center', latitude: 43.67, longitude: -70.26 }
+  const leg = (id: string, mode: TravelOnwardOffer['legs'][number]['mode'], from: typeof airport, to: typeof airport, startAt: string, endAt: string, service: string) => ({
+    id, mode, from, to, startAt, endAt, departureTimeZone: 'America/New_York', arrivalTimeZone: 'America/New_York',
+    operator: mode === 'bus' ? 'Concord Coach' : null, service, vehicleId: mode === 'bus' ? 'coach-1' : null, assumptions: ['Check station access with luggage'],
+  })
+  return { id: 'walking-route', flightOfferId: f.flight.id, flightFingerprint: f.flight.fingerprint, arrivalAirportIata: 'BOS', destinationCityId: f.destination.id,
+    airportReadyAt: '2026-11-19T19:30:00-05:00', kind: 'transit', legs: [
+      leg('access-walk', 'walk', airport, station, '2026-11-19T19:30:00-05:00', '2026-11-19T19:37:00-05:00', 'Walk along terminal walkway'),
+      leg('coach-wait', 'wait', station, station, '2026-11-19T19:37:00-05:00', '2026-11-19T19:45:00-05:00', 'Wait for coach'),
+      leg('coach', 'bus', station, stop, '2026-11-19T19:45:00-05:00', '2026-11-19T21:45:00-05:00', 'Portland Express 42'),
+      leg('final-walk', 'walk', stop, city, '2026-11-19T21:45:00-05:00', '2026-11-19T21:49:00-05:00', 'Walk to city center'),
+    ], costs: [{ label: 'Onward coach fare', cents: 2800, currency: 'USD', includedInOtherCharge: false }], evidence: f.flight.evidence, confirmations: ['Confirm current service before travel'] }
+}
+
+describe('simplified onward route presentation', () => {
+  it('shows the main coach and walking total while retaining the original route in closed transfer details', async () => {
+    const ui = await import('../../src/features/travel/OnwardOffers')
+    const offer = walkingOnwardFixture()
+    const html = renderToStaticMarkup(createElement(ui.OnwardOffers, { offers: [offer], onChoose: () => {} }))
+    const visible = withoutClosedDetails(html)
+    expect(visible).toContain('Bus · Concord Coach')
+    expect(visible).toContain('Portland Express 42')
+    expect(visible).toContain('19:45 -05:00')
+    expect(visible).toContain('21:45 -05:00')
+    expect(visible).toContain('Final city arrival: Portland city center')
+    expect(visible).toContain('21:49 -05:00')
+    expect(visible).toContain('Includes 11 min walking; consider luggage and station access.')
+    expect(visible).toContain('$28.00')
+    for (const service of ['Walk along terminal walkway', 'Wait for coach', 'Walk to city center', 'Check station access with luggage']) expect(visible).not.toContain(service)
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>Transfer details<\/summary>/)
+    expect(html).not.toMatch(/<details[^>]*\bopen(?:=|>)/)
+    const details = html.slice(html.indexOf('>Transfer details</summary>'))
+    for (const leg of offer.legs) expect(details).toContain(leg.service)
+    expect(details).toContain('19:30 -05:00')
+    expect(details).toContain('19:37 -05:00')
+    expect(details.indexOf('Walk along terminal walkway')).toBeLessThan(details.indexOf('Wait for coach'))
+    expect(details.indexOf('Wait for coach')).toBeLessThan(details.indexOf('Portland Express 42'))
+    expect(details.indexOf('Portland Express 42')).toBeLessThan(details.indexOf('Walk to city center'))
+  })
+  it('uses the same concise journey timeline and keeps transfer costs, evidence, chronology and final arrival', async () => {
+    const ui = await journeyUI(); expect(ui).not.toBeNull()
+    const f = overnightTravelFixture(), offer = walkingOnwardFixture()
+    const journey = composeTravelJourney(f.input, f.flight, f.hotel, f)
+    const onward: TravelLeg[] = offer.legs.map((leg, index) => ({ ...leg, kind: leg.mode,
+      from: { ...leg.from, timeZone: leg.departureTimeZone }, to: { ...leg.to, timeZone: leg.arrivalTimeZone },
+      boardingId: leg.vehicleId, costs: index === 0 ? offer.costs : [], evidence: offer.evidence,
+    }))
+    journey.legs.splice(-1, 1, ...onward)
+    journey.finalArrivalAt = offer.legs.at(-1)!.endAt
+    const html = renderToStaticMarkup(createElement(ui!.TravelJourneyCard, { journey, onSelect: () => {} }))
+    const visible = withoutClosedDetails(html)
+    expect(visible).toContain('Portland Express 42')
+    expect(visible).toContain('Concord Coach')
+    expect(visible).toContain('Includes 11 min walking; consider luggage and station access.')
+    expect(visible).toContain('21:49 -05:00')
+    expect(visible).toContain('Example San Diego Hotel')
+    expect(visible).toContain('American')
+    expect(visible).toContain('processing')
+    for (const service of ['Walk along terminal walkway', 'Wait for coach', 'Walk to city center']) expect(visible).not.toContain(service)
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>Transfer details<\/summary>/)
+    expect(html).not.toMatch(/<details[^>]*\bopen(?:=|>)/)
+    const details = html.slice(html.indexOf('>Transfer details</summary>'))
+    for (const leg of offer.legs) expect(details).toContain(leg.service)
+    expect(details).toContain('Onward coach fare: $28.00 USD')
+    expect(details).toContain('Check station access with luggage')
+    expect(details).toContain(f.flight.evidence[0].provider)
+    expect(details).toContain('19:37 -05:00')
+    expect(details.indexOf('Walk along terminal walkway')).toBeLessThan(details.indexOf('Wait for coach'))
+    expect(details.indexOf('Wait for coach')).toBeLessThan(details.indexOf('Portland Express 42'))
+  })
 })

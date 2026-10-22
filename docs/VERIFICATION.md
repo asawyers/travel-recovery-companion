@@ -1,5 +1,14 @@
 # Verification status
 
+## Main transit services instead of walking microsteps — 2026-10-22
+
+Onward quotes and complete flight journeys now emphasize the main Bus/Train services, actual boarding/alighting times and final city arrival. Individual walking directions and waits are in a closed **Transfer details** disclosure, retaining the complete original chronological route, charges, assumptions and evidence. A short summed walking-time note keeps luggage and station access visible. Walking/transfer time is included in the original total; no taxi, shorter journey or walking-free service is invented. Airport processing, flight/hotel facts, vehicle confirmation, attribution and freshness/selection guards remain intact.
+
+Independent review found no blocking issue. **1,030 tests across 51 files** and production TypeScript/Vite build pass. Installed Brave passed all **8 nearby-airport cases in 15.9 seconds**, including a new phone case with seven minutes of access walking, eight minutes waiting, the main ride and four minutes final walking. The case verifies the 11-minute summary, closed/open disclosures, unchanged 22:00 final arrival and $285 known costs, exact selected route, successful choice and no horizontal overflow. All **28 existing travel/polish cases passed in 1.1 minutes**. One new browser assertion initially omitted the existing time-zone suffix; correcting that selector required no product change. Source providers, planner, contracts, credentials and dependencies are unchanged, so no new paid-provider/model call or backend behavior is claimed.
+
+Evidence: `/tmp/travel-simple-transit-final-unit.log`, `/tmp/travel-simple-transit-final-build.log`, `/tmp/travel-simple-transit-local.log`, `/tmp/travel-simple-transit-regression-local.log`. Deployment and hosted verification are recorded in the follow-up below.
+
+
 ## Nearby arrival airport and onward recovery — 2026-10-22
 
 The app searches the selected arrival airport and one alternate large airport within 200 km of the final city, with independent exact airport-pair and quote bindings. SAN → Portland, Maine includes BOS when matching observations are returned. The airport selector also exposes and retains that nearby airport. The final destination remains Portland. A selected airport more than 50 km from the destination requires sourced onward planning in either panel, including when BOS is chosen directly.
