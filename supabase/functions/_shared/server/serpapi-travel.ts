@@ -583,6 +583,7 @@ export function createSerpApiTravelAdapter(configuration: Options): TravelProvid
         q: `Hotels in ${context.origin.name} ${context.origin.stateCode} ${context.origin.countryCode}`,
         check_in_date: input.overnight!.checkin,
         check_out_date: input.overnight!.checkout,
+        sort_by: '3',
         adults: '1',
         currency: 'USD',
         gl: 'us',

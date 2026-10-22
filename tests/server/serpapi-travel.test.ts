@@ -942,3 +942,27 @@ describe('fresh selected offers outside the top three', () => {
     )
   }
 })
+
+describe('hotel source ordering', () => {
+  it('requests documented lowest-price ordering consistently for discovery and selection rechecks', async () => {
+    const s = await overnight()
+    const selected = (await s.adapter.hotels(s.input, s.context)).offers[0]
+    Object.assign(s.input, {
+      selection: {
+        ...travelFixture().input.selection!,
+        hotelOfferId: selected.id,
+        hotelFingerprint: selected.fingerprint,
+      },
+    })
+    expect((await s.adapter.hotels(s.input, s.context)).offers[0].id).toBe(selected.id)
+    expect(s.fetcher).toHaveBeenCalledTimes(2)
+    const queries = s.fetcher.mock.calls.map(([url]) => new URL(String(url)).searchParams)
+    for (const query of queries) {
+      expect(query.get('sort_by')).toBe('3')
+      expect(query.get('no_cache')).toBe('true')
+      expect(query.has('property_token')).toBe(false)
+      expect(query.has('next_page_token')).toBe(false)
+    }
+    expect(queries[0].toString()).toBe(queries[1].toString())
+  })
+})
