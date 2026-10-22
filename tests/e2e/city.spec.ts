@@ -148,6 +148,49 @@ async function fulfill(
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date(now));
 });
+test("long-drive-only city comparison exposes an informational estimate without a continuous-arrival or save claim", async ({ page }) => {
+  let posts = 0;
+  await page.route(endpoint, async route => {
+    posts++;
+    const input: Envelope = route.request().postDataJSON();
+    const base = response(input);
+    const candidate = base.facts.candidates[0];
+    candidate.title = "Google Maps driving duration estimate";
+    candidate.kind = "driving_estimate";
+    candidate.legs[0] = {
+      ...candidate.legs[0], mode: "drive", operator: null, service: null, vehicleId: null,
+      endAt: new Date(Date.parse(input.request.readyAt) + 48 * 60 * 60_000).toISOString(),
+    };
+    candidate.costs = [{ label: "Driving costs unconfirmed", cents: null, currency: "USD", includedInOtherCharge: false }];
+    candidate.evidence[0] = { ...candidate.evidence[0], provider: "Google Maps Routes API", type: "estimated", expiresAt: "2026-11-18T13:00:00Z" };
+    const result = planCityRecovery(input.request, [candidate], {
+      now, origin: base.result.origin, destination: base.result.destination,
+    });
+    expect(result.plans).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].violations).toEqual([]);
+    await route.fulfill({ json: CityRecoveryResponseSchema.parse({ ...base, result, facts: { ...base.facts, candidates: result.request.confirmedOptions } }) });
+  });
+  await page.goto("/");
+  await selectCity(page, "From city", "San Diego CA", /^San Diego, CA/);
+  await selectCity(page, "To city", "Portland ME", /^Portland, ME/);
+  await page.getByRole("button", { name: "Find my options", exact: true }).click();
+  const card = page.getByTestId("city-option-card").filter({ hasText: "Google Maps driving duration estimate" });
+  await expect(card).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /0 selectable journeys.*1 informational driving estimate/ })).toBeVisible();
+  await expect(page.getByRole("log")).toContainText("No complete ground itinerary could be validated");
+  await expect(page.getByRole("log")).toContainText("does not mean no travel options exist");
+  await expect(page.getByText("Ground travel search only. Flights and overnight stays have not been checked.", { exact: true })).toBeVisible();
+  await expect(card).toContainText("48 hours of driving time before breaks and overnight stops");
+  await expect(card).toContainText("Arrival time has not been planned");
+  await expect(card).toContainText("Total trip cost unknown");
+  await card.getByText("Journey details and sources", { exact: true }).click();
+  await expect(card).not.toContainText(/\bArrive /);
+  await expect(card.getByRole("button", { name: "Choose this itinerary", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save on this device", exact: true })).toBeDisabled();
+  expect(posts).toBe(1);
+  expect(await page.evaluate(key => localStorage.getItem(key), key)).toBeNull();
+});
 test("empty city starter requires actual disambiguated selections and no default airport inputs", async ({
   page,
 }) => {
@@ -261,7 +304,7 @@ test("priority quick replies reassess cached facts without POST and no-driving d
   await page.getByRole("button", { name: "Cheaper", exact: true }).click();
   await expect(page.getByRole("log")).toContainText("Cheaper");
   await expect(
-    page.getByRole("status").filter({ hasText: "1 recovery options." }),
+    page.getByRole("status").filter({ hasText: "1 selectable journey." }),
   ).toBeVisible();
   expect(posts).toHaveLength(1);
   await page

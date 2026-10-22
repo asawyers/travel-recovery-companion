@@ -1,6 +1,7 @@
 import type { City, CityPlan } from "@domain/city-contracts";
 import { Button } from "@/components/ui/button";
 import { containsCityGoogle } from "./savedSelection";
+import { cityDrivingMinutes } from "./conversationModel";
 export const cityMoney = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
     cents / 100,
@@ -47,7 +48,9 @@ export function CityPlanCard({
   busy?: boolean;
   onSelect?: () => void;
 }) {
-  const google = containsCityGoogle(plan),
+  const drivingMinutes = cityDrivingMinutes(plan),
+    longDrive = drivingMinutes > 480,
+    google = containsCityGoogle(plan),
     operators = [
       ...new Set(
         plan.legs.flatMap((leg) => (leg.operator ? [leg.operator] : [])),
@@ -62,18 +65,23 @@ export function CityPlanCard({
         <div>
           <h3 className="font-semibold">{plan.title}</h3>
           <p className="mt-1 text-sm">
-            Arrive {cityTime(plan.finalArrivalAt, destination.timeZone)}
+            {longDrive
+              ? "Arrival time has not been planned. Breaks, overnight stops and vehicle arrangements are still required."
+              : `Arrive ${cityTime(plan.finalArrivalAt, destination.timeZone)}`}
           </p>
         </div>
         <p className="text-sm font-semibold">
           {plan.priceComplete
             ? cityMoney(plan.knownCostCents)
-            : `At least ${cityMoney(plan.knownCostCents)} + unknown costs`}
+            : longDrive && plan.knownCostCents === 0
+              ? "Total trip cost unknown"
+              : `At least ${cityMoney(plan.knownCostCents)} + unknown costs`}
         </p>
       </div>
       <p className="text-sm text-muted-foreground">
-        {Math.round(plan.durationMinutes)} minutes · {plan.transfers}{" "}
-        {plan.transfers === 1 ? "change" : "changes"} ·{" "}
+        {longDrive
+          ? `${Math.round(drivingMinutes / 6) / 10} hours of driving time before breaks and overnight stops · Informational estimate · Not a selectable journey · `
+          : `${Math.round(plan.durationMinutes)} minutes · ${plan.transfers} ${plan.transfers === 1 ? "change" : "changes"} · `}
         {plan.feasibility === "requires_confirmation"
           ? "Requires confirmation"
           : plan.feasibility === "infeasible"
@@ -107,9 +115,15 @@ export function CityPlanCard({
                 {leg.from.name} → {leg.to.name}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Depart {cityTime(leg.startAt, leg.departureTimeZone)}
-                <br />
-                Arrive {cityTime(leg.endAt, leg.arrivalTimeZone)}
+                {longDrive ? (
+                  "Driving durations exclude breaks and overnight stops; departure and arrival times for a complete journey have not been planned."
+                ) : (
+                  <>
+                    Depart {cityTime(leg.startAt, leg.departureTimeZone)}
+                    <br />
+                    Arrive {cityTime(leg.endAt, leg.arrivalTimeZone)}
+                  </>
+                )}
               </p>
               {leg.assumptions.map((a) => (
                 <p key={a} className="mt-1 text-xs">

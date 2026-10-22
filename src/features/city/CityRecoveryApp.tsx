@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CityCandidate, CitySavedSelection } from "@domain/city-contracts";
-import { cityAnswer } from "./conversationModel";
+import { cityAnswer, cityResultCount } from "./conversationModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -349,6 +349,10 @@ export function CityRecoveryApp() {
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
           Start with your cities. We’ll work through the whole journey with you.
         </p>
+        <p className="mt-3 rounded-md bg-slate-100 p-3 text-sm font-medium">
+          Ground travel search only. Flights and overnight stays have not been
+          checked.
+        </p>
         {!started ? (
           <section
             className="mt-7 rounded-lg border bg-white p-5 sm:p-7"
@@ -403,7 +407,7 @@ export function CityRecoveryApp() {
                 {state.busy
                   ? "Checking available journey facts…"
                   : state.result
-                    ? `${state.result.plans.length} recovery options.`
+                    ? cityResultCount(state.result)
                     : "Confirm your trip details to compare options."}
               </p>
               {state.dirty && (
@@ -461,7 +465,10 @@ export function CityRecoveryApp() {
                     ))}
                   </div>
                   {state.result.rejected.length > 0 && (
-                    <details className="text-sm">
+                    <details
+                      className="text-sm"
+                      open={state.result.plans.length === 0}
+                    >
                       <summary className="cursor-pointer font-medium">
                         Other routes and limits ({state.result.rejected.length})
                       </summary>

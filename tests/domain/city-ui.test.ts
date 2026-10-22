@@ -18,7 +18,71 @@ import {
   emptyManualDraft,
 } from "../../src/features/city/manualModel";
 import { CityRecoveryApp } from "../../src/features/city/CityRecoveryApp";
+import { CityPlanCard, cityTime } from "../../src/features/city/CityPlanCard";
+import { planCityRecovery } from "@domain/city-planner";
+import { CitySession } from "../../src/features/city/session";
+import { cityAnswer } from "../../src/features/city/conversationModel";
 const f = cityFixture();
+
+function drivingFixture(minutes: number) {
+  const fixture = cityFixture();
+  const candidate = fixture.candidates[0];
+  candidate.kind = "driving_estimate";
+  candidate.title = "Fictional driving estimate";
+  candidate.legs = [{
+    ...candidate.legs[0], mode: "drive", from: candidate.legs[0].from,
+    to: candidate.legs.at(-1)!.to, startAt: fixture.request.readyAt,
+    endAt: new Date(Date.parse(fixture.request.readyAt) + minutes * 60_000).toISOString(),
+  }];
+  candidate.costs = [{ label: "Driving costs unconfirmed", cents: null, currency: "USD", includedInOtherCharge: false }];
+  return fixture;
+}
+
+describe("informational long driving estimates", () => {
+  it("shows driving time and unknown costs without presenting continuous arrival as a planned journey", () => {
+    const fixture = drivingFixture(2880);
+    const result = planCityRecovery(fixture.request, fixture.candidates, fixture);
+    expect(result.plans).toHaveLength(0);
+    const plan = result.rejected[0];
+    const html = renderToStaticMarkup(createElement(CityPlanCard, {
+      plan, origin: fixture.origin, destination: fixture.destination, onSelect: () => {},
+    }));
+    expect(html).toContain("48 hours of driving time before breaks and overnight stops");
+    expect(html).toContain("Informational estimate");
+    expect(html).toContain("Arrival time has not been planned");
+    expect(html).toContain("Total trip cost unknown");
+    expect(html).not.toContain(cityTime(plan.finalArrivalAt, fixture.destination.timeZone));
+    expect(html).not.toContain("Choose this itinerary");
+  });
+  it("keeps arrival information and selection for an eight-hour driving estimate", () => {
+    const fixture = drivingFixture(480);
+    const result = planCityRecovery(fixture.request, fixture.candidates, fixture);
+    const plan = result.plans[0];
+    const html = renderToStaticMarkup(createElement(CityPlanCard, {
+      plan, origin: fixture.origin, destination: fixture.destination, onSelect: () => {},
+    }));
+    expect(html).toContain(`Arrive ${cityTime(plan.finalArrivalAt, fixture.destination.timeZone)}`);
+    expect(html).toContain("Choose this itinerary");
+    expect(html).not.toContain("Arrival time has not been planned");
+  });
+  it("distinguishes informational estimates from validated journeys, including an empty assisted assessment", async () => {
+    const fixture = drivingFixture(2880);
+    const engine = new CitySession({ now: () => fixture.now });
+    await engine.compare(fixture.request, fixture.origin, fixture.destination, false);
+    const current = engine.getSnapshot();
+    for (const assistance of [null, {
+      status: "completed" as const, summary: "No feasible complete journey satisfies the supplied facts and limits.",
+      appliedPreferences: {}, selectedPlanId: null, activity: [],
+    }]) {
+      const answer = cityAnswer({ ...current, assistance });
+      expect(answer).toContain("1 informational driving estimate");
+      expect(answer).toContain("No complete ground itinerary could be validated");
+      expect(answer).toContain("does not mean no travel options exist");
+    }
+    engine.select(current.result!.rejected[0].id);
+    expect(engine.getSnapshot().selectedId).toBeNull();
+  });
+});
 describe("city starter", () => {
   it("starts with two empty cities, ASAP and no flight or airport assumptions", () => {
     const d = emptyCityDraft();
@@ -35,6 +99,7 @@ describe("city starter", () => {
       /45 min|Gate arrival|Flight number|Let&#x27;s get you to Portland/,
     );
     expect(html).not.toContain("Add an option you");
+    expect(html).toContain("Ground travel search only. Flights and overnight stays have not been checked.");
   });
   it("requires exact selected city records and rejects identical IDs", () => {
     expect(buildCityRequest(emptyCityDraft(), f.now).errors).toMatchObject({

@@ -1,5 +1,13 @@
 # Verification status
 
+## Long-distance result visibility repair — 2026-10-22
+
+The reported San Diego, CA → Portland, ME lookup was reproduced against the deployed API: HTTP200 in2,943ms, one Google driving estimate of2,736.8minutes, no validated selectable journey, and one informational rejected route. The UI hid that estimate in a closed disclosure and reported zero options. Drives longer than8hours remain informational until an actual vehicle/rest plan exists; the search did not check flights or national hotel stays.
+
+The repair expands informational routes when no selectable journeys exist, distinguishes their count, labels driving time before breaks/overnights and unknown totalcost, and suppresses misleading uninterrupted multi-day arrival times. The current ground-only coverage is explicit. No planner, provider, backend, save or selection boundary changed. A new exact-citypair48h injected browser regression failed with a hidden card before the fix; three focused unit assertions also failed first. Root verification passed664unit tests, production build/typecheck and all10cityBrave cases locally. Independent specification/quality review approved. Hosted publication/actual-pair UI acceptance is pending at this checkpoint.
+
+The user has separately requested live flight search and planned overnight stops; that implementation is being prepared with SerpApi, pending its server-side key. The visibility repair does not claim those new capabilities are implemented.
+
 ## U.S. city-first recovery — 2026-10-22
 
 The city-first frontend and compatible city API are deployed alongside the legacy flow. All 59 hosted Brave cases, actual national Google/OpenAI acceptance and legacy hotel sandbox UI acceptance passed. Earlier sections describe historical revisions.
