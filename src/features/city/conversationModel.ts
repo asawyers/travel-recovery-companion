@@ -11,13 +11,9 @@ export function cityDrivingMinutes(plan: CityPlan): number {
       0,
     );
 }
-function informationalDrives(result: CityRecoveryResult): number {
-  return result.rejected.filter((plan) => cityDrivingMinutes(plan) > 480).length;
-}
 export function cityResultCount(result: CityRecoveryResult): string {
-  const count = result.plans.length,
-    informational = informationalDrives(result);
-  return `${count} selectable ${count === 1 ? "journey" : "journeys"}${informational ? ` · ${informational} informational driving ${informational === 1 ? "estimate" : "estimates"}` : ""}.`;
+  const count = result.plans.filter((plan) => plan.kind !== "driving_estimate").length;
+  return `${count} selectable ${count === 1 ? "journey" : "journeys"}.`;
 }
 /** A failed or superseded turn never makes the prior response appear new. */
 export function cityAnswer(state: CitySessionState): string | null {
@@ -25,12 +21,18 @@ export function cityAnswer(state: CitySessionState): string | null {
   const assistance = state.assistance;
   if (assistance?.clarification)
     return cityClarificationQuestion(assistance.clarification);
-  if (!state.result.plans.length) {
-    const count = informationalDrives(state.result);
-    return `No complete ground itinerary could be validated from the available source facts. ${count ? `${count} informational driving ${count === 1 ? "estimate is" : "estimates are"} shown below; breaks, overnight stops and vehicle arrangements still need planning. ` : ""}This does not mean no travel options exist. Add an option you checked, change your trip details or recheck the available sources.`;
+  const visiblePlans = state.result.plans.filter((plan) => plan.kind !== "driving_estimate");
+  if (!visiblePlans.length) {
+    return "No complete ground itinerary could be validated from the available source facts. This does not mean no travel options exist. Add an option you checked, change your trip details or recheck the available sources.";
   }
+  // Older responses can still contain standalone driving estimates. Their
+  // assessment may describe hidden options, so use the visible comparison.
+  const hasHiddenDriving = [...state.result.plans, ...state.result.rejected].some(
+    (plan) => plan.kind === "driving_estimate",
+  );
+  const drivingEnabled = state.result.request.drivingAllowed || assistance?.appliedPreferences.drivingAllowed === true;
   return (
-    assistance?.summary ??
-    `${state.result.plans.length} complete journey ${state.result.plans.length === 1 ? "option is" : "options are"} ready. Check the sources, transfer details and prices before choosing.`
+    (!hasHiddenDriving && !drivingEnabled ? assistance?.summary : null) ??
+    `${visiblePlans.length} complete journey ${visiblePlans.length === 1 ? "option is" : "options are"} ready. Check the sources, transfer details and prices before choosing.`
   );
 }

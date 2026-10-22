@@ -178,16 +178,6 @@ export function CityStarterForm({
                 <option value="hard">Hard limit</option>
               </select>
             </div>
-            <label className="flex min-h-11 items-center gap-2 rounded-lg border bg-[#F4F7FA] px-3 py-2 text-sm">
-              <input
-                type="checkbox"
-                checked={draft.drivingAllowed}
-                onChange={(event) =>
-                  onChange({ ...draft, drivingAllowed: event.target.checked })
-                }
-              />
-              Driving allowed
-            </label>
             <div className="space-y-2">
               <Label htmlFor="city-priority">Prioritize</Label>
               <select

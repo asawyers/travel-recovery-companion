@@ -85,6 +85,8 @@ export function CityRecoveryApp() {
     session.getSnapshot,
     session.getSnapshot,
   );
+  const visiblePlans = state.result?.plans.filter((plan) => plan.kind !== "driving_estimate") ?? [];
+  const visibleRejected = state.result?.rejected.filter((plan) => plan.kind !== "driving_estimate") ?? [];
   const [draft, setDraft] = useState(emptyCityDraft);
   const travel = useTravelRecovery();
   const [airports, setAirports] = useState<{ from: string; to: string } | null>(
@@ -179,14 +181,17 @@ export function CityRecoveryApp() {
       assistance?.status === "completed" &&
       Object.keys(assistance.appliedPreferences).length
     ) {
-      travel.session.applyPreferences(assistance.appliedPreferences);
+      travel.session.applyPreferences({ ...assistance.appliedPreferences, drivingAllowed: false });
     }
     if (!assistance?.clarification) {
       setDraft((current) => ({
         ...current,
         priority: state.result!.request.priority,
-        drivingAllowed: state.result!.request.drivingAllowed,
+        drivingAllowed: false,
       }));
+      if (state.result.request.drivingAllowed) {
+        session.applyPreferences({ drivingAllowed: false });
+      }
     }
   }, [state, session]);
   function edit(next: CityDraft) {
@@ -231,7 +236,7 @@ export function CityRecoveryApp() {
     setEditing(false);
     setStorageMessage(null);
     setStorageError(null);
-    setDraft({ ...next, readyAt: built.request.readyAt });
+    setDraft({ ...next, drivingAllowed: false, readyAt: built.request.readyAt });
     const turnId = crypto.randomUUID(),
       context = refinement
         ? conversationContext(turnId, session.revision, turns)
@@ -294,7 +299,7 @@ export function CityRecoveryApp() {
     );
   }
   function quickReply(
-    kind: "cheapest" | "fewest_transfers" | "no-driving" | "overnight",
+    kind: "cheapest" | "fewest_transfers" | "overnight",
   ) {
     if (state.dirty) return;
     if (kind === "overnight") {
@@ -306,7 +311,7 @@ export function CityRecoveryApp() {
         : travel.state.result?.request.trip;
       if (tripFacts && draft.origin) {
         const input = buildTravelRequest(
-          TravelTripSchema.parse(tripFacts),
+          TravelTripSchema.parse({ ...tripFacts, drivingAllowed: false }),
           draft.origin,
           from,
           to,
@@ -329,12 +334,11 @@ export function CityRecoveryApp() {
     }
     const next = {
       ...draft,
-      ...(kind === "no-driving"
-        ? { drivingAllowed: false }
-        : { priority: kind }),
+      priority: kind,
+      drivingAllowed: false,
     };
     setDraft(next);
-    if (kind !== "no-driving" && !session.canRerank()) {
+    if (!session.canRerank()) {
       travel.session.rerank(kind);
       addTurn("user", kind === "cheapest" ? "Cheaper" : "Fewer changes");
       return;
@@ -342,13 +346,9 @@ export function CityRecoveryApp() {
     void compare(
       next,
       manual,
-      kind === "no-driving",
+      false,
       undefined,
-      kind === "no-driving"
-        ? "No driving"
-        : kind === "cheapest"
-          ? "Cheaper"
-          : "Fewer changes",
+      kind === "cheapest" ? "Cheaper" : "Fewer changes",
     );
   }
   useEffect(() => {
@@ -356,21 +356,24 @@ export function CityRecoveryApp() {
     if (t.busy || !t.result || t.error || t.sequence === travelReported.current)
       return;
     travelReported.current = t.sequence;
+    const assistance = t.result.assistance;
     const summary =
-      t.result.assistance?.summary ??
+      (assistance?.appliedPreferences.drivingAllowed !== true ? assistance?.summary : undefined) ??
       `${t.result.flightOffers.length} flight quotes${
         t.result.request.overnight
           ? ` and ${t.result.hotelOffers.length} origin hotel quotes`
           : ""
       } checked. Confirm transfers and allowances before choosing a complete flight journey.`;
     addTurn("assistant", summary);
-    const assistance = t.result.assistance;
     if (
       assistance?.status === "completed" &&
       Object.keys(assistance.appliedPreferences).length
     ) {
-      setDraft((current) => ({ ...current, ...assistance.appliedPreferences }));
-      session.applyPreferences(assistance.appliedPreferences);
+      setDraft((current) => ({ ...current, ...assistance.appliedPreferences, drivingAllowed: false }));
+      session.applyPreferences({ ...assistance.appliedPreferences, drivingAllowed: false });
+    }
+    if (!assistance?.clarification && t.result.request.trip.drivingAllowed) {
+      travel.session.applyPreferences({ drivingAllowed: false });
     }
     const field = t.result.assistance?.clarification?.field;
     if (
@@ -393,7 +396,7 @@ export function CityRecoveryApp() {
           trip: {
             ...result.request.trip,
             priority: draft.priority,
-            drivingAllowed: draft.drivingAllowed,
+            drivingAllowed: false,
           },
           selection: null,
         }
@@ -502,7 +505,7 @@ export function CityRecoveryApp() {
     setMessage("");
     setStarted(true);
     setEditing(false);
-    void travel.session.search(request);
+    void travel.session.search({ ...request, trip: { ...request.trip, drivingAllowed: false } });
   }
   function save() {
     if (
@@ -528,7 +531,7 @@ export function CityRecoveryApp() {
       );
       return;
     }
-    if (!state.result || !state.selectedId || !session.canUseResult()) return;
+    if (!state.result || !state.selectedId || !selected || !session.canUseResult()) return;
     if (session.expired()) {
       setStorageError(
         "Source checks expired. Recheck available sources before saving.",
@@ -571,7 +574,7 @@ export function CityRecoveryApp() {
     session.edit();
     travel.session.edit(false);
     setAirports(null);
-    const request = refreshCityRequest(saved),
+    const request = { ...refreshCityRequest(saved), drivingAllowed: false },
       next = draftFromCityRequest(request, saved.origin, saved.destination);
     setDraft(next);
     setManual(request.confirmedOptions);
@@ -606,7 +609,7 @@ export function CityRecoveryApp() {
       "Compare this option I checked directly with the operator.",
     );
   }
-  const selected = state.result?.plans.find(
+  const selected = visiblePlans.find(
       (plan) => plan.id === state.selectedId,
     ),
     googleSelected = !!selected && containsCityGoogle(selected),
@@ -640,7 +643,7 @@ export function CityRecoveryApp() {
       />
     </>
   );
-  // Trip facts are explicitly confirmed in the form. Assistance can only patch driving and priority.
+  // Trip facts are explicitly confirmed in the form. Assistance can patch priority; standalone driving stays disabled.
   const clarification = state.assistance?.clarification;
   const savedPlan = (
     <>
@@ -827,7 +830,6 @@ export function CityRecoveryApp() {
                   {(
                     [
                       ["cheapest", "Cheaper"],
-                      ["no-driving", "No driving"],
                       ["fewest_transfers", "Fewer changes"],
                       ["overnight", "Explore overnight"],
                     ] as const
@@ -948,7 +950,7 @@ export function CityRecoveryApp() {
               {state.result && (
                 <>
                   <div className="space-y-3">
-                    {state.result.plans.map((plan) => (
+                    {visiblePlans.map((plan) => (
                       <CityPlanCard
                         key={plan.id}
                         plan={plan}
@@ -966,20 +968,20 @@ export function CityRecoveryApp() {
                       />
                     ))}
                   </div>
-                  {state.result.rejected.length > 0 && (
+                  {visibleRejected.length > 0 && (
                     <details
                       className="text-sm"
-                      open={state.result.plans.length === 0}
+                      open={visiblePlans.length === 0}
                     >
                       <summary className="cursor-pointer font-medium">
-                        Other routes and limits ({state.result.rejected.length})
+                        Other routes and limits ({visibleRejected.length})
                       </summary>
                       <p className="my-3 text-muted-foreground">
-                        These are informational and cannot be chosen. Long
-                        drives need a rest and vehicle plan.
+                        These routes do not meet the current trip facts or need
+                        more confirmation and cannot be chosen.
                       </p>
                       <div className="space-y-3">
-                        {state.result.rejected.map((plan) => (
+                        {visibleRejected.map((plan) => (
                           <CityPlanCard
                             key={plan.id}
                             plan={plan}
@@ -1015,7 +1017,7 @@ export function CityRecoveryApp() {
                   </p>
                   {state.history.map((result, index) => (
                     <div key={index} className="mt-3 space-y-2">
-                      {result.plans.map((plan) => (
+                      {result.plans.filter((plan) => plan.kind !== "driving_estimate").map((plan) => (
                         <CityPlanCard
                           key={plan.id}
                           plan={plan}

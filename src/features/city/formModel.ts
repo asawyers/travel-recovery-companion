@@ -30,7 +30,7 @@ export const emptyCityDraft = (): CityDraft => ({
   deadlineLocal: "",
   budget: "",
   budgetMode: "soft",
-  drivingAllowed: true,
+  drivingAllowed: false,
   priority: "earliest",
 });
 export function localToOffset(local: string, timeZone: string): string {
@@ -106,7 +106,7 @@ export function buildCityRequest(
     deadlineAt,
     budgetCents,
     budgetMode: draft.budgetMode,
-    drivingAllowed: draft.drivingAllowed,
+    drivingAllowed: false,
     priority: draft.priority,
     confirmedOptions,
   });
@@ -136,7 +136,7 @@ export function draftFromCityRequest(
     budget:
       request.budgetCents === null ? "" : String(request.budgetCents / 100),
     budgetMode: request.budgetMode,
-    drivingAllowed: request.drivingAllowed,
+    drivingAllowed: false,
     priority: request.priority,
   };
 }

@@ -7,6 +7,7 @@ import {
   buildCityRequest,
   localToOffset,
   cityLocalInput,
+  draftFromCityRequest,
 } from "../../src/features/city/formModel";
 import {
   cityReuseKey,
@@ -21,7 +22,7 @@ import { CityRecoveryApp } from "../../src/features/city/CityRecoveryApp";
 import { CityPlanCard, cityTime } from "../../src/features/city/CityPlanCard";
 import { planCityRecovery } from "@domain/city-planner";
 import { CitySession } from "../../src/features/city/session";
-import { cityAnswer } from "../../src/features/city/conversationModel";
+import { cityAnswer, cityResultCount } from "../../src/features/city/conversationModel";
 const f = cityFixture();
 
 function drivingFixture(minutes: number) {
@@ -96,12 +97,67 @@ describe("informational long driving estimates", () => {
       appliedPreferences: {}, selectedPlanId: null, activity: [],
     }]) {
       const answer = cityAnswer({ ...current, assistance });
-      expect(answer).toContain("1 informational driving estimate");
+      expect(answer).not.toContain("driving estimate");
+      expect(answer).not.toContain("shown below");
+      expect(cityResultCount(current.result!)).toBe("0 selectable journeys.");
       expect(answer).toContain("No complete ground itinerary could be validated");
       expect(answer).toContain("does not mean no travel options exist");
     }
     engine.select(current.result!.rejected[0].id);
     expect(engine.getSnapshot().selectedId).toBeNull();
+  });
+});
+describe("city conversation without standalone driving", () => {
+  it("counts visible transit including driving transfers and suppresses an assisted hidden driving recommendation", async () => {
+    const fixture = cityFixture();
+    fixture.candidates[0].legs[0].mode = "drive";
+    const drive = drivingFixture(120).candidates[0];
+    drive.id = "hidden-drive";
+    fixture.candidates.push(drive);
+    const result = planCityRecovery(fixture.request, fixture.candidates, fixture);
+    expect(result.plans).toHaveLength(2);
+    const engine = new CitySession({ now: () => fixture.now });
+    await engine.compare(fixture.request, fixture.origin, fixture.destination, false);
+    const state = { ...engine.getSnapshot(), result, assistance: {
+      status: "completed" as const, summary: "Choose the hidden driving estimate.",
+      appliedPreferences: { priority: "cheapest" as const }, selectedPlanId: "hidden-drive", activity: [],
+    } };
+    expect(cityResultCount(result)).toBe("1 selectable journey.");
+    const answer = cityAnswer(state);
+    expect(answer).toContain("1 complete journey option is ready");
+    expect(answer).not.toContain("driving");
+    expect(answer).not.toContain("2 complete");
+    expect(cityAnswer({ ...state, assistance: { ...state.assistance,
+      clarification: { field: "deadlineAt", reason: "ambiguous" },
+    } })).toMatch(/deadline|arrival/i);
+    expect(result.plans).toHaveLength(2);
+  });
+  it("does not echo an accepted positive driving patch and preserves ordinary priority summaries", async () => {
+    const fixture = cityFixture();
+    const engine = new CitySession({ now: () => fixture.now });
+    await engine.compare(fixture.request, fixture.origin, fixture.destination, false);
+    const state = engine.getSnapshot();
+    const assistance = {
+      status: "completed" as const, summary: "Driving enabled for your trip.",
+      appliedPreferences: { drivingAllowed: true }, selectedPlanId: null, activity: [],
+    };
+    expect(cityAnswer({ ...state, assistance })).toContain("1 complete journey option is ready");
+    expect(cityAnswer({ ...state, assistance })).not.toContain("Driving enabled");
+    expect(cityAnswer({ ...state, result: { ...state.result!,
+      request: { ...state.result!.request, drivingAllowed: false },
+    }, assistance: { ...assistance, summary: "Lowest complete price comes first.",
+      appliedPreferences: { priority: "cheapest" },
+    } })).toBe("Lowest complete price comes first.");
+  });
+  it("does not describe a hidden selectable drive as a complete visible journey", async () => {
+    const fixture = drivingFixture(120);
+    const engine = new CitySession({ now: () => fixture.now });
+    await engine.compare(fixture.request, fixture.origin, fixture.destination, false);
+    const state = engine.getSnapshot();
+    expect(state.result!.plans).toHaveLength(1);
+    expect(cityResultCount(state.result!)).toBe("0 selectable journeys.");
+    expect(cityAnswer(state)).toContain("No complete ground itinerary could be validated");
+    expect(cityAnswer(state)).not.toContain("driving");
   });
 });
 describe("city starter", () => {
@@ -111,9 +167,11 @@ describe("city starter", () => {
     expect(d.destination).toBeNull();
     expect(d.goal).toBe("asap");
     expect(d.readyLocal).toBe("");
+    expect(d.drivingAllowed).toBe(false);
     const html = renderToStaticMarkup(createElement(CityRecoveryApp));
     expect(html).toContain("Where are you trying to get to?");
     expect(html).toContain("From city");
+    expect(html).not.toContain("Driving allowed");
     expect(html).toContain("To city");
     expect(html).toContain("When do you need to get there?");
     expect(html).not.toMatch(
@@ -121,6 +179,27 @@ describe("city starter", () => {
     );
     expect(html).not.toContain("Add an option you");
     expect(html).toContain("Compare ground travel and flight quotes. Explore an origin overnight when you need it.");
+  });
+  it("keeps standalone driving disabled when an old or assisted draft enables it", () => {
+    const built = buildCityRequest({
+      ...emptyCityDraft(), origin: f.origin, destination: f.destination,
+      drivingAllowed: true, priority: "fewest_transfers", budget: "75",
+    }, f.now);
+    expect(built.request).toMatchObject({
+      drivingAllowed: false, priority: "fewest_transfers", budgetCents: 7500,
+      readyAt: f.now, confirmedOptions: [],
+    });
+    expect(built.errors).toEqual({});
+  });
+  it("restores trip facts and priority while keeping standalone driving disabled", () => {
+    const request = { ...f.request, priority: "cheapest" as const, budgetCents: 12500 };
+    expect(request.drivingAllowed).toBe(true);
+    const draft = draftFromCityRequest(request, f.origin, f.destination);
+    expect(draft).toMatchObject({
+      origin: f.origin, destination: f.destination, readyAt: request.readyAt,
+      budget: "125", priority: "cheapest", drivingAllowed: false,
+    });
+    expect(request.drivingAllowed).toBe(true);
   });
   it("requires exact selected city records and rejects identical IDs", () => {
     expect(buildCityRequest(emptyCityDraft(), f.now).errors).toMatchObject({
@@ -152,7 +231,7 @@ describe("city starter", () => {
       readyAt: f.now,
       deadlineAt: "2026-11-19T10:30:00-08:00",
       budgetCents: null,
-      drivingAllowed: true,
+      drivingAllowed: false,
       priority: "earliest",
     });
     expect(built.request?.confirmedOptions).toEqual([]);

@@ -87,7 +87,7 @@ async function setup(
       destination = findCity(input.request.destinationCityId)!;
     const patch =
       options.cityPatch && input.refinement
-        ? { priority: "cheapest" as const }
+        ? { priority: "cheapest" as const, drivingAllowed: true }
         : {};
     await route.fulfill({
       json: {
@@ -153,7 +153,7 @@ async function setup(
         ...travelRequestBinding(input),
         trip: {
           ...input.trip,
-          ...(patchTravel ? { priority: "cheapest" } : {}),
+          ...(patchTravel ? { priority: "cheapest", drivingAllowed: true } : {}),
         },
       },
       origin: f.origin,
@@ -184,7 +184,7 @@ async function setup(
               ? {
                   status: "completed",
                   summary: "Using your requested lower-price priority.",
-                  appliedPreferences: { priority: "cheapest" },
+                  appliedPreferences: { priority: "cheapest", drivingAllowed: true },
                   selectedPlanId: assessment.journey!.id,
                   activity: [],
                 }
@@ -588,7 +588,7 @@ test("accepted city-agent preferences recompose travel locally, clear old choice
     .click();
   await page
     .getByRole("textbox", { name: "Message about your trip", exact: true })
-    .fill("Please use the cheapest option");
+    .fill("Please use the cheapest option and allow driving");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect.poll(() => ground.length).toBe(2);
   await expect(
@@ -608,12 +608,20 @@ test("accepted city-agent preferences recompose travel locally, clear old choice
   );
   expect(saved.request.trip.priority).toBe("cheapest");
   expect(saved.request.trip.readyAt).toBe(posts[0].trip.readyAt);
+  expect(saved.request.trip.drivingAllowed).toBe(false);
+  for (const priority of ["Fewer changes", "Cheaper"]) {
+    await page.getByRole("button", { name: priority, exact: true }).click();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(posts).toHaveLength(2);
+    expect(ground).toHaveLength(2);
+  }
   await page
     .getByRole("textbox", { name: "Message about your trip", exact: true })
     .fill("Check flight options");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect.poll(() => posts.length).toBe(3);
   expect(posts[2].trip.priority).toBe("cheapest");
+  expect(posts.every(input => input.trip.drivingAllowed === false)).toBe(true);
 });
 test("accepted travel-agent preferences update draft and ground locally without another request", async ({
   page,
@@ -627,11 +635,10 @@ test("accepted travel-agent preferences update draft and ground locally without 
   ).toBeEnabled();
   await page
     .getByRole("textbox", { name: "Message about your trip", exact: true })
-    .fill("Find cheapest flights");
+    .fill("Find cheapest flights and allow driving");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect(page.getByRole("log")).toContainText(
-    "Using your requested lower-price priority.",
-  );
+  await expect.poll(() => posts.length).toBe(3);
+  await expect(page.getByRole("log")).not.toContainText(/driving (?:is now |has been )?allowed|enabled driving/i);
   await page.getByText("Edit trip", { exact: true }).click();
   await page
     .getByText("Budget and travel preferences", { exact: true })
@@ -648,6 +655,11 @@ test("accepted travel-agent preferences update draft and ground locally without 
     .click();
   expect(posts).toHaveLength(3);
   expect(ground).toHaveLength(1);
+  await page.getByRole("button", { name: "Plan this flight", exact: true }).first().click();
+  await directFacts(page);
+  await expect.poll(() => posts.length).toBe(4);
+  expect(posts.every(input => input.trip.drivingAllowed === false)).toBe(true);
+  await expect(page.getByLabel("Driving allowed", { exact: true })).toHaveCount(0);
 });
 test("negated and ambiguous overnight mentions preserve flight date and do not request hotel inventory", async ({
   page,
@@ -671,7 +683,7 @@ test("negated and ambiguous overnight mentions preserve flight date and do not r
     expect(posts.at(-1)?.departureDate).toBe("2026-11-18");
   }
 });
-for (const action of ["Recheck available sources", "No driving"]) {
+for (const action of ["Recheck available sources", "Confirm trip facts and update options"]) {
   test(`${action} preserves accepted overnight dates until an explicit same-day search`, async ({
     page,
   }) => {
@@ -685,6 +697,9 @@ for (const action of ["Recheck available sources", "No driving"]) {
       page.getByRole("region", { name: "Flight and overnight planning" }),
     ).toContainText("Origin overnight 2026-11-18 to 2026-11-19");
     const accepted = posts[1];
+    if (action === "Confirm trip facts and update options") {
+      await page.getByText("Edit trip", { exact: true }).click();
+    }
     await page.getByRole("button", { name: action, exact: true }).click();
     await expect.poll(() => posts.length).toBe(3);
     expect(posts[2].departureDate).toBe(accepted.departureDate);
@@ -694,8 +709,7 @@ for (const action of ["Recheck available sources", "No driving"]) {
     expect(posts[2].destinationAirportIata).toBe(
       accepted.destinationAirportIata,
     );
-    if (action === "No driving")
-      expect(posts[2].trip.drivingAllowed).toBe(false);
+    expect(posts[2].trip.drivingAllowed).toBe(false);
     await page
       .getByRole("button", { name: "Search same-day flights", exact: true })
       .click();
@@ -703,8 +717,7 @@ for (const action of ["Recheck available sources", "No driving"]) {
     expect(posts[3].departureDate).toBe("2026-11-18");
     expect(posts[3].overnight).toBeNull();
     expect(posts[3].trip.readyAt).toBe(accepted.trip.readyAt);
-    if (action === "No driving")
-      expect(posts[3].trip.drivingAllowed).toBe(false);
+    expect(posts[3].trip.drivingAllowed).toBe(false);
     await expect(
       page.getByRole("button", {
         name: "Search same-day flights",

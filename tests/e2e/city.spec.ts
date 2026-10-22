@@ -153,7 +153,7 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({json:{version:3,request,origin:findCity(request.trip.originCityId),destination:findCity(request.trip.destinationCityId),generatedAt:now,expiresAt:"2026-11-18T13:00:00Z",flightOffers:[],hotelOffers:[],sourceStatuses:[],journey:null,selectionIssue:null,warnings:["Travel fixture unavailable; no live inventory was checked."],...(conversation?{conversation:{turnId:conversation.turnId,baseRevision:conversation.baseRevision}}:{})}});
   });
 });
-test("long-drive-only city comparison exposes an informational estimate without a continuous-arrival or save claim", async ({ page }) => {
+test("long-drive-only city response stays hidden without an arrival or save claim", async ({ page }) => {
   let posts = 0;
   await page.route(endpoint, async route => {
     posts++;
@@ -173,25 +173,21 @@ test("long-drive-only city comparison exposes an informational estimate without 
     });
     expect(result.plans).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
-    expect(result.rejected[0].violations).toEqual([]);
+    expect(result.rejected[0].selectable).toBe(false);
+    expect(result.rejected[0].violations).toEqual(input.request.drivingAllowed ? [] : ["Driving is not allowed by the traveler."]);
     await route.fulfill({ json: CityRecoveryResponseSchema.parse({ ...base, result, facts: { ...base.facts, candidates: result.request.confirmedOptions } }) });
   });
   await page.goto("/");
   await selectCity(page, "From city", "San Diego CA", /^San Diego, CA/);
   await selectCity(page, "To city", "Portland ME", /^Portland, ME/);
   await page.getByRole("button", { name: "Find my options", exact: true }).click();
-  const card = page.getByTestId("city-option-card").filter({ hasText: "Google Maps driving duration estimate" });
-  await expect(card).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: /0 selectable journeys.*1 informational driving estimate/ })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /^0 selectable journeys\.$/ })).toBeVisible();
+  await expect(page.getByTestId("city-option-card")).toHaveCount(0);
   await expect(page.getByRole("log")).toContainText("No complete ground itinerary could be validated");
   await expect(page.getByRole("log")).toContainText("does not mean no travel options exist");
   await expect(page.getByText("Compare ground travel and flight quotes. Explore an origin overnight when you need it.", { exact: true })).toBeVisible();
-  await expect(card).toContainText("48 hours of driving time before breaks and overnight stops");
-  await expect(card).toContainText("Arrival time has not been planned");
-  await expect(card).toContainText("Total trip cost unknown");
-  await card.getByText("Journey details and sources", { exact: true }).click();
-  await expect(card).not.toContainText(/\bArrive /);
-  await expect(card.getByRole("button", { name: "Choose this itinerary", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Travel options", exact: true })).not.toContainText(/Google Maps driving duration estimate|informational driving|hours of driving time|Arrival time has not been planned|Total trip cost unknown|\bArrive /i);
+  await expect(page.getByRole("button", { name: "Choose this itinerary", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save on this device", exact: true })).toBeDisabled();
   expect(posts).toBe(1);
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBeNull();
@@ -295,7 +291,7 @@ test("DST gaps and repeated origin hours require another explicit local time", a
   }
   expect(posts).toBe(0);
 });
-test("priority quick replies reassess cached facts without POST and no-driving discovers again", async ({
+test("priority quick replies reassess cached facts without POST and explicit recheck discovers again", async ({
   page,
 }) => {
   const posts: Envelope[] = [];
@@ -317,7 +313,7 @@ test("priority quick replies reassess cached facts without POST and no-driving d
     .click();
   await expect(page.getByRole("log")).toContainText("Fewer changes");
   expect(posts).toHaveLength(1);
-  await page.getByRole("button", { name: "No driving", exact: true }).click();
+  await page.getByRole("button", { name: "Recheck available sources", exact: true }).click();
   await expect.poll(() => posts.length).toBe(2);
   expect(posts[1].request.drivingAllowed).toBe(false);
   await page
