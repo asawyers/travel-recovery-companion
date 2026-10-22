@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route } from "./auth-fixture";
 import type {
   CityCandidate,
   CityRecoveryResponse,
@@ -10,7 +10,7 @@ import { planCityRecovery } from "../../supabase/functions/_shared/domain/city-p
 import { daytimeFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
 const endpoint = "**/functions/v1/recovery/city",
-  key = "travel-recovery:selected:v1",
+  key = "travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111",
   now = "2026-11-18T12:55:00Z";
 type Envelope = {
   request: CityTripRequest;

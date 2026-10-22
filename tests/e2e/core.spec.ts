@@ -1,5 +1,5 @@
 import { demonstrate, openPreferences, openManualOptions, compare, echoConversation, reviewPlan } from "./helpers";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, AUTH_ACCESS_TOKEN, RECOVERY_HTTP_URL, type Page } from "./auth-fixture";
 import { daytimeFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
 import {
@@ -35,7 +35,7 @@ test("real public HTTP compares, refines constraints, saves, restores without HT
   await expect(page.getByTestId("option-card")).toHaveCount(3);
   expect(posts).toHaveLength(1);
   expect(posts[0].body.investigate).toBe(false);
-  expect(posts[0].headers.authorization).toBeUndefined();
+  expect(posts[0].headers.authorization).toBe(`Bearer ${AUTH_ACCESS_TOKEN}`);
   expect(posts[0].headers.apikey).toBeUndefined();
   expect(posts[0].headers.cookie).toBeUndefined();
   await page.getByRole("button", { name: "Cheaper", exact: true }).click();
@@ -110,7 +110,7 @@ for (const outcome of ["result", "failure"]) {
     let count = 0;
     await page.route(endpoint, async (route) => {
       const ordinal = ++count;
-      const response = await route.fetch();
+      const response = await route.fetch({ url: RECOVERY_HTTP_URL });
       if (ordinal === 1) await held;
       if (ordinal === 1 && outcome === "failure")
         await route.fulfill({
@@ -224,7 +224,7 @@ test("validated provider-shaped TEST FIXTURE retains traveler arrival and source
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
   const saved = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("travel-recovery:selected:v1")!),
+    JSON.parse(localStorage.getItem("travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111")!),
   );
   expect(saved.request.arrivalAt).toBe(arrival.arrivalAt);
   expect(saved.request.arrivalBasis).toBe("traveler_confirmed");
@@ -313,7 +313,7 @@ test("manual confirmation timestamps survive priority-only input edits without a
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
   const saved = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("travel-recovery:selected:v1")!),
+    JSON.parse(localStorage.getItem("travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111")!),
   );
   expect(saved.request.confirmedOptions[0].evidence[0].checkedAt).toBe(
     posts[0].request.confirmedOptions[0].evidence[0].checkedAt,
@@ -379,9 +379,15 @@ test("configured saved-plan refresh explicitly investigates", async ({
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
+  const refreshed = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/functions/v1/recovery" &&
+    response.request().method() === "POST" &&
+    response.request().postDataJSON().investigate === true,
+  );
   await page
     .getByRole("button", { name: "Refresh this plan", exact: true })
     .click();
+  await (await refreshed).finished();
   await expect(page.getByTestId("option-card")).toHaveCount(3);
   expect(posts.map((post) => post.investigate)).toEqual([false, true]);
 });

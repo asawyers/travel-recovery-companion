@@ -1,3 +1,4 @@
+import { createAuthenticatedRecoveryHandler } from '../_shared/server/authentication.ts'
 import { createRecoveryHandler } from '../_shared/server/handlers.ts'
 import { createProviderRegistry } from '../_shared/server/providers.ts'
 import { createGoogleRoutesAdapter } from '../_shared/server/google-routes.ts'
@@ -39,8 +40,11 @@ const travelKey = routesApproved ? Deno.env.get('SERPAPI_API_KEY') : undefined
 const travelProvider = createSerpApiTravelAdapter({ enabled: routesApproved && Boolean(travelKey), apiKey: travelKey, now })
 const onwardProvider = createTravelOnwardAdapter({ enabled: routesApproved && Boolean(routesKey), apiKey: routesKey, now })
 const travelAgent = createTravelRecoveryAgent({ enabled: modelApproved && Boolean(modelKey), apiKey: modelKey, modelName, now })
-Deno.serve(createRecoveryRouter({
+Deno.serve(createAuthenticatedRecoveryHandler(createRecoveryRouter({
   legacy: createRecoveryHandler({ now, providers, agent, hotelBookingOrigin }),
   city: createCityRecoveryHandler({ now, provider: cityProvider, agent: cityAgent }),
   travel: createTravelRecoveryHandler({ now, provider: travelProvider, onward: onwardProvider, agent: travelAgent }),
+}), {
+  supabaseUrl: Deno.env.get('SUPABASE_URL'),
+  supabaseAnonKey: Deno.env.get('SUPABASE_ANON_KEY'),
 }))

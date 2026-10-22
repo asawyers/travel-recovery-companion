@@ -4,12 +4,12 @@ export class HttpError extends Error {
   constructor(readonly status: number, message: string) { super(message) }
 }
 
-/** Public browser access without credentials or origin-specific configuration. */
+/** Browser bearer-token access without cookies or origin-specific configuration. */
 export function corsHeaders(): Headers {
   return new Headers({
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': 'content-type, authorization',
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
   })

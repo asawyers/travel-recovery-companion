@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { recoveryHeaders } from './authentication.mjs'
 import { travelFixture } from '../../supabase/functions/_shared/domain/travel-fixtures.ts'
 import { TravelRecoveryResponseSchema } from '../../supabase/functions/_shared/domain/travel-contracts.ts'
 import { findCity } from '../../supabase/functions/_shared/domain/city-resolver.ts'
@@ -22,7 +23,7 @@ const payload = () => {
   input.selection = null
   return input
 }
-const send = (body, headers = {}) => fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })
+const send = (body, headers = {}) => fetch(endpoint, { method: 'POST', headers: recoveryHeaders(headers), body: JSON.stringify(body) })
 async function parse(response) {
   assert.equal(response.status, 200)
   return TravelRecoveryResponseSchema.parse(await response.json())
@@ -31,6 +32,7 @@ const cors = response => {
   assert.equal(response.headers.get('access-control-allow-origin'), '*')
   assert.equal(response.headers.get('access-control-allow-credentials'), null)
   assert.equal(response.headers.get('cache-control'), 'no-store')
+  assert.match(response.headers.get('access-control-allow-headers'), /authorization/i)
 }
 
 test('REAL HTTP travel resolves canonical SAN/PWM metadata and ignores forged coordinates', async () => {
@@ -113,21 +115,21 @@ test('REAL HTTP travel selected offer IDs cannot inject trusted provider data', 
 })
 
 test('REAL HTTP travel rejects malformed, noncanonical, or oversized requests', async () => {
-  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' })).status, 400)
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: recoveryHeaders(), body: '{' })).status, 400)
   for (const invalid of [
     { ...payload(), unexpected: true },
     { ...payload(), quote: { id: 'provider-shaped-quote' } },
     { ...payload(), selection: { offer: { id: 'raw provider quote shape' } } },
   ]) assert.equal((await send(invalid)).status, 400)
-  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: ' '.repeat(65537) })).status, 413)
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: recoveryHeaders(), body: ' '.repeat(65537) })).status, 413)
   async function* chunks() { yield ' '.repeat(40_000); yield ' '.repeat(30_000) }
-  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: chunks(), duplex: 'half' })).status, 413)
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: recoveryHeaders(), body: chunks(), duplex: 'half' })).status, 413)
 })
 
 test('REAL HTTP travel wildcard CORS supports OPTIONS 204, POST 200 and GET 405', async () => {
   for (const requestOrigin of [origin, 'https://arbitrary.example', 'null', null]) {
     const headers = requestOrigin === null ? {} : { origin: requestOrigin }
-    const preflight = await fetch(endpoint, { method: 'OPTIONS', headers })
+    const preflight = await fetch(endpoint, { method: 'OPTIONS', headers: { ...headers, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type, authorization' } })
     const post = await send(payload(), headers)
     const wrong = await fetch(endpoint, { headers })
     assert.equal(preflight.status, 204)

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./auth-fixture";
 import { buildHotelRecovery } from "../../supabase/functions/_shared/domain/hotel-recovery";
 import { daytimeFixture, overnightFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
@@ -192,7 +192,7 @@ test("sandbox guide completes with explicit fictional defaults, saves and refres
   await target.click();
   await page.getByRole("button",{name:"Save on this device",exact:true}).click();
   await expect(page.getByTestId("saved-plan")).toContainText("Sandbox / test itinerary");
-  const stored=await page.evaluate(()=>localStorage.getItem("travel-recovery:selected:v1"));
+  const stored=await page.evaluate(()=>localStorage.getItem("travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111"));
   expect(stored).not.toContain("What next?");
   await page.reload();
   await expect(page.getByTestId("saved-plan")).toContainText("Historical snapshot");
@@ -227,14 +227,14 @@ test("typed replacement with the same plan ID requires a new selection and save,
   if(!await target.isVisible())await page.getByText(/^Other options/).click();
   await target.click();
   await page.getByRole("button",{name:"Save on this device",exact:true}).click();
-  const original=await page.evaluate(()=>localStorage.getItem("travel-recovery:selected:v1"));
+  const original=await page.evaluate(()=>localStorage.getItem("travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111"));
   expect(JSON.parse(original!).plan.knownCostCents).toBe(4700);
   await page.getByLabel("Message about your trip").fill("Prefer the cheapest newly checked option");
   await page.getByRole("button",{name:"Send message",exact:true}).click();
   await expect(page.getByTestId("option-card").first()).toContainText("$57.00");
   await expect(page.getByTestId("itinerary")).toContainText("No itinerary selected");
   await expect(page.getByRole("button",{name:"Save on this device",exact:true})).toBeDisabled();
-  expect(await page.evaluate(()=>localStorage.getItem("travel-recovery:selected:v1"))).toBe(original);
+  expect(await page.evaluate(()=>localStorage.getItem("travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111"))).toBe(original);
   await page.getByText("Earlier comparisons",{exact:true}).click();
   await expect(page.getByTestId("historical-option-card")).toHaveCount(3);
   await expect(page.getByTestId("historical-option-card").filter({hasText:"Fictional intercity bus"})).toContainText("$47.00");
@@ -242,7 +242,7 @@ test("typed replacement with the same plan ID requires a new selection and save,
   await target.click();
   await expect(page.getByTestId("itinerary")).toContainText("Not booked or saved");
   await page.getByRole("button",{name:"Save on this device",exact:true}).click();
-  const replaced=await page.evaluate(()=>localStorage.getItem("travel-recovery:selected:v1"));
+  const replaced=await page.evaluate(()=>localStorage.getItem("travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111"));
   expect(JSON.parse(replaced!).plan.knownCostCents).toBe(5700);
   expect(posts).toHaveLength(2);
 });

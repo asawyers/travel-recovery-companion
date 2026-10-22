@@ -1,3 +1,4 @@
+import { plannerRequestHeaders, notifyAuthenticationRequired } from './authenticated-request';
 import { RecoveryResponseSchema } from "@domain/api";
 import type { RecoveryResponse } from "@domain/api";
 import type { ConversationContext } from "@domain/conversation";
@@ -38,7 +39,7 @@ async function requestRecovery(
   try {
     response = await fetch(endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await plannerRequestHeaders(signal),
       credentials: "omit",
       body: JSON.stringify({ request, investigate, ...(refinement?.trim() ? { refinement: refinement.trim() } : {}), ...(conversation ? { conversation } : {}) }),
       signal,
@@ -48,6 +49,15 @@ async function requestRecovery(
     throw new PublicPlannerError(
       "Cannot reach the planner. Check your connection and retry. Your inputs are retained.",
     );
+  }
+  if (signal.aborted) {
+    void response.body?.cancel().catch(() => {});
+    throw signal.reason;
+  }
+  if (response.status === 401) {
+    void response.body?.cancel().catch(() => {});
+    notifyAuthenticationRequired();
+    throw new PublicPlannerError('Your session has ended. Sign in again to continue.');
   }
   if (!response.ok)
     throw new PublicPlannerError(

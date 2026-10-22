@@ -1,3 +1,4 @@
+import { plannerRequestHeaders, notifyAuthenticationRequired } from './authenticated-request';
 import {
   TravelRecoveryInputSchema,
   TravelRecoveryResponseSchema,
@@ -77,7 +78,7 @@ export async function requestTravel(input: TravelRecoveryInput, options: {
       let response: Response
       try {
         response = await (options.fetch ?? fetch)(endpoint, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
+          method: 'POST', headers: await plannerRequestHeaders(controller.signal), credentials: 'omit',
           body: JSON.stringify(parsed.data), signal: controller.signal,
         })
       } catch {
@@ -85,6 +86,11 @@ export async function requestTravel(input: TravelRecoveryInput, options: {
         throw new PublicPlannerError('Cannot reach the planner. Check your connection and retry. Your inputs are retained.')
       }
       if (controller.signal.aborted) { void response.body?.cancel().catch(() => {}); throw controller.signal.reason }
+      if (response.status === 401) {
+        void response.body?.cancel().catch(() => {});
+        notifyAuthenticationRequired();
+        throw new PublicPlannerError('Your session has ended. Sign in again to continue.');
+      }
       if (!response.ok) { void response.body?.cancel().catch(() => {}); throw new PublicPlannerError('The planner is unavailable or rejected these trip facts. Retry. Your inputs are retained.') }
       try {
         const result = TravelRecoveryResponseSchema.parse(await boundedJson(response, controller.signal))

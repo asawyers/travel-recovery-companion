@@ -1,5 +1,5 @@
 import { openManualOptions, compare, investigate, echoConversation, revealPlan, reviewPlan } from "./helpers";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./auth-fixture";
 import { daytimeFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
 import {
@@ -8,7 +8,7 @@ import {
 } from "../../supabase/functions/_shared/domain/api";
 import type { ConfirmedOption } from "../../supabase/functions/_shared/domain/schemas";
 const endpoint = "**/functions/v1/recovery";
-const key = "travel-recovery:selected:v1";
+const key = "travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111";
 function fixtureResponse(arrivalAt = "2026-11-18T08:00:00-05:00") {
   const f = daytimeFixture();
   function production(value: unknown): unknown {

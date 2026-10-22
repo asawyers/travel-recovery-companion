@@ -1,12 +1,16 @@
 # Travel Recovery Companion
 
-An account-free travel recovery prototype. Start with **Where are you trying to get to?**, select US From and To cities, and compare ground routes and observed flight quotes in one conversation. Explore one night near your starting city and a flight the next day, confirm the complete journey, save it on your device, and follow travel search links. The app does not buy tickets or reserve vehicles or rooms.
+A travel recovery prototype with lightweight Supabase email/password authentication. Start with **Where are you trying to get to?**, select US From and To cities, and compare ground routes and observed flight quotes in one conversation. Explore one night near your starting city and a flight the next day, confirm the complete journey, save it on your device, and follow travel search links. The app does not buy tickets or reserve vehicles or rooms.
 
 [Open the app](https://travel-recovery-companion.vercel.app) · [Public source](https://github.com/asawyers/travel-recovery-companion) · [Verification and deployment status](docs/VERIFICATION.md)
 
 The motivation was the author's San Diego → Portland journey: a delay on the San Diego → Boston flight caused them to miss all Boston → Portland trains, so they drove. The current default generalizes recovery to city-to-city travel. The original Boston airport flow and its labeled examples remain at [`/legacy`](https://travel-recovery-companion.vercel.app/legacy). Exact tested revisions, deployment IDs, browser results and separate actual-provider evidence belong in the verification record; source implementation alone does not establish deployed acceptance.
 
 ## Using the app
+
+Create your own account with an email and password, or sign in to an existing account. Signup is immediate for this coding challenge; email verification and password-reset delivery are not configured. Your session stays signed in across reloads; use **Sign out** in the header to end it. Recovery API requests require a server-validated Supabase user session. Terms and Privacy remain accessible while signed out.
+
+Saved itineraries remain on this device and are separated by account; they do not sync across devices. Signing out clears the visible trip and conversation. Earlier account-free snapshots remain untouched but are not automatically assigned to a newly created account.
 
 Search either city by place name, county, state name or state code. The pinned offline GeoNames catalog contains 171,671 populated places across all 50 states, Washington DC and five US territories. Small communities are included without a population cutoff. This is broad national coverage, not a guarantee of every settlement or available route. See [city data](docs/CITY_DATA.md) for licensing, source checksums, coverage, regeneration and performance details.
 
@@ -40,7 +44,7 @@ Each assisted request has at most six model turns, twelve attempted tool calls a
 
 Saving keeps one selected manual ground itinerary or confirmed complete flight itinerary in this browser's local storage, with its original trip dates and evidence-check timestamps. Version 3 flight snapshots, version 2 city snapshots and version 1 legacy snapshots share the existing storage key. A flight snapshot includes only its selected normalized flight, optional selected hotel, confirmed facts and assessed itinerary; other quotes and raw responses are excluded. Reloaded plans are historical until explicitly refreshed; refreshing does not reconfirm old manual evidence. Legacy refresh opens `/legacy?refreshSaved=1` and preserves its original airport and exit allowances. Unsupported saved versions block overwrite until explicit deletion. Older estimates can still be compared, selected and saved when the itinerary is eligible. Source age does not override actual departure times, connection feasibility, deadlines, hard budgets or the Google route storage restriction. A failed optional refresh keeps compatible prior estimates available.
 
-Google Maps route content is transient and cannot be saved; Google Travel observations from SerpApi are a separate source and retain their original evidence in an eligible flight snapshot; saving a manual itinerary also filters Google alternatives from its stored request. Chat messages are never included in saved snapshots. There is no account, cross-device sync, sign-in or email workflow. Public [terms](https://travel-recovery-companion.vercel.app/terms) and [privacy](https://travel-recovery-companion.vercel.app/privacy) explain provider content and device storage.
+Google Maps route content is transient and cannot be saved; Google Travel observations from SerpApi are a separate source and retain their original evidence in an eligible flight snapshot; saving a manual itinerary also filters Google alternatives from its stored request. Chat messages are never included in saved snapshots. Supabase Auth manages account email, password authentication and session tokens. Plans are stored per account in this browser; cross-device sync and email delivery are outside this challenge scope. Public [terms](https://travel-recovery-companion.vercel.app/terms) and [privacy](https://travel-recovery-companion.vercel.app/privacy) explain provider content and device storage.
 
 ## Legacy examples and hotels
 
@@ -67,7 +71,7 @@ npm run build
 npm run test:e2e
 ```
 
-The browser suite uses installed Brave, defaulting on macOS to `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for another installation. Fixture coverage verifies behavior, not live inventory or paid API acceptance; consult [verification status](docs/VERIFICATION.md) for actual results.
+The browser suite needs Deno on PATH (or `DENO_EXECUTABLE_PATH`) and starts a loopback-only HTTP harness with a synthetic test session and all providers disabled. Test identities are never accepted by production Auth. The browser suite uses installed Brave, defaulting on macOS to `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for another installation. Fixture coverage verifies behavior, not live inventory or paid API acceptance; consult [verification status](docs/VERIFICATION.md) for actual results.
 
 For an optional local backend, install Docker Desktop, Supabase CLI 2.120.0 and Deno 2.9.1:
 
@@ -77,14 +81,14 @@ cp .env.integration.example .env.integration.local
 supabase functions serve recovery
 ```
 
-In another terminal, check the Edge source and run all three loopback integration suites:
+In another terminal, check the Edge source and run the loopback integration suites:
 
 ```sh
 deno check --config supabase/functions/recovery/deno.json supabase/functions/recovery/index.ts
-node --env-file=.env.integration.local --test tests/integration/core.test.mjs tests/integration/city.test.mjs tests/integration/travel.test.mjs
+node --env-file=.env.integration.local --test tests/integration/core.test.mjs tests/integration/city.test.mjs tests/integration/travel.test.mjs tests/integration/minimal-auth.test.mjs
 ```
 
-These suites cover original, city and travel HTTP behavior and reject non-loopback targets. `npm run test:integration` runs the original suite only. The base endpoint is `http://127.0.0.1:54321/functions/v1/recovery`; city requests append `/city`, and flight/hotel requests append `/travel`. No user token, frontend Supabase key or application database rows are needed. Keep provider/model usage disabled in this local test environment.
+These suites cover original, city and travel HTTP behavior and reject non-loopback targets. `npm run test:integration` runs the original suite only. The base endpoint is `http://127.0.0.1:54321/functions/v1/recovery`; city requests append `/city`, and flight/hotel requests append `/travel`. Protected HTTP integration requests need a current Supabase user access token in `RECOVERY_ACCESS_TOKEN`; a missing or invalid token must receive 401. Application database rows are not required. The browser uses the existing project URL and publishable browser key from `src/config/public-supabase.ts`; override both with `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for a separate local/development project. Keep provider/model usage disabled in this local test environment.
 
 To connect Vite, set `VITE_RECOVERY_API_URL=http://127.0.0.1:54321/functions/v1/recovery` in ignored `.env.local` and restart it. Use the base endpoint, since the clients append `/city` and `/travel`. Provider/model keys belong only on the server, never in `VITE_` variables.
 
@@ -109,7 +113,7 @@ The `_shared` paths above are under `supabase/functions/`. The original `/recove
 
 The existing Vercel project uses [native GitHub integration](https://vercel.com/docs/git/vercel-for-github): Vite preset, repository root, Node 24, `npm ci`, `npm run build`, output `dist`, production branch `main`. Main pushes produce production deployments; feature pushes produce previews. Set `VITE_RECOVERY_API_URL=https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery` and rebuild for the public backend, or leave it empty for local-only previews. No Vercel token/custom deployment Action is needed.
 
-The existing GitHub workflow checks install/tests/build and deploys only the `recovery` function on `main` when `SUPABASE_DEPLOY_ENABLED=true`. Its production environment uses scoped `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_ID` secrets; the token needs Project Settings read and Edge Functions read-write permissions and must be renewed before expiry. JWT verification is disabled for this intentionally public endpoint, which uses wildcard CORS without credentials. No migrations, Auth callbacks or email settings are required. Frontend and backend delivery are separate: verify both deployed revisions in the status record.
+The existing GitHub workflow checks install/tests/build and deploys only the `recovery` function on `main` when `SUPABASE_DEPLOY_ENABLED=true`. Its production environment uses scoped `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_ID` secrets; the token needs Project Settings read and Edge Functions read-write permissions and must be renewed before expiry. The gateway legacy JWT check remains disabled to support current signing keys; the function itself verifies every POST bearer token with the project’s Supabase Auth service before provider or model work. Missing, forged or expired sessions receive 401. Browser preflight remains public and CORS permits the Authorization header. No application database migrations or OAuth callbacks are needed. Hosted email signup is enabled with Confirm email off for this coding challenge. Frontend and backend delivery are separate: verify both deployed revisions in the status record.
 
 Google, OpenAI and SerpApi keys and existing usage approvals, plus the sandbox key, are already configured; no new setup is needed for the current app. Usage switches are kill switches, not authentication or aggregate spending caps. Google pay-as-you-go without a daily cap was explicitly approved. [Provider setup](docs/PROVIDER_SETUP.md) separates another environment's setup from deferred production hotels.
 
@@ -123,6 +127,6 @@ For challenge submission:
 - Confirm comparison, constraints, selection and eligible device save/reload/delete at the submitted revision.
 - Include a status note with tested frontend/backend revisions, actual-provider evidence and known limitations in [verification status](docs/VERIFICATION.md).
 - Explain the code and evidence labels; AI assistance does not replace the author's understanding.
-- Disclose that authentication/email were intentionally omitted by the author's scope decision, and production hotels remain deferred. Do not claim all original assessment requirements are met.
+- Demonstrate creating an individual account, signing in, session restoration and signing out. Disclose that email verification/recovery delivery, cross-device plan sync and production hotel access remain outside scope; do not imply production-grade account management.
 
 Two hours is an effort estimate, not a hard timer.

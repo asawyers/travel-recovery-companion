@@ -1,3 +1,4 @@
+import { AccountControls } from '@/features/auth/AuthProvider';
 import { useEffect, useRef, useState } from "react";
 import type {
   ConfirmedOption,
@@ -451,9 +452,12 @@ export function LegacyRecoveryApp() {
       <header className="border-b border-t-4 border-t-[#153247] bg-white">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <p className="font-semibold">Travel recovery companion</p>
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
           <Badge variant="secondary" className="text-green-800">
             Device-local saving
           </Badge>
+            <AccountControls />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">

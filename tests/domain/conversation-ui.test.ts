@@ -77,24 +77,15 @@ it("keeps malformed hotel prices and service facts in focused correction control
 
 
 describe("application routes", () => {
-  it.each(["/", "/another-city-route", "/another-city-route/"])("opens the city starter at %s", (pathname) => {
+  it.each(["/", "/another-city-route", "/another-city-route/", "/legacy", "/legacy/"])("waits for authentication before opening the planner at %s", (pathname) => {
     vi.stubGlobal("window", { location: { pathname } });
     try {
       const html = renderToStaticMarkup(createElement(App));
-      expect(html).toContain("Where are you trying to get to?");
-      expect(html).toContain("From city");
-      expect(html).toContain("To city");
+      expect(html).toContain('role="status"');
+      expect(html).toContain("Restoring your session");
+      expect(html).not.toContain("Where are you trying to get to?");
       expect(html).not.toContain("Let&#x27;s get you to Portland");
-    } finally { vi.unstubAllGlobals(); }
-  });
-  it.each(["/legacy", "/legacy/"])("preserves the airport starter at %s", (pathname) => {
-    vi.stubGlobal("window", { location: { pathname } });
-    try {
-      const html = renderToStaticMarkup(createElement(App));
-      expect(html).toContain("Let&#x27;s get you to Portland");
-      expect(html).toContain("Gate arrival");
-      expect(html).toContain('href="/terms"');
-      expect(html).toContain('href="/privacy"');
+      expect(html).not.toContain("Find my options");
     } finally { vi.unstubAllGlobals(); }
   });
   it.each([["/terms", "Terms"], ["/terms/", "Terms"], ["/privacy", "Privacy"], ["/privacy/", "Privacy"]])("keeps the legal page at %s", (pathname, title) => {
@@ -102,6 +93,7 @@ describe("application routes", () => {
     try {
       const html = renderToStaticMarkup(createElement(App));
       expect(html).toContain(`>${title}</h1>`);
+      expect(html).not.toContain("Restoring your session");
       expect(html).toContain('href="/"');
       expect(html).not.toContain("Where are you trying to get to?");
       expect(html).not.toContain("Let&#x27;s get you to Portland");

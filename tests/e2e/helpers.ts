@@ -1,4 +1,4 @@
-import { expect, type Page, type Route } from "@playwright/test";
+import { expect, type Page, type Route } from "./auth-fixture";
 
 /** Open a disclosure through its accessible summary, preserving its current state. */
 export async function openDisclosure(page: Page, title: string) {

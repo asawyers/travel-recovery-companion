@@ -124,6 +124,9 @@ it("caller cancellation settles ignored-abort transport and clears the deadline 
   ).catch((error) => {
     outcome = error;
   });
+  // Let asynchronous session headers settle so this case still cancels an active transport.
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requestSignal).toBeDefined();
   controller.abort();
   await vi.advanceTimersByTimeAsync(0);
   expect(outcome).toBeInstanceOf(Error);

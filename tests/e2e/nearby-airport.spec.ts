@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from './auth-fixture'
 import { findAirport } from '../../supabase/functions/_shared/domain/airport-metadata'
 import { findCity } from '../../supabase/functions/_shared/domain/city-catalog'
 import { planCityRecovery } from '../../supabase/functions/_shared/domain/city-planner'

@@ -1,5 +1,5 @@
 import { openDisclosure, demonstrate, openPreferences, openManualOptions, compare, revealPlan, reviewPlan } from "./helpers";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./auth-fixture";
 test("guest compares, refines, recovers and invalidates a selection", async ({
   page,
 }) => {

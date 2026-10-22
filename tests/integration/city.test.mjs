@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { recoveryHeaders } from './authentication.mjs'
 import { cityFixture } from '../../supabase/functions/_shared/domain/city-fixtures.ts'
 import { findCity } from '../../supabase/functions/_shared/domain/city-resolver.ts'
 import { CityRecoveryResponseSchema } from '../../supabase/functions/_shared/domain/city-contracts.ts'
@@ -23,7 +24,7 @@ const payload = () => {
   for (const candidate of request.confirmedOptions) for (const evidence of candidate.evidence) evidence.checkedAt = checkedAt
   return { request, investigate: false }
 }
-const send = (body, headers = {}) => fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })
+const send = (body, headers = {}) => fetch(endpoint, { method: 'POST', headers: recoveryHeaders(headers), body: JSON.stringify(body) })
 async function parse(response) {
   assert.equal(response.status, 200)
   return CityRecoveryResponseSchema.parse(await response.json())
@@ -32,6 +33,7 @@ const cors = response => {
   assert.equal(response.headers.get('access-control-allow-origin'), '*')
   assert.equal(response.headers.get('access-control-allow-credentials'), null)
   assert.equal(response.headers.get('cache-control'), 'no-store')
+  assert.match(response.headers.get('access-control-allow-headers'), /authorization/i)
 }
 
 test('REAL HTTP city v2 preserves older manual checks with fresh collection expiry and authoritative metadata', async () => {
@@ -67,7 +69,7 @@ test('REAL HTTP city v2 preserves older manual checks with fresh collection expi
   assert.equal(body.facts.candidates[0].evidence[0].expiresAt, null)
   assert.ok(Date.parse(body.facts.expiresAt) > Date.parse(body.facts.checkedAt))
   assert.ok(Date.parse(body.facts.expiresAt) <= Date.parse(body.facts.checkedAt) + 300_000)
-  console.info('City HTTP gate: public POST 200; authoritative city metadata; usable manual plan preserves six-minute-old check and receives fresh bounded collection expiry')
+  console.info('City HTTP gate: authenticated POST 200; authoritative city metadata; usable manual plan preserves six-minute-old check and receives fresh bounded collection expiry')
 })
 
 test('REAL HTTP city sanitizes synthetic and real manual provenance while preserving original checks', async () => {
@@ -149,10 +151,10 @@ test('REAL HTTP city disabled model and provider preserve manual fallback withou
   }
 })
 
-test('REAL HTTP city wildcard CORS supports OPTIONS 204, POST 200 and GET 405 without credential header', async () => {
+test('REAL HTTP city wildcard CORS supports OPTIONS 204, POST 200 and GET 405 without cookie credentials', async () => {
   for (const requestOrigin of [origin, 'https://arbitrary.example', 'null', null]) {
     const headers = requestOrigin === null ? {} : { origin: requestOrigin }
-    const preflight = await fetch(endpoint, { method: 'OPTIONS', headers })
+    const preflight = await fetch(endpoint, { method: 'OPTIONS', headers: { ...headers, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type, authorization' } })
     const post = await send(payload(), headers)
     const wrong = await fetch(endpoint, { headers })
     assert.equal(preflight.status, 204)
@@ -165,15 +167,15 @@ test('REAL HTTP city wildcard CORS supports OPTIONS 204, POST 200 and GET 405 wi
 })
 
 test('REAL HTTP city rejects malformed/extra fields and declared/chunked bodies above 64 KiB', async () => {
-  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' })).status, 400)
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: recoveryHeaders(), body: '{' })).status, 400)
   for (const extra of [{ owner: 'not-accepted' }, { facts: {} }, { refinement: 'x'.repeat(501) }]) assert.equal((await send({ ...payload(), ...extra })).status, 400)
-  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: ' '.repeat(65537) })).status, 413)
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: recoveryHeaders(), body: ' '.repeat(65537) })).status, 413)
   async function* chunks() { yield ' '.repeat(40_000); yield ' '.repeat(30_000) }
-  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: chunks(), duplex: 'half' })).status, 413)
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: recoveryHeaders(), body: chunks(), duplex: 'half' })).status, 413)
 })
 
 test('REAL HTTP recovery router returns CORS 404 for an unknown city subpath', async () => {
-  const response = await fetch(new URL(`${endpoint.pathname}/not-a-route`, endpoint), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload()) })
+  const response = await fetch(new URL(`${endpoint.pathname}/not-a-route`, endpoint), { method: 'POST', headers: recoveryHeaders(), body: JSON.stringify(payload()) })
   assert.equal(response.status, 404)
   cors(response)
   assert.deepEqual(await response.json(), { error: 'Not found.' })

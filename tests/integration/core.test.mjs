@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { recoveryHeaders } from './authentication.mjs'
 import { daytimeFixture } from '../../supabase/functions/_shared/domain/fixtures.ts'
 import { RecoveryResponseSchema } from '../../supabase/functions/_shared/domain/api.ts'
 
@@ -11,9 +12,9 @@ assert.equal(endpoint.pathname, '/functions/v1/recovery')
 assert.equal(endpoint.username + endpoint.password + endpoint.search + endpoint.hash, '')
 const origin = 'http://127.0.0.1:5173'
 const payload = () => ({ request: daytimeFixture().request, investigate: false })
-const send = (body, headers = {}) => fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })
+const send = (body, headers = {}) => fetch(endpoint, { method: 'POST', headers: recoveryHeaders(headers), body: JSON.stringify(body) })
 
-test('REAL HTTP public recovery: no authorization, apikey, users or rows', async () => {
+test('REAL HTTP authenticated recovery returns plans without application database rows', async () => {
   const response = await send(payload())
   assert.equal(response.status, 200)
   const body = RecoveryResponseSchema.parse(await response.json())
@@ -21,13 +22,13 @@ test('REAL HTTP public recovery: no authorization, apikey, users or rows', async
   assert.equal(body.facts.candidates.length, 3)
   assert.ok(Date.parse(body.facts.expiresAt) <= Date.parse(body.facts.checkedAt) + 300_000)
   assert.equal(body.facts.arrivalEvidence[0].type, 'synthetic')
-  console.info(`HTTP gate: POST 200; ${body.result.plans.length} plans; ${body.facts.candidates.length} normalized candidates; revision ${body.facts.adapterRevision}; no credentials`)
+  console.info(`HTTP gate: POST 200; ${body.result.plans.length} plans; ${body.facts.candidates.length} normalized candidates; revision ${body.facts.adapterRevision}; authenticated user request`)
 })
 
 test('REAL HTTP wildcard origin and method contract: 204/200/405', async () => {
   for (const requestOrigin of [origin, 'https://arbitrary.example', 'null', null]) {
     const headers = requestOrigin === null ? {} : { origin: requestOrigin }
-    const preflight = await fetch(endpoint, { method: 'OPTIONS', headers })
+    const preflight = await fetch(endpoint, { method: 'OPTIONS', headers: { ...headers, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type, authorization' } })
     const response = await send(payload(), headers)
     const wrong = await fetch(endpoint, { headers })
     assert.equal(preflight.status, 204)
@@ -36,19 +37,20 @@ test('REAL HTTP wildcard origin and method contract: 204/200/405', async () => {
     for (const result of [preflight, response, wrong]) {
       assert.equal(result.headers.get('access-control-allow-origin'), '*')
       assert.equal(result.headers.get('access-control-allow-credentials'), null)
+      assert.match(result.headers.get('access-control-allow-headers'), /authorization/i)
     }
   }
-  console.info('HTTP gate: any Origin or no Origin; OPTIONS 204; POST 200; GET 405; wildcard CORS without credentials')
+  console.info('HTTP gate: any Origin or no Origin; OPTIONS 204; POST 200; GET 405; wildcard CORS with Authorization allowed and no cookies')
 })
 
 test('REAL HTTP invalid JSON, strict fields and oversized body: 400/413', async () => {
-  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' })).status, 400)
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: recoveryHeaders(), body: '{' })).status, 400)
   assert.equal((await send({ ...payload(), owner: 'not-accepted' })).status, 400)
   assert.equal((await send({ ...payload(), facts: {} })).status, 400)
-  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: ' '.repeat(65537) })).status, 413)
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: recoveryHeaders(), body: ' '.repeat(65537) })).status, 413)
   // Async iterable body forces chunked HTTP and omits Content-Length.
   async function* chunks() { yield ' '.repeat(40_000); yield ' '.repeat(30_000) }
-  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: chunks(), duplex: 'half' })).status, 413)
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: recoveryHeaders(), body: chunks(), duplex: 'half' })).status, 413)
   console.info('HTTP gate: malformed/extra fields 400; declared and chunked oversized bodies 413')
 })
 

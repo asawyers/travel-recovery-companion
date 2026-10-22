@@ -1,5 +1,5 @@
 import { manualField, openManualOptions, compare, investigate, echoConversation, reviewPlan } from "./helpers";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./auth-fixture";
 import { daytimeFixture, overnightFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
 import { createRecoveryHandler } from "../../supabase/functions/_shared/server/handlers";
@@ -52,7 +52,7 @@ test("refinement bypasses cache, shows accepted preferences and keeps source ide
   await expect(page.getByTestId("option-card").filter({ hasText: "rental car" })).toHaveCount(0);
   await reviewPlan(page, "View Fictional intercity train");
   await page.getByRole("button", { name: "Save on this device", exact: true }).click();
-  const raw = await page.evaluate(() => localStorage.getItem("travel-recovery:selected:v1"));
+  const raw = await page.evaluate(() => localStorage.getItem("travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111"));
   expect(raw).not.toContain("appliedPreferences"); expect(raw).not.toContain("Avoid driving");
 });
 test("hotel offers are rates only, require two property transfers, and a new property clears those facts", async ({ page }) => {

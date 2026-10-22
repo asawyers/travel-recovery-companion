@@ -1,5 +1,5 @@
 import { manualField, demonstrate, openPreferences, openManualOptions, openHotelDetails, compare, echoConversation, revealPlan } from "./helpers";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./auth-fixture";
 import { overnightFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { buildHotelRecovery } from "../../supabase/functions/_shared/domain/hotel-recovery";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
@@ -66,7 +66,7 @@ test("explicit hotel sandbox keeps test labels through full journey, cache reuse
   await hotelPlan.getByRole("button", { name: /View Boston Sandbox Property/ }).click();
   await page.getByRole("button", { name: "Save on this device", exact: true }).click();
   await expect(page.getByTestId("saved-plan")).toContainText("Sandbox / test itinerary");
-  const original = await page.evaluate(() => localStorage.getItem("travel-recovery:selected:v1"));
+  const original = await page.evaluate(() => localStorage.getItem("travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111"));
   expect(JSON.parse(original!).request.hotelDataMode).toBe("sandbox");
   await page.reload();
   await expect(page.getByTestId("saved-plan")).toContainText("Sandbox / test itinerary");
@@ -75,7 +75,7 @@ test("explicit hotel sandbox keeps test labels through full journey, cache reuse
   await expect(page.getByTestId("provenance-banner")).toContainText("Sandbox hotel rates");
   await expect.poll(() => posts.length).toBe(3);
   expect(posts[2]).toMatchObject({ investigate: true, request: { hotelDataMode: "sandbox" } });
-  expect(await page.evaluate(() => localStorage.getItem("travel-recovery:selected:v1"))).toBe(original);
+  expect(await page.evaluate(() => localStorage.getItem("travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111"))).toBe(original);
   await demonstrate(page, "Try hotel sandbox");
   await expect.poll(() => posts.length).toBe(4);
   expect(posts[3].request.confirmedOptions.map((option: { id: string }) => option.id)).toEqual(["manual-transit"]);

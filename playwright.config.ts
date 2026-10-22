@@ -14,9 +14,16 @@ export default defineConfig({
     },
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: `npm run dev -- --port ${new URL(baseURL).port || "5173"}`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    {
+      command: `npm run dev -- --port ${new URL(baseURL).port || "5173"}`,
+      url: baseURL,
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: `${process.env.DENO_EXECUTABLE_PATH ?? "deno"} run --config supabase/functions/recovery/deno.json --allow-net=127.0.0.1:37425 --allow-read tests/support/recovery-http-server.ts`,
+      url: "http://127.0.0.1:37425/health",
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
 });

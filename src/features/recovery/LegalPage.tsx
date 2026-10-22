@@ -32,8 +32,7 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
               complete journey and payable charges with the operator.
             </p>
             <p>
-              No booking or reservation is made. There are no traveler accounts
-              or sign-in. Selecting or saving a plan does not purchase tickets,
+              No booking or reservation is made. Supabase Auth provides email/password accounts and sign-in. Selecting or saving a plan does not purchase tickets,
               reserve seats, rent a car or book a hotel.
             </p>
             <p>
@@ -48,7 +47,7 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
           <>
             <p>
               Your trip inputs are compared locally or sent to the configured
-              public planner when you choose “Find my options,” “Update
+              authenticated planner when you choose “Find my options,” “Update
               options,” “Recheck available sources,” or send a message. National
               planning uses city center coordinates and explicit origin and
               destination time zones. Relevant current inputs may be sent to
@@ -56,8 +55,7 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
               route estimates and transit schedules. Explicit flight and overnight
               searches send selected airports, cities, dates, one-adult occupancy
               and relevant search preferences to SerpApi for Google Flights and
-              Google Hotels observations. Confirming a selected journey checks
-              those quotes again. In the separate Boston airport demo, hotel
+              Google Hotels observations. Confirming a selected journey uses the original observations already accepted for this trip. In the separate Boston airport demo, hotel
               investigations may send stay dates, occupancy and the nationality
               you enter to the enabled hotel source. Submitting a selected hotel
               journey explicitly investigates its availability again. Optional
@@ -82,7 +80,7 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
               current tab and is not saved in device snapshots. Flight snapshots contain only the selected normalized flight,
               optional hotel and confirmed complete journey, preserving original
               source dates and checks. Other offers, raw responses and conversation
-              are excluded. No traveler account or booking record is created.
+              are excluded. Supabase stores your account email and authentication data. Passwords are managed by Supabase Auth; the planner does not store them. Session tokens persist in this browser until sign-out or expiry. Saved plans are separated by account on this device and do not sync across devices. No booking record is created.
             </p>
             <p>
               Provider keys stay on the server. External operator links open

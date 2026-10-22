@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./auth-fixture";
 import { travelFixture } from "../../supabase/functions/_shared/domain/travel-fixtures";
 import {
   flightOfferFingerprint,
@@ -14,7 +14,7 @@ import { findCity } from "../../supabase/functions/_shared/domain/city-catalog";
 import { planCityRecovery } from "../../supabase/functions/_shared/domain/city-planner";
 const now = "2026-11-18T14:00:00Z",
   expiry = "2026-11-18T14:05:00Z",
-  key = "travel-recovery:selected:v1";
+  key = "travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111";
 function quotes(input: TravelRecoveryInput, changed = false) {
   const f = travelFixture(),
     connecting = structuredClone(f.flight);

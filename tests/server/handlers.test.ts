@@ -125,7 +125,7 @@ describe('public stateless recovery handler', () => {
     for (const response of [options, success, wrong]) {
       expect(response.headers.get('access-control-allow-origin')).toBe('*')
       expect(response.headers.get('access-control-allow-methods')).toBe('POST, OPTIONS')
-      expect(response.headers.get('access-control-allow-headers')).toBe('content-type')
+      expect(response.headers.get('access-control-allow-headers')).toBe('content-type, authorization')
       expect(response.headers.get('access-control-allow-credentials')).toBeNull()
       expect(response.headers.get('content-type')).toContain('application/json')
       expect(response.headers.get('cache-control')).toBe('no-store')

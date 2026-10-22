@@ -1,3 +1,4 @@
+import { currentAccountStorage } from '@/lib/account-storage';
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { ConversationContext } from "@domain/conversation";
 import { matchesConversation } from "./conversation";
@@ -21,7 +22,7 @@ function deviceStorage<T>(
   action: "read" | "save" | "delete",
 ): StorageResult<T> {
   try {
-    return operation(window.localStorage);
+    return operation(currentAccountStorage(window.localStorage));
   } catch {
     return {
       ok: false,

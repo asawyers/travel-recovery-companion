@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./auth-fixture";
 import { findCity } from "../../supabase/functions/_shared/domain/city-catalog";
 import { CityRecoveryResponseSchema, type CityCandidate, type CityRecoveryInput } from "../../supabase/functions/_shared/domain/city-contracts";
 import { planCityRecovery } from "../../supabase/functions/_shared/domain/city-planner";
@@ -7,7 +7,7 @@ import { flightOfferFingerprint, flightOfferId, TravelRecoveryResponseSchema, tr
 import { assessTravelSelection } from "../../supabase/functions/_shared/domain/travel-planner";
 
 const now = "2026-11-18T14:00:00Z", expiresAt = "2026-11-18T14:05:00Z";
-const storageKey = "travel-recovery:selected:v1";
+const storageKey = "travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111";
 const shortTitle = "Stale short driving alternative", longTitle = "Stale cross-country driving alternative";
 
 function candidates(input: CityRecoveryInput, driveOnly: boolean): CityCandidate[] {

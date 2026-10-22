@@ -1,3 +1,4 @@
+import { plannerRequestHeaders, notifyAuthenticationRequired } from './authenticated-request';
 import {
   CityRecoveryInputSchema,
   CityRecoveryResponseSchema,
@@ -64,7 +65,7 @@ export async function compareCityPublic(
       try {
         response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: await plannerRequestHeaders(controller.signal),
           credentials: "omit",
           body: JSON.stringify(envelope.data),
           signal: controller.signal,
@@ -74,6 +75,15 @@ export async function compareCityPublic(
         throw new PublicPlannerError(
           "Cannot reach the planner. Check your connection and retry. Your inputs are retained.",
         );
+      }
+      if (controller.signal.aborted) {
+        void response.body?.cancel().catch(() => {});
+        throw controller.signal.reason;
+      }
+      if (response.status === 401) {
+        void response.body?.cancel().catch(() => {});
+        notifyAuthenticationRequired();
+        throw new PublicPlannerError('Your session has ended. Sign in again to continue.');
       }
       if (!response.ok)
         throw new PublicPlannerError(

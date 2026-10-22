@@ -1,12 +1,12 @@
 import { demonstrate, openPreferences, openManualOptions, compare, echoConversation, reviewPlan } from "./helpers";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./auth-fixture";
 import { overnightFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
 import {
   ADAPTER_REVISION,
   RecoveryResponseSchema,
 } from "../../supabase/functions/_shared/domain/api";
-const key = "travel-recovery:selected:v1";
+const key = "travel-recovery:selected:v1:account:11111111-1111-4111-8111-111111111111";
 async function chooseHotel(page: Page) {
   await demonstrate(page, "Overnight fictional example");
   await reviewPlan(page, "View Fictional overnight hotel and morning bus");
@@ -33,7 +33,7 @@ test("saves full itinerary locally, restores historical details without network 
   expect(Date.now() - Date.parse(saved.selectedAt)).toBeLessThan(10_000);
   const requests: string[] = [];
   page.on("request", (request) => {
-    if (["fetch", "xhr"].includes(request.resourceType()))
+    if (["fetch", "xhr"].includes(request.resourceType()) && !request.url().includes("/auth/v1/"))
       requests.push(request.url());
   });
   await page.reload();
@@ -146,7 +146,10 @@ for (const raw of [
 test("storage getter and write/remove failures are useful and preserve the current trip", async ({
   page,
 }) => {
-  await page.addInitScript(() =>
+  await page.goto("/legacy");
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  await chooseHotel(page);
+  await page.evaluate(() =>
     Object.defineProperty(window, "localStorage", {
       configurable: true,
       get() {
@@ -154,9 +157,6 @@ test("storage getter and write/remove failures are useful and preserve the curre
       },
     }),
   );
-  await page.goto("/legacy");
-  await expect(page.getByRole("alert")).toContainText(/storage/i);
-  await chooseHotel(page);
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();

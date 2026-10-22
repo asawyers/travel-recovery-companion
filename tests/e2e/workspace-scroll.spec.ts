@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./auth-fixture";
 import { travelFixture } from "../../supabase/functions/_shared/domain/travel-fixtures";
 import {
   flightOfferFingerprint,

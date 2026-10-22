@@ -1,3 +1,5 @@
+import { AccountControls } from '@/features/auth/AuthProvider';
+import { currentAccountStorage } from '@/lib/account-storage';
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CityCandidate, CitySavedSelection } from "@domain/city-contracts";
 import { nearestAirports } from "@domain/airport-metadata";
@@ -66,7 +68,7 @@ function storage<T>(
   operation: (storage: SelectionStorage) => StorageResult<T>,
 ): StorageResult<T> {
   try {
-    return operation(window.localStorage);
+    return operation(currentAccountStorage(window.localStorage));
   } catch {
     return {
       ok: false,
@@ -791,9 +793,12 @@ export function CityRecoveryApp() {
             <CompanionAvatar size="sm" />
             Travel recovery companion
           </a>
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
           <Badge variant="secondary" className="bg-[#E8F3F1] text-[#126B70]">
             Device-local saving
           </Badge>
+            <AccountControls />
+          </div>
         </div>
       </header>
       <main className={`recovery-main mx-auto px-4 py-8 sm:px-6 ${started ? "max-w-[1280px]" : "max-w-3xl sm:py-12"}`}>
