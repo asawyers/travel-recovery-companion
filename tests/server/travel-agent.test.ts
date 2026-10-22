@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Usage } from '@openai/agents'
 import type { Model, ModelRequest, ModelResponse } from '@openai/agents'
-import { travelFixture } from '../../supabase/functions/_shared/domain/travel-fixtures.ts'
+import { travelFixture, overnightTravelFixture } from '../../supabase/functions/_shared/domain/travel-fixtures.ts'
 import { assessTravelSelection } from '../../supabase/functions/_shared/domain/travel-planner.ts'
 import { travelRequestBinding, TravelRecoveryResponseSchema } from '../../supabase/functions/_shared/domain/travel-contracts.ts'
 import type { TravelRecoveryResponse } from '../../supabase/functions/_shared/domain/travel-contracts.ts'
@@ -13,7 +13,7 @@ const now = () => f.now
 const status = (source: 'flights' | 'hotels', state = 'available') => ({ source, status: state, message: 'PRIVATE_PROVIDER_TEXT', checkedAt: f.now, expiresAt: '2026-11-18T06:05:00-08:00' })
 function assessment(patch: PreferencePatch = {}, fixture = f): TravelRecoveryResponse {
   const input = { ...fixture.input, trip: { ...fixture.input.trip, ...patch } }
-  return TravelRecoveryResponseSchema.parse({ version: 3, request: travelRequestBinding(input), origin: fixture.origin, destination: fixture.destination, generatedAt: fixture.now, expiresAt: '2026-11-18T06:05:00-08:00', flightOffers: fixture.flightOffers, hotelOffers: [], sourceStatuses: [status('flights')], ...assessTravelSelection(input, fixture), warnings: [] })
+  return TravelRecoveryResponseSchema.parse({ version: 3, request: travelRequestBinding(input), origin: fixture.origin, destination: fixture.destination, generatedAt: fixture.now, expiresAt: '2026-11-18T06:05:00-08:00', flightOffers: fixture.flightOffers, hotelOffers: fixture.input.overnight ? fixture.hotelOffers : [], sourceStatuses: [status('flights')], ...assessTravelSelection(input, fixture), warnings: [] })
 }
 let nextCall = 0
 const call = (name: string, args: unknown = {}, id = `call-${++nextCall}`) => ({ type: 'function_call' as const, name, arguments: JSON.stringify(args), callId: id })
@@ -34,7 +34,46 @@ async function setup(outputs: ModelResponse['output'][], changes: Partial<Travel
   return { model, tools, run, implementation: implementation! }
 }
 
+function modelJsonObjects(value: unknown): Record<string, unknown>[] {
+  if (typeof value === 'string') {
+    try { return modelJsonObjects(JSON.parse(value)) } catch { return [] }
+  }
+  if (Array.isArray(value)) return value.flatMap(modelJsonObjects)
+  if (value && typeof value === 'object') return [value as Record<string, unknown>, ...Object.values(value).flatMap(modelJsonObjects)]
+  return []
+}
+
 describe('OpenAI Agents SDK travel recovery executor', () => {
+  it.each(['flight', 'overnight'])('gives the model confirmed %s planning facts and explicit eligible assessment despite unknown soft-budget costs', async kind => {
+    const fixture = kind === 'overnight' ? overnightTravelFixture() : travelFixture()
+    fixture.input.selection!.facts.originTransfer.costCents = null
+    fixture.input.selection!.facts.destinationTransfer.costCents = null
+    fixture.input.selection!.facts.flightExtrasCents = null
+    if (fixture.input.selection!.facts.stay) fixture.input.selection!.facts.stay.extraFeesCents = null
+    const assessed = assessment({}, fixture)
+    expect(assessed.journey).toMatchObject({ selectable: true, priceComplete: false, feasibility: 'requires_confirmation', violations: [] })
+    const { run, model } = await setup([[call('assess_recovery_options', { preferencePatch: null })], [final(decision({ planId: assessed.journey!.id, reasonCodes: ['incomplete_price', 'confirmation_required'] }))]], { assess: async () => ({ assessmentId: 'assessment-1', result: assessed }) })
+    expect(await run(undefined, fixture.input)).toMatchObject({ status: 'completed', selectedPlanId: assessed.journey!.id, summary: expect.stringContaining('incomplete total') })
+    const context = modelJsonObjects(model.requests[0].input).find(item => 'confirmedJourneyFacts' in item)
+    expect(context?.confirmedJourneyFacts).toEqual(fixture.input.selection!.facts)
+    const compact = modelJsonObjects(model.requests[1].input).find(item => item.assessmentId === 'assessment-1')
+    expect(compact).toMatchObject({ assessmentStatus: 'eligible_complete_journey', factsStatus: 'traveler_confirmed', priceStatus: 'incomplete', bookingConfirmationRequired: true })
+    expect(model.requests[0].systemInstructions).toContain('Null costs mean unknown prices, not missing traveler confirmation')
+    expect(model.requests[0].systemInstructions).toContain('requires_confirmation describes booking or operator uncertainty')
+    expect(JSON.stringify(model.requests)).not.toMatch(/PRIVATE_PROVIDER_TEXT|sourceUrl|handoffUrl|Test-only quoted inventory/)
+  })
+  it('keeps unknown hard-budget prices ineligible even with all planning facts confirmed', async () => {
+    const fixture = travelFixture()
+    fixture.input.trip.budgetMode = 'hard'
+    fixture.input.trip.budgetCents = 100000
+    fixture.input.selection!.facts.originTransfer.costCents = null
+    const assessed = assessment({}, fixture)
+    expect(assessed.journey).toMatchObject({ selectable: false, priceComplete: false, feasibility: 'infeasible' })
+    const { run, model } = await setup([[call('assess_recovery_options', { preferencePatch: null })], [final(decision({ planId: null, reasonCodes: ['no_feasible_plan'] }))]], { assess: async () => ({ assessmentId: 'assessment-1', result: assessed }) })
+    expect(await run(undefined, fixture.input)).toMatchObject({ status: 'limited', selectedPlanId: null, appliedPreferences: {} })
+    const compact = modelJsonObjects(model.requests[1].input).find(item => item.assessmentId === 'assessment-1')
+    expect(compact).toMatchObject({ assessmentStatus: 'ineligible_journey', factsStatus: 'traveler_confirmed', priceStatus: 'incomplete', plans: [] })
+  })
   it('orchestrates fixed-request discovery, canonical assessment and exact journey selection through Runner', async () => {
     const { run, tools, model } = await setup([[call('find_transport_options')], [call('find_hotel_options')], [call('assess_recovery_options', { preferencePatch: null })], [final(decision({ reasonCodes: ['confirmation_required'] }))]])
     expect(await run()).toMatchObject({ status: 'completed', selectedPlanId: assessment().journey!.id, appliedPreferences: {}, summary: expect.stringContaining('final arrival') })
