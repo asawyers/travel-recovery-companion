@@ -495,6 +495,16 @@ function compareFlights(
     : arrival() || price() || transfers()) || a.id.localeCompare(b.id)
 }
 
+// Preserve a selected identity only when the bounded fresh response actually reacquired it.
+function topOffers<T extends { id: string }>(ranked: T[], selectedId: string | null | undefined): T[] {
+  const output = ranked.slice(0, 3)
+  if (selectedId && !output.some((offer) => offer.id === selectedId)) {
+    const selected = ranked.find((offer) => offer.id === selectedId)
+    if (selected) output[2] = selected
+  }
+  return output
+}
+
 /** One explicitly requested, bounded search per method. No pagination, booking, or quota-expanding followups. */
 export function createSerpApiTravelAdapter(configuration: Options): TravelProvider {
   const options: Options = { ...configuration, apiKey: configuration.apiKey?.trim() }
@@ -551,9 +561,9 @@ export function createSerpApiTravelAdapter(configuration: Options): TravelProvid
         if (offer) { if (!offers.has(offer.id)) offers.set(offer.id, offer) }
         else omitted = true
       }
-      const output = [...offers.values()].sort((a, b) => compareFlights(input.trip.priority, a, b)).slice(
-        0,
-        3,
+      const output = topOffers(
+        [...offers.values()].sort((a, b) => compareFlights(input.trip.priority, a, b)),
+        input.selection?.flightOfferId,
       )
       return result(
         'flights',
@@ -603,10 +613,13 @@ export function createSerpApiTravelAdapter(configuration: Options): TravelProvid
         if (offer) { if (!offers.has(offer.id)) offers.set(offer.id, offer) }
         else omitted = true
       }
-      const output = [...offers.values()].sort((a, b) => {
-        const aa = knownCost(a), bb = knownCost(b)
-        return (aa === bb ? 0 : aa < bb ? -1 : 1) || a.id.localeCompare(b.id)
-      }).slice(0, 3)
+      const output = topOffers(
+        [...offers.values()].sort((a, b) => {
+          const aa = knownCost(a), bb = knownCost(b)
+          return (aa === bb ? 0 : aa < bb ? -1 : 1) || a.id.localeCompare(b.id)
+        }),
+        input.selection?.hotelOfferId,
+      )
       return result(
         'hotels',
         attemptedAt,

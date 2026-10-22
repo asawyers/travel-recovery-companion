@@ -862,3 +862,83 @@ describe('review regressions for canonical credentials and airport-local dates',
     expect(new URL(String(s.fetcher.mock.calls[0][0])).searchParams.get('outbound_times')).toBe('23,23')
   })
 })
+
+describe('fresh selected offers outside the top three', () => {
+  for (const source of ['flights', 'hotels'] as const) {
+    it.each(['unchanged', 'repriced', 'missing', 'invalid', 'beyond_bound'])(
+      `retains only freshly reacquired selected ${source} when %s`,
+      async (mode) => {
+        const initial = await overnight(source === 'flights' ? flightsBody() : hotelsBody())
+        const selected = (await initial.adapter[source](initial.input, initial.context)).offers[0]
+        const competitors = Array.from(
+          { length: mode === 'beyond_bound' ? 32 : 3 },
+          (_, index) =>
+            source === 'flights'
+              ? {
+                ...itinerary(),
+                price: 50 + index,
+                flights: [
+                  segment('SAN', 'PWM', '2026-11-19 09:00', '2026-11-19 17:00', 300, `AA other${index}`),
+                ],
+              }
+              : {
+                ...property(),
+                property_token: `other-property-${index}`,
+                total_rate: { extracted_lowest: 50 + index },
+              },
+        )
+        const freshSelected = source === 'flights'
+          ? {
+            ...itinerary(),
+            price: mode === 'repriced' ? 260 : 250,
+            flights: [{ ...segment(), duration: mode === 'invalid' ? 1 : 300 }],
+          }
+          : {
+            ...property(),
+            gps_coordinates: mode === 'invalid'
+              ? { latitude: 42.36, longitude: -71.06 }
+              : property().gps_coordinates,
+            total_rate: {
+              ...property().total_rate,
+              extracted_lowest: mode === 'repriced' ? 130 : 120,
+              lowest: mode === 'repriced' ? '$130' : '$120',
+            },
+          }
+        const body = {
+          search_metadata: { created_at: '2026-11-18T13:59:30Z', processed_at: '2026-11-18T13:59:35Z' },
+          [source === 'flights' ? 'best_flights' : 'properties']: mode === 'missing'
+            ? competitors
+            : [...competitors, freshSelected],
+        }
+        const current = await overnight(body)
+        current.input.trip.priority = 'cheapest'
+        Object.assign(current.input, {
+          selection: {
+            ...travelFixture().input.selection!,
+            ...(source === 'flights'
+              ? { flightOfferId: selected.id, flightFingerprint: selected.fingerprint }
+              : { hotelOfferId: selected.id, hotelFingerprint: selected.fingerprint }),
+          },
+        })
+        const result = await current.adapter[source](current.input, current.context)
+        expect(result.offers).toHaveLength(3)
+        expect(current.fetcher).toHaveBeenCalledOnce()
+        const reacquired = result.offers.find((offer) => offer.id === selected.id)
+        if (mode === 'unchanged' || mode === 'repriced') {
+          expect(reacquired, 'selected offer survives ranking while present in the bounded fresh response')
+            .toBeDefined()
+          expect(reacquired!.evidence[0].checkedAt).toBe('2026-11-18T13:59:30Z')
+          expect(reacquired!.evidence[0].expiresAt).toBe('2026-11-18T14:04:30Z')
+          if (mode === 'repriced') expect(reacquired!.fingerprint).not.toBe(selected.fingerprint)
+          else expect(reacquired!.fingerprint).toBe(selected.fingerprint)
+          expect(
+            result.offers.filter((offer) => offer.id !== selected.id).map((offer) => offer.costs[0].cents),
+          ).toEqual([5000, 5100])
+        } else {
+          expect(reacquired).toBeUndefined()
+          expect(result.offers.map((offer) => offer.costs[0].cents)).toEqual([5000, 5100, 5200])
+        }
+      },
+    )
+  }
+})
