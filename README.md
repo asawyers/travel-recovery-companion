@@ -1,87 +1,63 @@
 # Travel Recovery Companion
 
-An account-free coding-challenge prototype for recovering from disrupted travel between Boston Logan and Portland, Maine. Start with your arrival time, compare complete train, bus, rental-car and optional hotel-plus-next-day journeys in one conversation, confirm trip facts when needed, choose an itinerary and follow verified provider links. All travel information appears in the app.
+An account-free travel recovery prototype. Start with **Where are you trying to get to?**, select US From and To cities, and compare complete ground journeys in one conversation. Confirm trip facts, add a bus or train option you have checked, choose a plan, and follow the displayed travel links. The app does not buy tickets or reserve vehicles or rooms.
 
-The motivation is the author's San Diego → Portland journey: a delay on the San Diego → Boston flight caused them to miss all Boston → Portland trains, so they drove. Initial recovery coverage is the onward ground connection from Boston.
+[Open the app](https://travel-recovery-companion.vercel.app) · [Public source](https://github.com/asawyers/travel-recovery-companion) · [Verification and deployment status](docs/VERIFICATION.md)
 
-## Current state
+The motivation was the author's San Diego → Portland journey: a delay on the San Diego → Boston flight caused them to miss all Boston → Portland trains, so they drove. The current default generalizes recovery to city-to-city travel. The original Boston airport flow and its labeled examples remain at [`/legacy`](https://travel-recovery-companion.vercel.app/legacy). Exact tested revisions, deployment IDs, browser results and separate actual-provider evidence belong in the verification record; source implementation alone does not establish deployed acceptance.
 
-[Open the deployed app](https://travel-recovery-companion.vercel.app). The deployed app implements a compact starter followed by one recovery conversation, contextual fact confirmations, quick replies and an optional manual option editor. The traveler supplies their revised gate-arrival time; no flight lookup or delay verification is required. The revised flow is deployed; actual Google route discovery, OpenAI clarification/preference changes and the guided sandbox save/history flow have passed in Brave. See [verification status](docs/VERIFICATION.md) for exact revisions and checks.
+## Using the app
 
-The planner supports traveler-confirmed train/bus details, explicit car estimates, complete-journey comparison, meaningful constraint changes, no-plan recovery, selection and verified handoffs. Daytime and overnight fictional examples are clearly labeled. Public server comparison and current-tab priority reuse are implemented. The backend uses GitHub Actions and the frontend uses Vercel's native Git integration. Google Routes, LiteAPI hotel discovery/property handoffs and an actual OpenAI Agents SDK assistant are implemented. Google and OpenAI usage are already authorized and configured. Production hotel access and public-rate approval remain deferred.
+Search either city by place name, county, state name or state code. The pinned offline GeoNames catalog contains 171,671 populated places across all 50 states, Washington DC and five US territories. Small communities are included without a population cutoff. This is broad national coverage, not a guarantee of every settlement or available route. See [city data](docs/CITY_DATA.md) for licensing, source checksums, coverage, regeneration and performance details.
 
-Earlier deployed acceptance covered 39 configured hosted Brave cases, actual Google discovery returning two bus plans, a GPT-6 Luna no-driving refinement, and an explicit sandbox sequence with three test hotel offers, a complete fictional onward journey, zero-request priority reuse and device save/history/refresh. These are historical results for the prior UI, retained separately from verification of the current starter-to-chat flow.
+The starter plans for **one adult between estimated city centers**. **As soon as possible** is the default; **By a date and time** requires a deadline in the destination's local time. Leaving defaults to now and can be edited in the origin's time zone. The default flow has no flight number, gate-arrival field or airport-exit allowance. Optional preferences cover budget, ranking and driving.
 
-There is no sign-in or email workflow. Saving keeps one chosen itinerary on this device's browser profile, with original evidence timestamps and an explicit delete action. It does not sync across devices or purchase tickets/reservations. A restored itinerary is historical until explicitly refreshed.
+**Find my options** opens one conversation containing results, follow-up messages and contextual fact confirmations. **Add an option you've checked** progressively opens a manual bus/train editor with service times, access, boarding and final-transfer allowances and costs. Enter zero explicitly for a zero allowance or charge; missing costs remain unknown. Complete journeys must connect in place and time, meet the actual destination deadline and satisfy any hard budget. Unknown prices cannot satisfy a hard budget.
+
+**Cheaper** and **Fewer changes** rerank fresh eligible current-tab facts with zero HTTP POSTs, provider calls or model calls. Missing or expired facts require an explicit **Recheck available sources**. **No driving** can investigate again. Typed hard-fact changes require structured confirmation. Draft changes to non-city facts retain the existing cards until confirmation; accepting a replacement archives the prior conversation result and clears its selection. Changing either city clears trip facts and results so facts from the previous pair cannot carry over.
+
+ASAP keeps the hard deadline null. Its disclosed coverage is complete journeys arriving within seven days after readiness, including the final transfer; it is not an invented traveler deadline or an exhaustive timetable search. Driving is an estimate without confirmed vehicle access or full charges. More than 480 minutes of driving appears only as an informational, unselectable option requiring a separate vehicle/rest plan; the app does not establish such a plan.
+
+## Sources, assistance and saving
+
+Google Routes supports validated walking, bus, rail, subway, tram and ferry steps, including multiple vehicles, plus an estimated driving route when permitted. Overlapping query results are deduplicated. Times are schedules or estimates, with labeled assumptions for missing stop zones and walking times. Missing fares remain unknown. Invalid or disconnected routes are omitted. No results does not prove that transportation is unavailable; schedules do not establish seats, vehicle inventory or final payable prices.
+
+The actual OpenAI Agents SDK assistant uses `@openai/agents` 0.20.0 (`Agent`, `Runner` and three tools) with `openai` 7.39.0. The server [model registry](supabase/functions/_shared/server/model-registry.ts) selects `gpt-6-luna`; no `OPENAI_MODEL` setting is needed. Tools discover transportation, report national hotels as unavailable and assess complete journeys with the deterministic planner. The assistant may apply explicitly requested driving/ranking preferences. Cities, times, deadline, budget and other hard facts require traveler confirmation. A recommendation must reference an eligible plan from the latest assessment.
+
+Each assisted request has at most six model turns, twelve attempted tool calls and one repair within the shared 30-second server deadline. Context is ephemeral: at most 12 user/assistant messages, 1,000 characters each and 8,000 total. The canonical trip remains authoritative. Exact turn-ID and trip-revision echoes reject outdated or mismatched replies. Tracing, response storage and automatic model retries are disabled. Provider failures or invalid/limited model output show an explicit fallback and retain deterministic planning; fictional examples are never silently substituted.
+
+Saving keeps one selected manual itinerary in this browser's local storage, with its original trip dates and evidence-check timestamps. Version 2 city snapshots and version 1 legacy snapshots share the existing storage key. Reloaded plans are historical until explicitly refreshed; refreshing does not reconfirm old manual evidence. Legacy refresh opens `/legacy?refreshSaved=1` and preserves its original airport and exit allowances. Unsupported saved versions block overwrite until explicit deletion. Failed or expired results remain readable but cannot be selected or saved.
+
+Google route content is transient and cannot be saved; saving a manual itinerary also filters Google alternatives from its stored request. Chat messages are never included in saved snapshots. There is no account, cross-device sync, sign-in or email workflow. Public [terms](https://travel-recovery-companion.vercel.app/terms) and [privacy](https://travel-recovery-companion.vercel.app/privacy) explain provider content and device storage.
+
+## Legacy examples and hotels
+
+The explicit examples are `/legacy?demo=daytime`, `/legacy?demo=overnight` and `/legacy?demo=sandbox`. Ordinary fictional examples are offline. National hotel discovery is unavailable and cannot redirect a selected city pair to Boston hotel results. **Explore overnight** explains this limitation.
+
+The separate Boston hotel sandbox uses the already-saved server-side `LITEAPI_SANDBOX_KEY`. It requests test rates for a future one-night stay and labels the conversation **Demo guide (not a model)**. Property names may be real, but rates and onward inputs are test data. After choosing a property, **Use fictional transfer defaults** supplies 20 minutes airport-to-hotel, 15 minutes check-in, a 09:00 hotel departure and 25 minutes to the boarding stop, with $0 test transfer charges. The next-day service and fare are fictional too. Applying defaults explicitly rechecks sandbox rates; labels survive save/history/refresh. This mode disables Google, OpenAI and all booking handoffs.
+
+LiteAPI/Nuitée is one hotel provider. Its legacy adapter supports bounded rates/property discovery and safe property handoffs, but production access, public SSP/markup compatibility, key and usage approval remain deferred. An offer alone is not a complete journey: specific transfers, check-in allowance and actual checkout-date onward service are required. See [provider setup](docs/PROVIDER_SETUP.md) for the existing configuration, sandbox behavior and deferred production walkthrough.
 
 ## Run locally
 
-Use Node 24 (see `.nvmrc`):
+Use Node 24 (`.nvmrc`):
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. The core planner requires no cloud or travel-provider keys. Choose the synthetic example explicitly to explore fictional regression data; missing live services never substitute those examples automatically.
+Open http://127.0.0.1:5173. Manual planning and explicit fictional legacy examples need no provider keys. Without an endpoint, the pure local planner remains usable; missing live services stay visibly unavailable.
 
 ```sh
 npm run test
 npm run build
-npm run test:e2e -- tests/e2e/guest.spec.ts
+npm run test:e2e
 ```
 
-The starter-to-chat source passes 444 unit tests across 27 files, TypeScript/Vite build, Deno checking, nine real loopback HTTP cases and all 50 local and all 50 hosted Brave cases. The browser suite preserves the 39 prior cases and adds eleven focused conversation/guided-hotel workflows. Fixture results do not establish live inventory or paid model acceptance; current deployment and separate actual Google, OpenAI and sandbox evidence are recorded in [verification status](docs/VERIFICATION.md). Browser tests use installed Brave; its macOS default is `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for another Brave installation.
+The browser suite uses installed Brave, defaulting on macOS to `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`. Set `PLAYWRIGHT_BROWSER_EXECUTABLE_PATH` for another installation. Fixture coverage verifies behavior, not live inventory or paid API acceptance; consult [verification status](docs/VERIFICATION.md) for actual results.
 
-## Stack and backend direction
-
-React/Vite/TypeScript, shadcn/ui and Tailwind share a pure validated planner with an intentionally public stateless Supabase Edge Function. No frontend Supabase SDK, product Auth or application database is needed. Optional `VITE_RECOVERY_API_URL` configures the full public recovery endpoint; without it the local planner remains usable. Provider/model credentials belong only on the server, never in `VITE_` variables.
-
-The backend validates bounded requests, sanitizes traveler-provided evidence and returns normalized facts. It passes nine real HTTP integration cases without credentials. Browser comparisons use that public endpoint when configured. Priority-only refinements reuse eligible facts in the current tab without another HTTP/provider/model call. Other edits or expiry require reassessment. Native Vercel Git integration is the deployment target, with lean functions-only backend CI.
-
-Live/schedule/traveler-confirmed/estimated/synthetic facts remain distinct. Unknown charges remain unknown. Optional provider/model access requires explicit usage authorization. Google pay-as-you-go requests without a daily cap have been authorized. OpenAI usage is also authorized and live-verified. Production hotel activation remains deferred pending its separate access, public-rate and usage decisions. No purchases or reservations are made. This is a challenge prototype. Two hours is an effort estimate, not a hard timer.
-
-## Starter, conversation and route discovery
-
-The starter fixes the challenge scope to Boston Logan → Portland, Maine, for one adult. Choose **Now** or enter a revised gate-arrival time, then choose **As soon as possible** or an explicit arrival deadline. Airport exit time is shown as an editable assumption. Optional preferences cover budget, ranking, driving and overnight permission; exact hotel dates and nationality are requested only when needed. **Find my options** checks configured sources without a separate investigation checkbox.
-
-ASAP keeps `deadlineAt=null`; an unknown original onward departure and connection remain null too. The planner bounds ASAP coverage to 24 elapsed hours after gate arrival, including the final transfer. This is a disclosed search limit, not a hard traveler deadline or a claim that nothing exists later. Selecting a specific deadline requires entering it before a request. Overnight permission alone never invents a stay, nationality, transfers or service dates.
-
-Results, follow-up messages and contextual fact controls share one conversation. Use **Cheaper**, **No driving**, **Fewer changes** or **Explore overnight**, or send a message of up to 500 characters. Priority-only replies reuse eligible unexpired current-tab facts with zero HTTP, provider or model calls. Other factual changes and expiry require reassessment. **Explore overnight** asks for stay dates and nationality. **Edit trip** reopens the compact starter; **Add an option you’ve checked** opens the optional advanced manual editor for confirmed services, car estimates and detailed journey facts.
-
-Enter the revised gate-arrival time you expect or have confirmed. Asking for recovery options is sufficient; the app does not verify a flight delay or require a flight number, departure date, flight API account or flight-status lookup. It labels that time as traveler-provided and adds airport exit, access, boarding and final-mile time when comparing complete journeys.
-
-Google Routes can supply supported Concord bus and Amtrak/Downeaster rail schedules, including estimated North Station access and final walking. Unsupported multi-vehicle journeys are omitted. Missing fares stay unknown. These schedules/estimates do not establish seats or vehicle inventory. Google-sourced plans remain transient: they can be compared and opened, while device-save is refused with an explanation. Manual saves filter Google alternatives from the stored request.
-
-A new environment defaults to no live calls. The existing deployed Google configuration remains enabled under its earlier authorization: backend-only `GOOGLE_ROUTES_API_KEY` plus `RECOVERY_PROVIDER_USAGE_APPROVED=true`. One investigation is bounded to at most three Google requests; the switch is not an aggregate spending cap. Fixture tests establish no credentials, provider accounts, paid usage or live coverage. Follow the [post-build setup walkthrough](docs/PROVIDER_SETUP.md) before activation. Public [terms](https://travel-recovery-companion.vercel.app/terms) and [privacy](https://travel-recovery-companion.vercel.app/privacy) pages accompany provider content.
-
-## Hotel offers and optional AI assistance
-
-Hotel discovery searches LiteAPI for at most three properties with one room rate each, for one adult, one room and one explicit night near BOS. A single investigation uses at most one rates request and one leading-property details request. Room/board information, included and excluded charges, cancellation terms, production provenance and original timestamps are preserved. Missing charges remain unknown. The five-minute app freshness policy is separate from a provider quote expiry; rates do not reserve a room or guarantee the hosted payable price.
-
-**Hotel sandbox demo:** Open **Try a demonstration → Try hotel sandbox** to request test hotel rates for a future one-night stay. The conversation uses a labeled **Demo guide (not a model)**. Its deterministic replies explain the next step without OpenAI, Google Routes or booking links. The banner distinguishes sandbox rates (property names may be real) from fictional onward services and transfer inputs. Select a returned property, then choose **Use fictional transfer defaults** or edit the inputs: 20 minutes airport-to-hotel, 15 minutes check-in, a 09:00 hotel departure and 25 minutes to the fictional boarding stop, with $0 test prices for both transfers. The supplied next-day bus and its fare are fictional too. Applying defaults explicitly rechecks sandbox rates and compares the complete test journey. Labels persist through device save, history and explicit refresh. Only the separate server-side `LITEAPI_SANDBOX_KEY` is used; the existing saved key needs no new setup. Earlier actual sandbox acceptance is historical evidence, and production onboarding remains deferred. Ordinary examples stay offline.
-
-An offer is not a complete journey. Select the exact property, supply airport-to-hotel and hotel-to-boarding-stop transfer facts, check-in allowance and departure time, and a confirmed train/bus service for the checkout date. The deterministic planner requires continuous places/times and checks the complete arrival, price and constraints. It never invents hotel transfer durations, fares, taxi/shuttle availability or a next-day timetable. The existing three-call Google allowance is unchanged. Fresh offers stay in the current tab for explicit reuse; renewed investigation refreshes provider facts.
-
-An operator-configured exact `LITEAPI_BOOKING_ORIGIN` enables the documented Nuitee hotel property page with dates and occupancy only. Without it, the app offers the existing Google hotel-search fallback. Handoffs exclude personal information, offer/prebook identifiers and checkout routes; opening a property page does not book anything. Historical restored plans use the search fallback. Hotel activation also requires explicit public-rate approval after checking LiteAPI suggested-selling-price (SSP), account markup and hosted-price compatibility.
-
-The assistant uses `@openai/agents` 0.20.0 (`Agent`, `Runner` and real SDK tools) with the `openai` 7.39.0 client. It can discover options and request deterministic assessment; its only permitted preference edits are driving permission and ranking priority. Dates, destination, deadline, budget, overnight permission and traveler facts stay fixed. Recommendations must reference an eligible plan from the latest assessment. For missing, ambiguous, conflicting or unsupported factual changes, the assistant returns a typed clarification and the app shows a contextual structured confirmation for arrival, deadline, budget, stay, connection, hotel journey or preferences. The traveler confirms hard facts explicitly; chat history cannot silently change the canonical trip. Existing cards remain visible while clarification is pending, and confirming new facts rebuilds and reassesses the request.
-
-One request has a shared 30-second deadline, at most six model turns, twelve attempted tool calls and one repair. Discovery promises are memoized per request, including failures, so repeated SDK tool calls do not increase Google or hotel call limits. Tracing, response storage and automatic model retries are disabled. Each assisted turn sends a bounded current-tab context of at most 12 user/assistant messages, 1,000 characters per message and 8,000 characters in total, alongside the authoritative current request. The server echoes the exact turn ID and base trip revision; the browser rejects mismatched or outdated replies. Messages and context are ephemeral and never enter device-saved itineraries; no prompt/chat history is persisted by the app. Ordinary synthetic examples do not run providers or the model. The explicit hotel sandbox may call only the sandbox hotel source; Google Routes and OpenAI remain disabled in that mode. Disabling investigation prevents provider requests; an explicitly requested, configured assistant can still assess supplied facts. Missing configuration or invalid/limited model output produces an explicit fallback and retains deterministic plans.
-
-Hotel and model switches default off independently in new environments. The existing Google, OpenAI and sandbox configuration is already approved and saved; follow the [manual dashboard activation guide](docs/PROVIDER_SETUP.md) for another environment or later production hotel activation. Production hotel access, key/public-price verification and usage approval remain outstanding; `gpt-6-luna` is selected in the server-side [model registry](supabase/functions/_shared/server/model-registry.ts). The user saved the key privately and enabled its usage switch; live agent acceptance passed. No `OPENAI_MODEL` environment variable is needed. Hotel/new-account permission is not implied by OpenAI activation.
-
-## How a comparison works
-
-The starter, contextual confirmations and optional manual editor build one validated canonical trip request for the public Edge Function. The function limits request size, validates the envelope and relabels browser-supplied provider claims as traveler-confirmed or estimated facts. The shared pure planner builds complete journeys, checks boarding cutoffs and constraints, and ranks them using timestamps and integer USD cents.
-
-The browser validates the response and keeps fresh route facts in the current tab. Legacy saved flight metadata remains readable as history, but new comparisons discard it and use traveler-confirmed arrival. A priority-only change reranks those facts without another request. Saving writes one selected itinerary and its original evidence timestamps to this browser’s local storage; reloading restores a historical snapshot without fetching or booking anything.
-
-The earlier hosted browser regression checked comparison over real HTTP, priority changes with zero extra requests, factual changes with a new request, select/save, reload without HTTP and explicit deletion. Current flow verification is recorded separately in the verification status. Provider-shaped test fixtures are labeled test evidence, not live inventory.
-
-## Optional local backend
-
-Install Docker Desktop, Supabase CLI 2.120.0 and Deno 2.9.1. Start the local stack, excluding services this prototype does not use:
+For an optional local backend, install Docker Desktop, Supabase CLI 2.120.0 and Deno 2.9.1:
 
 ```sh
 supabase start --exclude realtime,storage-api,imgproxy,postgres-meta,studio,logflare,vector,supavisor
@@ -89,30 +65,49 @@ cp .env.integration.example .env.integration.local
 supabase functions serve recovery
 ```
 
-In another terminal, run `npm run test:integration`. The recovery endpoint is `http://127.0.0.1:54321/functions/v1/recovery`. It is intentionally public; no user token or Supabase client key is needed, and it creates no application database rows. New environments keep provider/model calls disabled until configured. The existing deployed Google and OpenAI configurations have fixture and live coverage; production hotel activation remains deferred separately.
+In another terminal, check the Edge source and run both loopback integration suites:
 
-The browser endpoint setting is optional: set `VITE_RECOVERY_API_URL=http://127.0.0.1:54321/functions/v1/recovery` in ignored `.env.local`, then restart Vite. Leaving the setting empty uses the local planner; frontend-only previews need no backend credentials. Never put provider credentials in frontend environment variables.
+```sh
+deno check --config supabase/functions/recovery/deno.json supabase/functions/recovery/index.ts
+node --env-file=.env.integration.local --test tests/integration/core.test.mjs tests/integration/city.test.mjs
+```
 
-## Deployment status and setup
+These suites cover nine original and eight city HTTP cases and reject non-loopback targets. `npm run test:integration` runs the original suite only. The base endpoint is `http://127.0.0.1:54321/functions/v1/recovery`; city requests append `/city`. No user token, frontend Supabase key or application database rows are needed. Keep provider/model usage disabled in this local test environment.
 
-[Public source](https://github.com/asawyers/travel-recovery-companion) is published on `main` and `feat/travel-recovery-companion`. The starter-to-chat implementation passed GitHub checks and functions-only backend deployment, native Vercel deployment, all 50 configured hosted Brave cases, and separate actual Google/OpenAI/sandbox acceptance. The hosted suite includes real public HTTP comparison and device save/reload/delete. Native main/branch Git integration remains in use. The public API uses wildcard CORS without an origin allowlist. No core hosting blocker remains.
+To connect Vite, set `VITE_RECOVERY_API_URL=http://127.0.0.1:54321/functions/v1/recovery` in ignored `.env.local` and restart it. Use the base endpoint, since the city client appends `/city`. Provider/model keys belong only on the server, never in `VITE_` variables.
 
-This repository is connected to its dedicated Vercel project using [Vercel’s native GitHub integration](https://vercel.com/docs/git/vercel-for-github). Use the Vite preset, repository root, Node 24, `npm ci`, `npm run build`, `dist` and production branch `main`. Main pushes should produce production deployments; branch/PR pushes should produce previews and GitHub deployment status. Verify both deployed commit SHAs. No Vercel token or custom deploy Action is needed.
+## Code and deployment
 
-Leave `VITE_RECOVERY_API_URL` empty for local-only previews. Set `VITE_RECOVERY_API_URL=https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery` in the Vercel production environment, then rebuild through a Git push or redeployment. The deployed endpoint uses wildcard CORS without an origin-registration setting. No product Auth callbacks, email settings or frontend Supabase keys are required.
+The stack is React/Vite/TypeScript, shadcn/ui, Tailwind and a public stateless Supabase Edge Function. The full-stack path is React → validated public HTTP → Google/actual Agents SDK → deterministic shared planner → browser storage. There is no frontend Supabase SDK, product Auth or application database.
 
-The GitHub workflow checks Node 24 install, unit tests and build on pushes/PRs. Its main-only production backend job is enabled by repository variable `SUPABASE_DEPLOY_ENABLED=true`, with production-environment secrets `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_ID`. Use a scoped deployment token limited to this project with Project Settings read and Edge Functions read-write permissions; renew it before its chosen expiry. It deploys only `recovery`, with JWT verification disabled for this intentionally public endpoint. There are no application tables or migrations to apply. Vercel frontend and backend delivery are separate; a successful frontend build does not prove backend deployment.
+| Entry point | Responsibility |
+| --- | --- |
+| `src/App.tsx` | National default, explicit `/legacy`, terms/privacy routes. |
+| `src/features/city/CityRecoveryApp.tsx`, `session.ts` | Starter/chat state, draft confirmation, cancellation, freshness and local reranking. |
+| `formModel.ts`, `manualModel.ts`, `savedSelection.ts` in that folder | Canonical trip construction, checked options and versioned history. |
+| `src/lib/city-api.ts` | Endpoint construction, bounded request and response validation. |
+| `supabase/functions/recovery/index.ts`, `_shared/server/app-router.ts` | Environment wiring and original/city endpoint routing. |
+| `_shared/server/city-handlers.ts`, `city-google-routes.ts`, `city-agent.ts` | Trusted ID resolution, sanitized evidence, bounded discovery and SDK orchestration. |
+| `_shared/domain/city-contracts.ts`, `city-planner.ts`, `city-resolver.ts` | Strict v2 contracts, complete-journey feasibility/ranking and authoritative city metadata. |
 
-## Future builds
+The `_shared` paths above are under `supabase/functions/`. The original `/recovery` v1 contract remains available; `/recovery/city` uses v2 with adapter revision `public-city-v1`. The server resolves selected IDs instead of trusting caller coordinates, relabels browser evidence as traveler input and validates bounded requests. The browser validates responses before use. The author should review and be able to explain this flow; this documentation does not attest that review occurred.
 
-**Proactive flight-delay recovery:** In a future build, let a traveler enter their flight and travel date, monitor its status through FlightAware, and notify them when a delay is detected. The notification should offer an action to start the travel recovery process using the updated arrival time. Notification channels, delay thresholds and monitoring cadence can be designed in that future build. This is a future enhancement note, not part of the current challenge implementation.
+The existing Vercel project uses [native GitHub integration](https://vercel.com/docs/git/vercel-for-github): Vite preset, repository root, Node 24, `npm ci`, `npm run build`, output `dist`, production branch `main`. Main pushes produce production deployments; feature pushes produce previews. Set `VITE_RECOVERY_API_URL=https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery` and rebuild for the public backend, or leave it empty for local-only previews. No Vercel token/custom deployment Action is needed.
 
-## Challenge submission checklist
+The existing GitHub workflow checks install/tests/build and deploys only the `recovery` function on `main` when `SUPABASE_DEPLOY_ENABLED=true`. Its production environment uses scoped `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_ID` secrets; the token needs Project Settings read and Edge Functions read-write permissions and must be renewed before expiry. JWT verification is disabled for this intentionally public endpoint, which uses wildcard CORS without credentials. No migrations, Auth callbacks or email settings are required. Frontend and backend delivery are separate: verify both deployed revisions in the status record.
 
-- Provide an accessible deployed URL and this source repository.
-- Confirm manual and explicit fictional comparison, constraints, selection, device save, reload and delete at the deployed URL.
-- Record frontend/backend revisions, actual checks, unfinished features and deployment blockers in [verification status](docs/VERIFICATION.md).
-- Explain local run commands and source labels; the author must understand the code even when AI is used.
-- Authentication is intentionally omitted by the author’s scope decision. Record live Google/OpenAI evidence separately from fixture coverage. The hotel sandbox is implemented and verified against actual test responses; production hotel access and acceptance remain deferred.
+Google and OpenAI keys and usage approvals, plus the sandbox key, are already configured; no new setup is needed for the current app. Usage switches are kill switches, not authentication or aggregate spending caps. Google pay-as-you-go without a daily cap was explicitly approved. [Provider setup](docs/PROVIDER_SETUP.md) separates another environment's setup from deferred production hotels.
 
-Hosted recovery endpoint: `https://isclmlhsktuocgdoizmc.supabase.co/functions/v1/recovery`. Earlier direct unauthenticated daytime, overnight and manual-input requests passed runtime validation; daytime and overnight plans matched the pure planner. The production frontend was configured with this address and passed its earlier hosted acceptance. Consult the verification record for the current deployed revisions.
+## Future build and submission
+
+A future FlightAware integration could accept a flight and date, detect a delay, then notify the traveler with an action that starts recovery using the updated arrival. Flight lookup, monitoring and delay notifications are not implemented or scheduled now.
+
+For challenge submission:
+
+- Supply an accessible deployed app, public source and the local instructions above.
+- Confirm comparison, constraints, selection and eligible device save/reload/delete at the submitted revision.
+- Include a status note with tested frontend/backend revisions, actual-provider evidence and known limitations in [verification status](docs/VERIFICATION.md).
+- Explain the code and evidence labels; AI assistance does not replace the author's understanding.
+- Disclose that authentication/email were intentionally omitted by the author's scope decision, and production hotels remain deferred. Do not claim all original assessment requirements are met.
+
+Two hours is an effort estimate, not a hard timer.

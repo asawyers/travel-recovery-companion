@@ -26,7 +26,7 @@ function response(input: TripRequest, refinement?: string, offers = false) {
   });
 }
 async function enterTrip(page: Page) {
-  await page.goto("/");
+  await page.goto("/legacy");
   await openManualOptions(page);
   await page.getByLabel("Revised gate arrival", { exact: true }).fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");

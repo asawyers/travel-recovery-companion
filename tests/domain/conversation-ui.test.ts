@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import App from "../../src/App";
+import { LegacyRecoveryApp } from "../../src/LegacyRecoveryApp";
 import { nextHotelFact } from "../../src/features/recovery/HotelJourneyFacts";
 import { emptyDraft } from "../../src/features/recovery/formModel";
 import { conversationContext, matchesConversation, appendConversation } from "../../src/features/recovery/conversation";
@@ -12,7 +13,7 @@ import { planRecovery } from "@domain/planner";
 describe("calm recovery workspace", () => {
   it("starts with a short arrival form and source-checking action", () => {
     vi.stubGlobal("window", { location: { pathname: "/" } });
-    const html = renderToStaticMarkup(createElement(App));
+    const html = renderToStaticMarkup(createElement(LegacyRecoveryApp));
     vi.unstubAllGlobals();
     expect(html).toContain("Let&#x27;s get you to Portland");
     expect(html).toContain("Find my options");
@@ -72,4 +73,38 @@ it("keeps malformed hotel prices and service facts in focused correction control
   for (const [key,value] of [["departure","2026-11-18T10:00"], ["arrival","2026-11-19T09:00"], ["boardingMinutes",""], ["accessMinutes","-1"], ["finalMinutes","1.5"], ["fare","1.234"], ["finalCost","-1"]] as const) {
     const draft = complete(); draft.transit[key] = value; expect(nextHotelFact(draft)).toBe("service");
   }
+});
+
+
+describe("application routes", () => {
+  it.each(["/", "/another-city-route", "/another-city-route/"])("opens the city starter at %s", (pathname) => {
+    vi.stubGlobal("window", { location: { pathname } });
+    try {
+      const html = renderToStaticMarkup(createElement(App));
+      expect(html).toContain("Where are you trying to get to?");
+      expect(html).toContain("From city");
+      expect(html).toContain("To city");
+      expect(html).not.toContain("Let&#x27;s get you to Portland");
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it.each(["/legacy", "/legacy/"])("preserves the airport starter at %s", (pathname) => {
+    vi.stubGlobal("window", { location: { pathname } });
+    try {
+      const html = renderToStaticMarkup(createElement(App));
+      expect(html).toContain("Let&#x27;s get you to Portland");
+      expect(html).toContain("Gate arrival");
+      expect(html).toContain('href="/terms"');
+      expect(html).toContain('href="/privacy"');
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it.each([["/terms", "Terms"], ["/terms/", "Terms"], ["/privacy", "Privacy"], ["/privacy/", "Privacy"]])("keeps the legal page at %s", (pathname, title) => {
+    vi.stubGlobal("window", { location: { pathname } });
+    try {
+      const html = renderToStaticMarkup(createElement(App));
+      expect(html).toContain(`>${title}</h1>`);
+      expect(html).toContain('href="/"');
+      expect(html).not.toContain("Where are you trying to get to?");
+      expect(html).not.toContain("Let&#x27;s get you to Portland");
+    } finally { vi.unstubAllGlobals(); }
+  });
 });

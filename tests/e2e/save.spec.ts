@@ -14,7 +14,7 @@ async function chooseHotel(page: Page) {
 test("saves full itinerary locally, restores historical details without network and deletes explicitly", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await chooseHotel(page);
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
@@ -68,7 +68,7 @@ test("saves full itinerary locally, restores historical details without network 
 test("editing clears the current saved badge but retains history; refresh starts a new comparison", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await chooseHotel(page);
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
@@ -108,7 +108,7 @@ for (const raw of [
       key,
       raw,
     });
-    await page.goto("/");
+    await page.goto("/legacy");
     await expect(page.getByRole("alert")).toContainText(/delete.*retry/i);
     await chooseHotel(page);
     await page
@@ -154,7 +154,7 @@ test("storage getter and write/remove failures are useful and preserve the curre
       },
     }),
   );
-  await page.goto("/");
+  await page.goto("/legacy");
   await expect(page.getByRole("alert")).toContainText(/storage/i);
   await chooseHotel(page);
   await page
@@ -181,7 +181,7 @@ test("storage getter and write/remove failures are useful and preserve the curre
 test("quota and removal failure do not replace or discard the previous saved record", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await chooseHotel(page);
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
@@ -218,7 +218,7 @@ test("expired history and unknown costs remain readable on a narrow device witho
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 844 });
-  await page.goto("/");
+  await page.goto("/legacy");
   await chooseHotel(page);
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
@@ -312,7 +312,7 @@ test("API-created hotel absent from original input saves and restores every deta
     submitted = route.request().postDataJSON();
     await route.fulfill({ json: echoConversation(route, body) });
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
@@ -357,7 +357,7 @@ test("refreshed manual trip retains editable inputs and priority reranks without
     )
       posts.push(request.postDataJSON());
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");

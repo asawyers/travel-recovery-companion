@@ -29,7 +29,7 @@ function sandboxResponse(request: TripRequest, available = true) {
 test("explicit hotel sandbox keeps test labels through full journey, cache reuse, saving and refresh", async ({ page }) => {
   const posts: any[] = [];
   await page.route(endpoint, async route => { const post = route.request().postDataJSON(); posts.push(post); await route.fulfill({ json: echoConversation(route, post.request.mode === "real" ? realResponse(post.request) : sandboxResponse(post.request)) }); });
-  await page.goto("/");
+  await page.goto("/legacy");
   await demonstrate(page, "Try hotel sandbox");
   await expect(page.getByTestId("provenance-banner")).toContainText("Sandbox hotel rates");
   await expect(page.getByTestId("provenance-banner")).toContainText("fictional onward inputs");
@@ -94,7 +94,7 @@ test("explicit hotel sandbox keeps test labels through full journey, cache reuse
 });
 test("sandbox property and boarding stop edits clear their bound transfer facts", async ({ page }) => {
   await page.route(endpoint, async route => { const post = route.request().postDataJSON(); await route.fulfill({ json: echoConversation(route, sandboxResponse(post.request)) }); });
-  await page.goto("/"); await demonstrate(page, "Try hotel sandbox");
+  await page.goto("/legacy"); await demonstrate(page, "Try hotel sandbox");
   await page.getByRole("button", { name: "Use Boston Sandbox Property", exact: true }).click();
   await openHotelDetails(page);
   await manualField(page, "Airport to hotel minutes").fill("20");
@@ -109,7 +109,7 @@ test("sandbox property and boarding stop edits clear their bound transfer facts"
 });
 test("missing sandbox key reports unavailable without showing hotel offers", async ({ page }) => {
   await page.route(endpoint, async route => { const post = route.request().postDataJSON(); await route.fulfill({ json: echoConversation(route, sandboxResponse(post.request, false)) }); });
-  await page.goto("/"); await demonstrate(page, "Try hotel sandbox");
+  await page.goto("/legacy"); await demonstrate(page, "Try hotel sandbox");
   await expect(page.getByText("Hotel sandbox unavailable. No sandbox key is configured; no hotel availability was checked.")).toBeVisible();
   await expect(page.getByTestId("hotel-offers")).toHaveCount(0);
   await expect(page.getByTestId("provenance-banner")).toContainText(/no live availability/i);
@@ -118,7 +118,7 @@ test("missing sandbox key reports unavailable without showing hotel offers", asy
 test("sandbox offers expire after input edits even though the comparison cache was cleared", async ({ page }) => {
   await page.clock.install();
   await page.route(endpoint, async route => { const post = route.request().postDataJSON(); await route.fulfill({ json: echoConversation(route, sandboxResponse(post.request)) }); });
-  await page.goto("/"); await demonstrate(page, "Try hotel sandbox");
+  await page.goto("/legacy"); await demonstrate(page, "Try hotel sandbox");
   await expect(page.getByTestId("hotel-offers")).toBeVisible();
   await openPreferences(page);
   await page.getByLabel("Budget (USD)").fill("500");

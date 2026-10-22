@@ -1,5 +1,29 @@
 # Verification status
 
+## U.S. city-first recovery — 2026-10-22
+
+The reviewed city-first frontend is ready for publication; the compatible city API is deployed alongside the unchanged legacy API. Final hosted frontend acceptance is pending below this checkpoint. Earlier sections describe historical revisions.
+
+The starter asks “Where are you trying to get to?” with searchable From/To selectors, destination-local arrival goals and ASAP selected by default. City-center estimates are disclosed. The GeoNames catalog contains 171,671 populated places across all 50 states, DC and five territories; this is place coverage, not a promise of available ground transport for every pair. National hotel discovery is unavailable; the separate Boston legacy demo retains clearly labeled hotel sandbox support.
+
+| Check | Captured result |
+| --- | --- |
+| Unit/domain/provider/actual SDK tests | 661 tests across 37 files passed |
+| TypeScript/Vite build | Passed; main JS 697.77 kB / 208.36 kB gzip, existing chunk warning; catalog search worker lazy loaded |
+| Deno Edge entrypoint | Passed |
+| Actual disabled-provider loopback HTTP | All 17 cases passed (nine legacy, eight city) |
+| Installed Brave local cases | All 59 cases covered: first run 57 passed; two test-only selector/ISO assumptions corrected and both passed separately |
+| Visual and keyboard acceptance | Actual catalog keyboard selection, desktop and 390/320 px layouts passed with no horizontal overflow |
+| Independent review | Domain, catalog, Google adapter, SDK/HTTP, UI, activation, public docs and final integration specification/quality reviews approved |
+
+Backend `23a984b033001311017a8d7fc587be11e8f91098` passed main workflow 39716748814, branch workflow 39716748878 and native Vercel deployment. Its manual-evidence correction `ca2dcae929b21901221f6e12f447a368a9bae318` passed main workflow 39718447384 (including scoped backend deployment) and branch workflow 39718447265. Actual hosted acceptance preserved a six-minute-old traveler check with null source expiry while giving the new comparison a fresh bounded collection lifetime, without provider/model investigation.
+
+Actual authorized national Google API acceptance returned seven candidates/three plans for New York City–Philadelphia, four/three for Chicago–Indianapolis (different IANA zones), and zero/zero for Anchorage–Honolulu with an honest no-complete-ground-route outcome. Production Google schedule/estimated provenance passed response schemas. No raw provider payload, key or purchase was retained. These API observations are separate from fixture/browser regressions.
+
+All 50 prior browser cases remain, routed to `/legacy`; nine new city cases cover the national flow. Current publication will be followed by the full hosted 59-case Brave gate and actual national Google/OpenAI plus legacy sandbox UI acceptance. No additional cloud setup, authentication or email is required for this approved prototype scope.
+
+# Earlier verification checkpoints
+
 The compact starter-to-chat app is deployed with a v6 backend. Local checks, all 50 hosted Brave cases and actual Google/OpenAI/sandbox acceptance passed as recorded below. Production hotel onboarding remains deferred.
 
 ## Starter-to-chat local gate — 2026-10-22

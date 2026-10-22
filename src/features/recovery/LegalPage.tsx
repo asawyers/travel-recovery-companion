@@ -25,10 +25,11 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
         {page === "terms" ? (
           <>
             <p>
-              This planner helps compare supplied journey facts for Boston Logan
-              to Portland, Maine. Schedules, estimates, prices and availability
-              may change. Confirm the complete journey and payable charges with
-              the operator.
+              This planner compares complete journeys between selected U.S. city
+              centers. Separate Boston Logan to Portland, Maine examples use
+              explicitly labeled fictional and sandbox facts. Schedules,
+              estimates, prices and availability may change. Confirm the
+              complete journey and payable charges with the operator.
             </p>
             <p>
               No booking or reservation is made. There are no traveler accounts
@@ -45,13 +46,28 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
           <>
             <p>
               Your trip inputs are compared locally or sent to the configured
-              public planner when you choose “Find my options,” “Update options,”
-              “Recheck available sources,” or send a message. Relevant current inputs may be
-              sent to Google Maps: route, travel time and relevant transport
-              choices for route estimates and transit schedules. Hotel investigations may send stay dates, occupancy and the nationality you enter to the enabled hotel source. Submitting a selected hotel journey explicitly investigates its availability again. Optional sources can be disabled or unavailable.
+              public planner when you choose “Find my options,” “Update
+              options,” “Recheck available sources,” or send a message. National
+              planning uses city center coordinates and explicit origin and
+              destination time zones. Relevant current inputs may be sent to
+              Google Maps: route, travel time and relevant transport choices for
+              route estimates and transit schedules. National hotel rates are
+              unavailable. In the separate Boston airport demo, hotel
+              investigations may send stay dates, occupancy and the nationality
+              you enter to the enabled hotel source. Submitting a selected hotel
+              journey explicitly investigates its availability again. Optional
+              sources can be disabled or unavailable.
             </p>
             <p>
-              Sending a message sends that text, your current trip inputs and bounded recent conversation from this tab to the public planner and enabled OpenAI assistance. Conversation text is untrusted context; only accepted priority and driving preferences change trip facts. Other factual changes require your structured confirmation. Messages, conversation, assistance summaries and activity are not included in device-saved plans. The labeled sandbox Demo guide uses deterministic guidance and test hotel rates; it makes no OpenAI or live transport calls.
+              Sending a message sends that text, your current trip inputs and
+              bounded recent conversation from this tab to the public planner
+              and enabled OpenAI assistance. Conversation text is untrusted
+              context; only accepted priority and driving preferences change
+              trip facts. Other factual changes require your structured
+              confirmation. Messages, conversation, assistance summaries and
+              activity are not included in device-saved plans. The labeled
+              sandbox Demo guide uses deterministic guidance and test hotel
+              rates; it makes no OpenAI or live transport calls.
             </p>
             <p>
               Traveler-entered and fictional device snapshots are stored in
@@ -87,6 +103,29 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
             Google Privacy Policy
           </a>
           .
+        </p>
+        <p>
+          City names, place centers and time zones use{" "}
+          <a
+            className="underline"
+            href="https://www.geonames.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            GeoNames
+          </a>{" "}
+          data under{" "}
+          <a
+            className="underline"
+            href="https://creativecommons.org/licenses/by/4.0/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            CC BY 4.0
+          </a>
+          . Searchable places include inhabited communities and U.S.
+          territories. Routes use city center estimates, not a traveler’s street
+          address.
         </p>
         <a className="inline-block underline" href="/">
           Return to planner

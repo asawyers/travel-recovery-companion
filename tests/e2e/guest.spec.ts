@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test("guest compares, refines, recovers and invalidates a selection", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await demonstrate(page, "Daytime fictional example");
   await expect(page.getByTestId("provenance-banner")).toContainText(
     "Synthetic / fictional",
@@ -77,7 +77,7 @@ test("guest compares, refines, recovers and invalidates a selection", async ({
 test("overnight example shows the actual selected hotel metadata", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await demonstrate(page, "Overnight fictional example");
   await reviewPlan(page, "View Fictional overnight hotel and morning bus");
   await expect(page.getByTestId("itinerary")).toContainText(
@@ -95,7 +95,7 @@ test("a traveler-entered bus uses actual inputs and retains them on invalid date
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/legacy");
   await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00:30");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
@@ -150,7 +150,7 @@ for (const width of [390, 320]) {
     page,
   }) => {
     await page.setViewportSize({ width, height: 844 });
-    await page.goto("/");
+    await page.goto("/legacy");
     await demonstrate(page, "Overnight fictional example");
     const choose = await revealPlan(page, "View Fictional overnight hotel and morning bus");
     await expect(choose).toBeVisible();
@@ -175,7 +175,7 @@ test("unexpected planner failures hide validation internals and retain entered t
     status: 500,
     json: { error: 'ZodError originalConnection too_big "code"' },
   }));
-  await page.goto("/");
+  await page.goto("/legacy");
   await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2025-01-01T09:15");

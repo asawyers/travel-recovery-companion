@@ -15,7 +15,7 @@ function fixtureResponse(request: any, conversation?: any, assistance?: any) {
 test("a short starter becomes one conversation and preserves unknown original connection and ASAP", async ({ page }) => {
   let input: any;
   await page.route(endpoint, async route => { input = route.request().postDataJSON(); await route.fulfill({ json: fixtureResponse(input.request) }); });
-  await page.goto("/");
+  await page.goto("/legacy");
   await expect(page.getByRole("heading", { name: "Let's get you to Portland" })).toBeVisible();
   await expect(page.getByLabel("Gate arrival", { exact:true })).toHaveValue("now");
   await expect(page.getByLabel("Arrival goal")).toHaveValue("asap");
@@ -41,7 +41,7 @@ test("typed factual clarification keeps current cards then a structured answer r
     if (clarification) { output.result.plans = []; output.result.request.confirmedOptions = []; output.facts.candidates = []; }
     await route.fulfill({ json: output });
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByText("Try a demonstration", { exact:true }).click();
   await page.getByRole("button", { name:"Daytime fictional example", exact:true }).click();
   await expect(page.getByTestId("option-card")).toHaveCount(3);
@@ -66,7 +66,7 @@ test("wrong conversation echoes never render the supplied assistant response", a
     if (input.conversation) output.conversation = { turnId:"other-turn", baseRevision:input.conversation.baseRevision };
     await route.fulfill({ json:output });
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByText("Try a demonstration", { exact:true }).click();
   await page.getByRole("button", { name:"Daytime fictional example", exact:true }).click();
   await expect(page.getByTestId("option-card")).toHaveCount(3);
@@ -79,7 +79,7 @@ test("wrong conversation echoes never render the supplied assistant response", a
 test("an explicitly chosen deadline must be entered before any source request", async ({ page }) => {
   let posts = 0;
   await page.route(endpoint, async route => { posts++; await route.abort(); });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("Arrival goal").selectOption("deadline");
   await page.getByRole("button", { name:"Find my options", exact:true }).click();
   await expect(page.getByRole("alert")).toContainText("Enter an arrival deadline");
@@ -92,7 +92,7 @@ test("confirming a typed stay clarification explicitly enables overnight and pre
     const assistance = input.refinement ? { status:"limited", summary:"Which night should I check?", appliedPreferences:{}, selectedPlanId:null, activity:[], clarification:{ field:"stay", reason:"required" } } : undefined;
     await route.fulfill({ json:fixtureResponse(input.request,input.conversation,assistance) });
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByRole("button",{name:"Find my options",exact:true}).click();
   await expect(page.getByRole("button",{name:"Send message"})).toBeDisabled();
   await page.getByLabel("Message about your trip").fill("Can we stay overnight?");
@@ -124,7 +124,7 @@ function hotelResponse(input:any) {
 test("a selected hotel asks focused facts and blocks invalid transfers and service dates without a source call", async ({ page }) => {
   const posts:any[]=[];
   await page.route(endpoint,async route=>{const input=route.request().postDataJSON();posts.push(input);await route.fulfill({json:hotelResponse(input)});});
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("Gate arrival",{exact:true}).selectOption("custom");
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T18:00");
   await page.getByRole("button",{name:"Find my options",exact:true}).click();
@@ -176,7 +176,7 @@ test("sandbox guide completes with explicit fictional defaults, saves and refres
   const posts:any[]=[], otherCalls:string[]=[];
   page.on("request",request=>{if(["fetch","xhr"].includes(request.resourceType())&&!request.url().includes("/functions/v1/recovery"))otherCalls.push(request.url());});
   await page.route(endpoint,async route=>{const input=route.request().postDataJSON();posts.push(input);await route.fulfill({json:hotelResponse(input)});});
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByText("Try a demonstration",{exact:true}).click();
   await page.getByRole("button",{name:"Try hotel sandbox",exact:true}).click();
   await page.getByRole("button",{name:"Use Guided test property",exact:true}).click();
@@ -220,7 +220,7 @@ test("typed replacement with the same plan ID requires a new selection and save,
     }
     await route.fulfill({json:output});
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByText("Try a demonstration",{exact:true}).click();
   await page.getByRole("button",{name:"Daytime fictional example",exact:true}).click();
   const target=page.getByRole("button",{name:"View Fictional intercity bus",exact:true});
@@ -255,7 +255,7 @@ for(const initialGoal of ["asap","deadline"] as const){
       const assistance=input.refinement?{status:"limited",summary:"Confirm your arrival goal.",appliedPreferences:{},selectedPlanId:null,activity:[],clarification:{field:"deadlineAt",reason:"ambiguous"}}:undefined;
       await route.fulfill({json:fixtureResponse(input.request,input.conversation,assistance)});
     });
-    await page.goto("/");
+    await page.goto("/legacy");
     await page.getByLabel("Gate arrival",{exact:true}).selectOption("custom");
     await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
     if(initialGoal==="deadline"){
@@ -287,7 +287,7 @@ test("a confirmed inline deadline stays in Edit trip even if the following sourc
     const assistance=input.refinement?{status:"limited",summary:"Confirm the deadline.",appliedPreferences:{},selectedPlanId:null,activity:[],clarification:{field:"deadlineAt",reason:"ambiguous"}}:undefined;
     await route.fulfill({json:fixtureResponse(input.request,input.conversation,assistance)});
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("Gate arrival",{exact:true}).selectOption("custom");
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
   await page.getByRole("button",{name:"Find my options",exact:true}).click();

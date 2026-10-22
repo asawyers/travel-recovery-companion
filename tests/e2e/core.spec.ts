@@ -23,7 +23,7 @@ test("real public HTTP compares, refines constraints, saves, restores without HT
     )
       posts.push({ headers: request.headers(), body: request.postDataJSON() });
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await daytime(page);
   expect(posts).toHaveLength(1);
   expect(posts[0].body.investigate).toBe(false);
@@ -56,7 +56,7 @@ test("real public HTTP compares, refines constraints, saves, restores without HT
 test("network failure retains inputs and makes the previous choice stale; explicit investigation is honest", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await daytime(page);
   await reviewPlan(page, "View Fictional intercity bus");
   await page.route(endpoint, (route) => route.abort("failed"));
@@ -111,7 +111,7 @@ for (const outcome of ["result", "failure"]) {
         });
       else await route.fulfill({ response });
     });
-    await page.goto("/");
+    await page.goto("/legacy");
     await demonstrate(page, "Daytime fictional example");
     await expect.poll(() => count).toBe(1);
     await openPreferences(page);
@@ -199,7 +199,7 @@ test("validated provider-shaped TEST FIXTURE retains traveler arrival and source
     providerCalls++;
     await route.fulfill({ json: echoConversation(route, body) });
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:05");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
@@ -238,7 +238,7 @@ test("cache expires by real wall clock and reset never reuses facts", async ({
       posts++;
   });
   await page.clock.install();
-  await page.goto("/");
+  await page.goto("/legacy");
   await daytime(page);
   await reviewPlan(page, "View Fictional intercity bus");
   await page.clock.fastForward(301_000);
@@ -272,7 +272,7 @@ test("manual confirmation timestamps survive priority-only input edits without a
       posts.push(request.postDataJSON());
   });
   await page.clock.install();
-  await page.goto("/");
+  await page.goto("/legacy");
   await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
@@ -324,7 +324,7 @@ test("explicit recheck investigates once and a priority quick reply reuses the c
     )
       posts.push(request.postDataJSON());
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await daytime(page);
   const investigationResponse = page.waitForResponse(
     (response) =>
@@ -365,7 +365,7 @@ test("configured saved-plan refresh explicitly investigates", async ({
     )
       posts.push(request.postDataJSON());
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await daytime(page);
   await reviewPlan(page, "View Fictional intercity bus");
   await page
@@ -380,7 +380,7 @@ test("configured saved-plan refresh explicitly investigates", async ({
 test("configured saved-plan wording describes public investigation without promising live results", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await daytime(page);
   await reviewPlan(page, "View Fictional intercity bus");
   await page

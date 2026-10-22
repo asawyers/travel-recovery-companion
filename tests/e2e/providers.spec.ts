@@ -63,7 +63,7 @@ function fixtureResponse(arrivalAt = "2026-11-18T08:00:00-05:00") {
   });
 }
 async function enterTrip(page: Page) {
-  await page.goto("/");
+  await page.goto("/legacy");
   await openManualOptions(page);
   await page.getByLabel("Revised gate arrival", { exact: true }).fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
@@ -144,7 +144,7 @@ test("Google-only TEST FIXTURE preserves attribution and transient retention thr
 });
 
 test("public terms and privacy pages explain current sharing and device retention", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByRole("link", { name: "Privacy", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Privacy", exact: true })).toBeVisible();
   await expect(page.getByRole("main")).toContainText("Find my options");
