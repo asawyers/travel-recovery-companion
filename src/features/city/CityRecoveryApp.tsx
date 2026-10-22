@@ -115,10 +115,13 @@ export function CityRecoveryApp() {
   const [storageError, setStorageError] = useState<string | null>(null);
   const reported = useRef(0);
   const conversationScroll = useRef<HTMLDivElement>(null);
+  const followConversation = useRef(true);
   useEffect(() => {
     const panel = conversationScroll.current;
-    if (panel && started && !editing) panel.scrollTop = panel.scrollHeight;
-  }, [turns.length, state.busy, travel.state.busy, started, editing]);
+    if (panel && started && !editing && followConversation.current) {
+      panel.scrollTop = panel.scrollHeight;
+    }
+  }, [turns, state.busy, travel.state.busy, started, editing]);
   useEffect(() => () => session.dispose(), [session]);
   useEffect(() => {
     if (!state.result) return;
@@ -147,6 +150,7 @@ export function CityRecoveryApp() {
     content: string,
     id = crypto.randomUUID(),
   ) {
+    if (role === "user") followConversation.current = true;
     setTurns((current) =>
       appendConversation(current, {
         id,
@@ -686,16 +690,67 @@ export function CityRecoveryApp() {
       )}
     </>
   );
+  const supportingContent = (
+    <div className="recovery-supporting-content">
+      <details className="mt-8 border-t pt-5">
+        <summary className="cursor-pointer text-sm text-muted-foreground">
+          Try a demonstration
+        </summary>
+        <p className="my-3 text-sm text-muted-foreground">
+          Separate Boston Logan to Portland, Maine airport examples. All
+          onward itineraries are fictional; hotel sandbox rates are test data.
+        </p>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <a className="underline" href="/legacy?demo=daytime">
+            Daytime fictional example
+          </a>
+          <a className="underline" href="/legacy?demo=overnight">
+            Overnight fictional example
+          </a>
+          <a className="underline" href="/legacy?demo=sandbox">
+            Try hotel sandbox
+          </a>
+        </div>
+      </details>
+      <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
+        Confirm schedules, prices and availability with the operator. Saving
+        keeps one itinerary in this browser on this device. No accounts,
+        tickets or reservations are created.
+      </p>
+      <p className="mt-3 text-xs text-muted-foreground">
+        City names and locations:{" "}
+        <a
+          className="underline"
+          href="https://www.geonames.org/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          GeoNames
+        </a>
+        , licensed under{" "}
+        <a
+          className="underline"
+          href="https://creativecommons.org/licenses/by/4.0/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          CC BY 4.0
+        </a>
+        .
+      </p>
+      {started && <LegalFooter />}
+    </div>
+  );
   return (
-    <>
+    <div className={started ? "recovery-app recovery-app-started" : "recovery-app"}>
       <a
         href="#trip-form"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:bg-white focus:p-3"
       >
         Skip to trip details
       </a>
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+      <header className="recovery-header border-b bg-white">
+        <div className="recovery-header-inner mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <a href="/" className="flex items-center gap-3 font-semibold text-[#173247]">
             <CompanionAvatar size="sm" />
             Travel recovery companion
@@ -705,8 +760,8 @@ export function CityRecoveryApp() {
           </Badge>
         </div>
       </header>
-      <main className={`mx-auto px-4 py-8 sm:px-6 ${started ? "max-w-[1280px]" : "max-w-3xl sm:py-12"}`}>
-        <div className={started ? "mb-6" : "mb-8 max-w-xl"}>
+      <main className={`recovery-main mx-auto px-4 py-8 sm:px-6 ${started ? "max-w-[1280px]" : "max-w-3xl sm:py-12"}`}>
+        <div className={started ? "recovery-intro mb-6" : "mb-8 max-w-xl"}>
           <h1 className={started ? "companion-heading text-2xl font-semibold tracking-tight" : "companion-heading text-3xl font-semibold tracking-tight sm:text-4xl"}>
             Where are you trying to get to?
           </h1>
@@ -730,16 +785,26 @@ export function CityRecoveryApp() {
             {savedPlan}
           </>
         ) : (
-          <div className="grid items-start gap-6 min-[901px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <aside aria-label="Trip conversation" className="min-w-0 overflow-y-auto rounded-2xl border bg-white shadow-sm min-[901px]:[@media(min-height:700px)]:sticky min-[901px]:[@media(min-height:700px)]:top-6 min-[901px]:[@media(min-height:700px)]:flex min-[901px]:[@media(min-height:700px)]:max-h-[calc(100dvh-14rem)] min-[901px]:[@media(min-height:700px)]:flex-col">
-              <div className="flex shrink-0 items-center gap-3 border-b px-5 py-4">
+          <div className="recovery-panes grid items-start gap-6">
+            <aside aria-label="Trip conversation" className="recovery-conversation min-w-0 rounded-2xl border bg-white shadow-sm">
+              <div className="recovery-conversation-heading flex shrink-0 items-center gap-3 border-b px-5 py-4">
                 <CompanionAvatar />
                 <div>
                   <h2 className="companion-heading font-semibold">Your recovery companion</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">We’ll work through the next step together.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">We’ll work through the next step together.</p>
                 </div>
               </div>
-              <div ref={conversationScroll} className="min-h-0 min-[901px]:[@media(min-height:700px)]:min-h-32 min-[901px]:[@media(min-height:700px)]:flex-1 min-[901px]:[@media(min-height:700px)]:overflow-y-auto min-[901px]:[@media(min-height:700px)]:overscroll-contain">
+              <div
+                ref={conversationScroll}
+                role="region"
+                aria-label="Conversation history"
+                tabIndex={0}
+                onScroll={(event) => {
+                  const panel = event.currentTarget;
+                  followConversation.current = panel.scrollHeight - panel.clientHeight - panel.scrollTop <= 48;
+                }}
+                className="recovery-conversation-history"
+              >
                 <div className="border-b bg-[#F4F7FA] px-5 py-4 text-sm">
                   <strong>
                     {draft.origin?.name}, {draft.origin?.stateCode} to{" "}
@@ -825,8 +890,8 @@ export function CityRecoveryApp() {
 
                 </section>
               </div>
-              <div className="shrink-0 space-y-3 border-t bg-white p-4">
-                <div className="flex flex-wrap gap-2" aria-label="Quick replies">
+              <div className="recovery-composer border-t bg-white p-4">
+                <div className="recovery-quick-replies flex flex-wrap gap-2" aria-label="Quick replies">
                   {(
                     [
                       ["cheapest", "Cheaper"],
@@ -859,7 +924,7 @@ export function CityRecoveryApp() {
                   </p>
                 )}
                 <form
-                  className="space-y-3"
+                  className="recovery-message-form space-y-3"
                   onSubmit={(event) => {
                     event.preventDefault();
                     const text = message.trim();
@@ -894,11 +959,11 @@ export function CityRecoveryApp() {
                     onChange={(event) => setMessage(event.target.value)}
                     maxLength={500}
                     rows={2}
-                    className="min-h-20 w-full resize-y rounded-xl border bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="recovery-message-input min-h-20 w-full resize-y rounded-xl border bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                     placeholder="What would make this journey work better?"
                     aria-describedby="city-conversation-help"
                   />
-                  <div className="flex flex-wrap items-center justify-end gap-3">
+                  <div className="recovery-message-send flex flex-wrap items-center justify-end gap-3">
                     <Button
                       type="submit"
                       disabled={
@@ -912,11 +977,11 @@ export function CityRecoveryApp() {
                       Send message
                     </Button>
                   </div>
-                  <details className="text-xs text-muted-foreground">
+                  <details className="recovery-message-privacy text-sm text-muted-foreground">
                     <summary className="cursor-pointer">About messages and privacy</summary>
                     <p
                       id="city-conversation-help"
-                      className="text-xs leading-relaxed text-muted-foreground"
+                      className="text-sm leading-relaxed text-muted-foreground"
                     >
                       Messages and bounded recent conversation stay in this tab
                       and are sent to enabled assistance. They are never saved
@@ -924,7 +989,7 @@ export function CityRecoveryApp() {
                     </p>
                   </details>
                   {!configured && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="recovery-message-unavailable text-sm text-muted-foreground">
                       Assisted refinement is unavailable. Confirm trip facts or
                       add an option you checked.
                     </p>
@@ -933,7 +998,7 @@ export function CityRecoveryApp() {
 
               </div>
             </aside>
-            <section aria-label="Travel options" className="min-w-0 space-y-5">
+            <section aria-label="Travel options" tabIndex={0} className="recovery-options min-w-0 space-y-5">
               <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
                 <div>
                   <h2 className="companion-heading text-xl font-semibold">Travel options</h2>
@@ -1090,57 +1155,13 @@ export function CityRecoveryApp() {
               )}
 
               {savedPlan}
+              {supportingContent}
             </section>
           </div>
         )}
-        <details className="mt-8 border-t pt-5">
-          <summary className="cursor-pointer text-sm text-muted-foreground">
-            Try a demonstration
-          </summary>
-          <p className="my-3 text-sm text-muted-foreground">
-            Separate Boston Logan to Portland, Maine airport examples. All
-            onward itineraries are fictional; hotel sandbox rates are test data.
-          </p>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <a className="underline" href="/legacy?demo=daytime">
-              Daytime fictional example
-            </a>
-            <a className="underline" href="/legacy?demo=overnight">
-              Overnight fictional example
-            </a>
-            <a className="underline" href="/legacy?demo=sandbox">
-              Try hotel sandbox
-            </a>
-          </div>
-        </details>
-        <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
-          Confirm schedules, prices and availability with the operator. Saving
-          keeps one itinerary in this browser on this device. No accounts,
-          tickets or reservations are created.
-        </p>
-        <p className="mt-3 text-xs text-muted-foreground">
-          City names and locations:{" "}
-          <a
-            className="underline"
-            href="https://www.geonames.org/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            GeoNames
-          </a>
-          , licensed under{" "}
-          <a
-            className="underline"
-            href="https://creativecommons.org/licenses/by/4.0/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            CC BY 4.0
-          </a>
-          .
-        </p>
+        {!started && supportingContent}
       </main>
-      <LegalFooter />
-    </>
+      {!started && <LegalFooter />}
+    </div>
   );
 }

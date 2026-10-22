@@ -1,5 +1,19 @@
 # Verification status
 
+## Independent scrolling and expanded conversation — 2026-10-22 (Pacific)
+
+The started desktop workspace uses the viewport for two independent panes: a focusable **Conversation history** region on the left, preserving the **Recovery conversation** live log, and focusable **Travel options** on the right. The heading/composer take less vertical space while keeping labels, quick replies, input, Send and privacy help accessible. Demo, source attribution and legal links remain reachable at the bottom of the options pane. The initial starter and narrow mobile screens retain ordinary page flow.
+
+Measured at 1280×900 after eight actual fixture-backed chat submissions, history grew from **305 to 522 px**, with **four fully visible ordinary turns instead of two**. The right pane changed from an unbounded 1874 px page section to a 762 px viewport scrolling 2119 px of content. Real wheel and keyboard checks moved each pane without changing the other pane or document scroll position, including scroll boundaries. Normal 1280×600, 901×700 and 1024×700 history measured 222/322/322 px. Expanded privacy/expired-source checks retained 131/131/200/200 px across four short sizes, with full help/input/Send reachability.
+
+Incoming replies preserve a reader's earlier-history position. Readers at the bottom keep following the latest turn, including after the existing 24-rendered-turn limit is reached; explicit user sends can return to the latest content. The cap regression first reproduced a 35 px bottom gap and now checks comparisons 12/13/14 at zero gap plus cached Cheaper with zero extra POSTs. The existing retention limit and all conversation/session/request contracts are unchanged. Resizing desktop→390/320 px→desktop preserves the actual transcript and unsent draft without requests or horizontal overflow.
+
+Independent SPEC then QUALITY reviews approved source and browser coverage. The baseline geometry and capped-follow regressions failed before their fixes. A local composer scroll inset also resolves a quarter-pixel privacy clipping edge; browser polling accounts for native animated keyboard scrolling. Source changes are limited to the city workspace view and scoped CSS; backend, controllers, providers, dependency lockfile, quote/selection guards, storage and driving removal remain unchanged.
+
+Fresh root verification passed **985 tests across 48 files** and production TypeScript/Vite build. The combined focused scroll/polish suite passed 11/11, then the cleaned frozen four new scroll cases plus existing privacy case passed 5/5 in 25.9 seconds. The final root affected local suite passed all **45 Brave cases in 1.8 minutes** against the frozen production preview (city, travel, driving removal, polish and new scroll cases). Publication and the hosted scoped checkpoint follow. Main JS was 895.97 kB / 263.87 kB gzip; the existing chunk-size warning remains. All provider endpoints in these browser checks use validated intercepted fixtures, with no new paid-provider/model calls or unmocked-provider acceptance claim.
+
+Evidence: `/tmp/travel-workspace-scroll-final-unit.log`, `/tmp/travel-workspace-scroll-final-build.log`, `/tmp/travel-workspace-scroll-green.log`, before/after geometry JSON and desktop/short/mobile screenshots under `/tmp/travel-workspace-scroll-*`. Earlier deployment and actual-provider evidence below is historical.
+
 ## Standalone driving removal — 2026-10-22 (Pacific)
 
 The current city recovery interface focuses on public transit, flights and an optional origin overnight. Standalone driving cards, their counts and driving recommendations are excluded from current and earlier comparisons. The driving toggle and No driving quick reply are removed. Airport/hotel transfer and processing confirmations remain available. Historical saved records remain readable and are never silently deleted; legacy interfaces and API/schema compatibility are preserved.

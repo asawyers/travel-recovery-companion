@@ -286,8 +286,8 @@ test("short desktop viewports keep expanded privacy help and expired-source comp
     await expect(page.getByText(/Flight and hotel quotes expired/)).toBeVisible();
     await page.getByText("About messages and privacy", { exact: true }).click();
     const conversationViewportHeight = await page
-      .getByRole("log", { name: "Recovery conversation", exact: true })
-      .evaluate((node) => node.parentElement?.clientHeight ?? 0);
+      .getByRole("region", { name: "Conversation history", exact: true })
+      .evaluate((node) => node.clientHeight);
     expect(conversationViewportHeight).toBeGreaterThanOrEqual(128);
     const privacyHelp = page.getByText(/Messages and bounded recent conversation stay in this tab/);
     await privacyHelp.scrollIntoViewIfNeeded();

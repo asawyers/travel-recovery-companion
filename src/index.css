@@ -237,3 +237,98 @@
     transition: none !important;
   }
 }
+
+/* The started desktop planner owns the viewport; each column owns its scroll. */
+.recovery-conversation-history { min-width: 0; }
+.recovery-composer { display: grid; gap: .75rem; }
+.recovery-options { overflow-wrap: anywhere; }
+.recovery-options:focus-visible,
+.recovery-conversation-history:focus-visible { outline-offset: -3px; }
+
+@media (min-width: 901px) {
+  .recovery-app-started {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .recovery-app-started .recovery-header { flex: 0 0 auto; }
+  .recovery-app-started .recovery-header-inner { padding-block: .5rem; }
+  .recovery-app-started .recovery-main {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+    padding-block: .75rem;
+  }
+  .recovery-intro { flex: 0 0 auto; margin-bottom: .75rem; }
+  .recovery-intro h1 { font-size: 1.25rem; line-height: 1.4; }
+  .recovery-intro > p { margin-top: .25rem; line-height: 1.5; }
+  .recovery-panes {
+    flex: 1 1 0;
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+    align-items: stretch;
+    gap: 1.25rem;
+    min-height: 0;
+  }
+  .recovery-conversation {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .recovery-conversation-heading { padding: .5rem 1rem; }
+  .recovery-conversation-heading > .companion-avatar { width: 2.25rem; height: 2.25rem; }
+  .recovery-conversation-heading p { margin-top: 0; }
+  .recovery-conversation-history {
+    flex: 1 1 0;
+    min-height: 8rem;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+  }
+  .recovery-composer {
+    flex: 0 1 auto;
+    max-height: calc(100% - 12rem);
+    min-height: 0;
+    gap: .5rem;
+    padding: .625rem .75rem;
+    scroll-padding-block: .5rem;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  .recovery-composer :is(textarea, button, summary, p) { scroll-margin-block: .5rem; }
+  .recovery-quick-replies { flex-wrap: nowrap; gap: .375rem; }
+  .recovery-quick-replies > button { flex: 1 1 auto; min-width: 0; padding-inline: .5rem; }
+  .recovery-message-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: .375rem .5rem;
+  }
+  .recovery-message-form > * { margin: 0; }
+  .recovery-message-form > label,
+  .recovery-message-privacy,
+  .recovery-message-unavailable { grid-column: 1 / -1; }
+  .recovery-message-input {
+    min-height: 3rem;
+    height: 3rem;
+    max-height: min(10rem, 20dvh);
+    padding: .5rem .625rem;
+  }
+  .recovery-message-send { align-self: stretch; }
+  .recovery-message-send > button { height: 100%; min-height: 3rem; }
+  .recovery-message-privacy > summary { min-height: 1.5rem; }
+  .recovery-message-privacy > p { margin-top: .375rem; }
+  .recovery-options {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+    padding: 0 .25rem .5rem;
+  }
+  .recovery-supporting-content > details { margin-top: 1.5rem; }
+  .recovery-supporting-content > footer { margin-top: 1.25rem; padding-inline: 0; }
+}
