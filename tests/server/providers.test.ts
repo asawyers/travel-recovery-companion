@@ -17,6 +17,14 @@ function deferred<T>() {
   return { promise, resolve }
 }
 describe('request-scoped provider discovery sessions', () => {
+  it('discovers transport with no hard deadline and skips hotel quoting until a stay is supplied', async () => {
+    const routes = vi.fn(async () => routesResult()); const hotels = vi.fn(async () => hotelResult())
+    const req = { ...request(), deadlineAt: null, originalDepartureAt: null, stay: null }
+    const facts = await createProviderRegistry({ routes, hotels }).gatherPermittedFacts(req, context())
+    expect(routes).toHaveBeenCalledExactlyOnceWith(req, expect.anything())
+    expect(hotels).not.toHaveBeenCalled()
+    expect(facts.candidates).toHaveLength(1)
+  })
   it('memoizes concurrent and repeated transport/hotel promises and keeps discoveries separate', async () => {
     const transport = deferred<ReturnType<typeof routesResult>>(); const availability = deferred<ReturnType<typeof hotelResult>>()
     const routes = vi.fn(() => transport.promise); const hotels = vi.fn(() => availability.promise)
@@ -59,7 +67,7 @@ describe('request-scoped provider discovery sessions', () => {
     const routes = vi.fn(); const hotels = vi.fn(); const req = request(); const controller = new AbortController()
     if (scenario === 'synthetic') req.mode = 'synthetic'
     if (scenario === 'aborted') controller.abort()
-    if (scenario === 'deadline-reached') req.arrivalAt = req.deadlineAt
+    if (scenario === 'deadline-reached') req.arrivalAt = req.deadlineAt!
     const registry = createProviderRegistry({ routes, hotels }); expect(registry.createSession).toBeTypeOf('function')
     const session = registry.createSession!(req, { signal: controller.signal })
     const results = await Promise.all([session.findTransport(), session.findHotels()])
@@ -118,7 +126,7 @@ describe('isolated hotel sandbox discovery', () => {
     if (scenario === 'missing-marker') delete (req as { hotelDataMode?: string }).hotelDataMode
     if (scenario === 'missing-server-permission') ctx.hotelSandbox = false
     if (scenario === 'aborted') controller.abort()
-    if (scenario === 'deadline-reached') req.arrivalAt = req.deadlineAt
+    if (scenario === 'deadline-reached') req.arrivalAt = req.deadlineAt!
     if (scenario === 'not-allowed') req.overnightAllowed = false
     if (scenario === 'no-stay') req.stay = null
     const routes = vi.fn(); const hotels = vi.fn(); const sandboxHotels = vi.fn()

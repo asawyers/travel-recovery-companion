@@ -1,6 +1,7 @@
 import { RecoveryPlanSchema, RecoveryResultSchema, PlanningTripRequestSchema } from './schemas.ts'
 import type { ConfirmedOption, CostLine, JourneyLeg, RecoveryPlan, RecoveryResult, SourceEvidence, TransferInput, TransitOption, TripRequest } from './schemas.ts'
 import { normalizeCandidates } from './candidates.ts'
+import { searchEndAt } from './search-policy.ts'
 import { addMinutes, minutesBetween, sumCosts, toInstantMillis, toTripLocalTime } from './time.ts'
 
 const localDate = (time: string) => toTripLocalTime(time).slice(0, 10)
@@ -62,7 +63,7 @@ function transferCount(legs: JourneyLeg[]): number {
 function buildPlan(request: TripRequest, candidate: ConfirmedOption, now: string): RecoveryPlan {
   const warnings: string[] = []
   const violations: string[] = []
-  if (toInstantMillis(request.arrivalAt) >= toInstantMillis(request.deadlineAt)) violations.push('The destination deadline is already reached at airport arrival.')
+  if (request.deadlineAt !== null && toInstantMillis(request.arrivalAt) >= toInstantMillis(request.deadlineAt)) violations.push('The destination deadline is already reached at airport arrival.')
   let confirmation = candidate.confirmations.length > 0
   const firstAccess = candidate.kind === 'overnight' ? candidate.hotelAccess : candidate.access
   requireFact(firstAccess.from === 'BOS' || firstAccess.from === 'BOS terminal exit', 'Airport access does not connect to the BOS terminal exit.')
@@ -112,7 +113,11 @@ function buildPlan(request: TripRequest, candidate: ConfirmedOption, now: string
   const total = sumCosts(journey.legs.flatMap(l => l.costs))
   if (!total.priceComplete) warnings.push('Missing or unsupported price: total is incomplete; known charges are only a lower bound.')
   if (total.unsupportedCurrency) warnings.push('Unsupported currency is excluded from the USD total; no conversion was inferred.')
-  if (minutesBetween(request.deadlineAt, journey.at) > 0) violations.push('Final destination arrival exceeds the deadline.')
+  if (request.deadlineAt !== null) {
+    if (minutesBetween(request.deadlineAt, journey.at) > 0) violations.push('Final destination arrival exceeds the deadline.')
+  } else {
+    requireFact(minutesBetween(searchEndAt(request), journey.at) <= 0, 'Complete journey arrives outside the 24-hour search window; candidate omitted.')
+  }
   if (request.budgetCents !== null) {
     const overBudget = total.knownCostCents > request.budgetCents
     if (request.budgetMode === 'hard') {
@@ -153,6 +158,7 @@ export function planRecovery(input: TripRequest, inputs: readonly unknown[], con
   const request = PlanningTripRequestSchema.parse(input)
   toInstantMillis(context.now)
   const { candidates, warnings } = normalizeCandidates(request, inputs)
+  if (request.deadlineAt === null) warnings.push('ASAP lookup coverage is limited to complete journeys arriving within a 24-hour search window after airport arrival; later journeys are outside this search.')
   const plans: RecoveryPlan[] = []; const rejected: RecoveryPlan[] = []
   for (const candidate of candidates) {
     try {
@@ -166,12 +172,16 @@ export function planRecovery(input: TripRequest, inputs: readonly unknown[], con
   plans.sort((a, b) => rank(request.priority, a, b))
   rejected.sort((a, b) => compareId(a.id, b.id))
   if (!plans.length) warnings.push('No feasible complete journey satisfies the supplied facts and limits; no limits were relaxed.')
-  const readyAt = addMinutes(request.arrivalAt, request.airportExitMinutes + request.originalAccessMinutes)
-  const requiredReadyAt = addMinutes(request.originalDepartureAt, -request.originalBoardingMinutes)
-  const marginMinutes = minutesBetween(readyAt, requiredReadyAt)
+  let originalConnection: RecoveryResult['originalConnection'] = null
+  if (request.originalDepartureAt !== null) {
+    const readyAt = addMinutes(request.arrivalAt, request.airportExitMinutes + request.originalAccessMinutes)
+    const requiredReadyAt = addMinutes(request.originalDepartureAt, -request.originalBoardingMinutes)
+    const marginMinutes = minutesBetween(readyAt, requiredReadyAt)
+    originalConnection = { readyAt, requiredReadyAt, marginMinutes, shortfallMinutes: Math.max(0, -marginMinutes), missed: marginMinutes < 0 }
+  }
   return RecoveryResultSchema.parse({
     request, generatedAt: context.now,
-    originalConnection: { readyAt, requiredReadyAt, marginMinutes, shortfallMinutes: Math.max(0, -marginMinutes), missed: marginMinutes < 0 },
+    originalConnection,
     plans: plans.slice(0, 3), rejected, warnings: unique(warnings),
     activity: [{ tool: 'deterministic-planner', message: `Compared ${candidates.length} validated candidates using ${request.priority}; schedule feasibility is not reserved inventory.`, checkedAt: context.now }],
   })

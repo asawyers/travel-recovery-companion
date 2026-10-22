@@ -1,3 +1,4 @@
+import { demonstrate, openPreferences, openManualOptions, compare, echoConversation, reviewPlan } from "./helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { overnightFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
@@ -7,15 +8,8 @@ import {
 } from "../../supabase/functions/_shared/domain/api";
 const key = "travel-recovery:selected:v1";
 async function chooseHotel(page: Page) {
-  await page
-    .getByRole("button", { name: "Overnight fictional example", exact: true })
-    .click();
-  await page
-    .getByRole("button", {
-      name: "Choose Fictional overnight hotel and morning bus",
-      exact: true,
-    })
-    .click();
+  await demonstrate(page, "Overnight fictional example");
+  await reviewPlan(page, "View Fictional overnight hotel and morning bus");
 }
 test("saves full itinerary locally, restores historical details without network and deletes explicitly", async ({
   page,
@@ -60,9 +54,7 @@ test("saves full itinerary locally, restores historical details without network 
     saved.plan.hotel.evidence[0].checkedAt,
   );
   await expect(page.getByTestId("option-card")).toHaveCount(0);
-  await expect(page.getByTestId("itinerary")).toContainText(
-    "No itinerary selected",
-  );
+  await expect(page.getByTestId("itinerary")).toHaveCount(0);
   expect(requests).toEqual([]);
   await expect(page.getByRole("button", { name: /sign in/i })).toHaveCount(0);
   await historical
@@ -85,6 +77,7 @@ test("editing clears the current saved badge but retains history; refresh starts
   await expect(page.getByTestId("itinerary")).toContainText(
     "Saved on this device",
   );
+  await openPreferences(page);
   await page.getByLabel("Budget (USD)").fill("300");
   await expect(page.getByTestId("itinerary")).toContainText(
     "No itinerary selected",
@@ -202,15 +195,8 @@ test("quota and removal failure do not replace or discard the previous saved rec
       throw new DOMException("blocked", "SecurityError");
     };
   });
-  await page
-    .getByRole("button", { name: "Daytime fictional example", exact: true })
-    .click();
-  await page
-    .getByRole("button", {
-      name: "Choose Fictional intercity bus",
-      exact: true,
-    })
-    .click();
+  await demonstrate(page, "Daytime fictional example");
+  await reviewPlan(page, "View Fictional intercity bus");
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
@@ -263,7 +249,7 @@ test("expired history and unknown costs remain readable on a narrow device witho
   await expect(page.getByTestId("option-card")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Save on this device", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(320);
@@ -324,21 +310,15 @@ test("API-created hotel absent from original input saves and restores every deta
   await page.route("**/functions/v1/recovery", async (route) => {
     posts++;
     submitted = route.request().postDataJSON();
-    await route.fulfill({ json: body });
+    await route.fulfill({ json: echoConversation(route, body) });
   });
   await page.goto("/");
+  await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
   await page.getByLabel("Final destination deadline").fill("2026-11-19T14:00");
-  await page
-    .getByRole("button", { name: "Compare recovery options", exact: true })
-    .click();
-  await page
-    .getByRole("button", {
-      name: "Choose Fictional overnight hotel and morning bus",
-      exact: true,
-    })
-    .click();
+  await compare(page);
+  await reviewPlan(page, "View Fictional overnight hotel and morning bus");
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
@@ -378,9 +358,7 @@ test("refreshed manual trip retains editable inputs and priority reranks without
       posts.push(request.postDataJSON());
   });
   await page.goto("/");
-  const configured = !(
-    await page.getByTestId("provenance-banner").textContent()
-  )?.includes("compared locally");
+  await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
   await page.getByLabel("Final destination deadline").fill("2026-11-18T14:00");
@@ -399,16 +377,13 @@ test("refreshed manual trip retains editable inputs and priority reranks without
     ["Final transfer cost (USD)", "0"],
   ])
     await page.getByLabel(label, { exact: true }).fill(value);
-  await page
-    .getByRole("button", { name: "Compare recovery options", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Choose Refresh manual bus", exact: true })
-    .click();
+  await compare(page);
+  await reviewPlan(page, "View Refresh manual bus");
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
   const saved = await page.evaluate((k) => localStorage.getItem(k), key);
+  const configured = posts.length > 0;
   const refreshResponse = configured
     ? page.waitForResponse(
         (response) =>
@@ -442,11 +417,9 @@ test("refreshed manual trip retains editable inputs and priority reranks without
     "Refresh manual bus",
   );
   const count = posts.length;
-  await page.getByRole("button", { name: "Cheapest", exact: true }).click();
+  await page.getByRole("button", { name: "Cheaper", exact: true }).click();
   await expect(page.getByTestId("option-card")).toHaveCount(expectedCards);
-  await page
-    .getByRole("button", { name: "Choose Refresh manual bus", exact: true })
-    .click();
+  await reviewPlan(page, "View Refresh manual bus");
   expect(posts).toHaveLength(count);
   expect(posts).toHaveLength(configured ? 2 : 0);
   if (configured)

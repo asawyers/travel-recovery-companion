@@ -1,3 +1,4 @@
+import { openManualOptions, compare, investigate, echoConversation, revealPlan, reviewPlan } from "./helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { daytimeFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
@@ -63,26 +64,24 @@ function fixtureResponse(arrivalAt = "2026-11-18T08:00:00-05:00") {
 }
 async function enterTrip(page: Page) {
   await page.goto("/");
+  await openManualOptions(page);
   await page.getByLabel("Revised gate arrival", { exact: true }).fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
   await page.getByLabel("Final destination deadline").fill("2026-11-18T14:00");
 }
-const compare = (page: Page) => page.getByRole("button", {
-  name: "Compare recovery options", exact: true,
-}).click();
+
 
 test("traveler arrival is sufficient without flight inputs, status or unavailable warnings", async ({ page }) => {
   const posts: any[] = [];
   await page.route(endpoint, async (route) => {
     posts.push(route.request().postDataJSON());
-    await route.fulfill({ json: fixtureResponse() });
+    await route.fulfill({ json: echoConversation(route, fixtureResponse()) });
   });
   await enterTrip(page);
   await expect(page.getByLabel("Arrival time source")).toHaveCount(0);
   await expect(page.getByLabel("Flight identifier", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("San Diego departure date")).toHaveCount(0);
-  await page.getByLabel("Investigate available sources").check();
-  await compare(page);
+  await investigate(page);
   await expect(page.getByTestId("option-card")).toHaveCount(3);
   expect(posts).toHaveLength(1);
   expect(posts[0]).toMatchObject({ investigate: true, request: {
@@ -90,7 +89,7 @@ test("traveler arrival is sufficient without flight inputs, status or unavailabl
   } });
   await expect(page.getByTestId("flight-status")).toHaveCount(0);
   await expect(page.getByRole("main")).not.toContainText(/FlightAware|Gate arrival unavailable/);
-  await page.getByRole("button", { name: "Choose Fictional intercity train", exact: true }).click();
+  await reviewPlan(page, "View Fictional intercity train");
   await expect(page.getByTestId("itinerary")).toContainText("Traveler fixture arrival");
   await expect(page.getByTestId("itinerary")).toContainText("2026-10-20T01:23:45Z");
 });
@@ -100,10 +99,11 @@ test("Google-only TEST FIXTURE preserves attribution and transient retention thr
   await page.route(endpoint, async (route) => {
     const post = route.request().postDataJSON();
     posts.push(post);
-    await route.fulfill({ json: fixtureResponse(post.request.arrivalAt) });
+    await route.fulfill({ json: echoConversation(route, fixtureResponse(post.request.arrivalAt)) });
   });
   await enterTrip(page);
   await compare(page);
+  await revealPlan(page, "View Fictional intercity bus");
   const googleCard = page.getByTestId("option-card").filter({ hasText: "intercity bus" });
   await expect(googleCard).toContainText("Google Maps");
   await expect(googleCard).not.toContainText("Traveler-entered sources");
@@ -114,25 +114,26 @@ test("Google-only TEST FIXTURE preserves attribution and transient retention thr
   await expect(attribution).toHaveCSS("font-size", "12px");
   await expect(attribution).toHaveCSS("color", "rgb(31, 31, 31)");
   await expect(googleCard.getByRole("link", { name: "Google Maps terms" })).toHaveAttribute("href", "https://www.google.com/help/terms_maps/");
-  await page.getByRole("button", { name: "Cheapest", exact: true }).click();
+  await page.getByRole("button", { name: "Cheaper", exact: true }).click();
   expect(posts).toHaveLength(1);
-  await page.getByRole("button", { name: "Choose Fictional intercity train", exact: true }).click();
+  await reviewPlan(page, "View Fictional intercity train");
   await page.getByRole("button", { name: "Save on this device", exact: true }).click();
   await expect(page.getByTestId("saved-plan")).toBeVisible();
   const previous = await page.evaluate((key) => localStorage.getItem(key), key);
   expect(previous).not.toContain("Google Maps Routes API");
   const parsed = JSON.parse(previous!);
   expect(parsed.request.confirmedOptions.some((c: { kind: string }) => c.kind === "bus")).toBe(false);
-  await page.getByRole("button", { name: "Choose Fictional intercity bus", exact: true }).click();
+  await reviewPlan(page, "View Fictional intercity bus");
   await expect(page.getByTestId("itinerary").getByText("Google Maps", { exact: true })).toHaveAttribute("translate", "no");
   await page.getByRole("button", { name: "Save on this device", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Google Maps route content cannot be saved");
   expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe(previous);
+  await openManualOptions(page);
   await page.getByLabel("Revised gate arrival", { exact: true }).fill("2026-11-18T08:15");
   await compare(page);
   await expect.poll(() => posts.length).toBe(2);
   expect(posts[1].request.arrivalAt).toBe("2026-11-18T08:15:00-05:00");
-  await page.getByRole("button", { name: "Choose Fictional intercity train", exact: true }).click();
+  await reviewPlan(page, "View Fictional intercity train");
   await expect(page.getByTestId("itinerary")).toContainText("8:15");
   await expect(page.getByTestId("itinerary")).toContainText("traveler confirmed");
   await page.reload();
@@ -146,7 +147,7 @@ test("public terms and privacy pages explain current sharing and device retentio
   await page.goto("/");
   await page.getByRole("link", { name: "Privacy", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Privacy", exact: true })).toBeVisible();
-  await expect(page.getByRole("main")).toContainText("explicitly choose");
+  await expect(page.getByRole("main")).toContainText("Find my options");
   await expect(page.getByRole("main")).toContainText("Google Maps");
   await expect(page.getByRole("main")).not.toContainText(/flight identifiers|departure date|flight lookup/i);
   await page.goto("/terms");
@@ -160,11 +161,11 @@ test("legacy saved flight metadata remains historical while refresh sends travel
   await page.route(endpoint, async (route) => {
     const post = route.request().postDataJSON();
     posts.push(post);
-    await route.fulfill({ json: fixtureResponse(post.request.arrivalAt) });
+    await route.fulfill({ json: echoConversation(route, fixtureResponse(post.request.arrivalAt)) });
   });
   await enterTrip(page);
   await compare(page);
-  await page.getByRole("button", { name: "Choose Fictional intercity train", exact: true }).click();
+  await reviewPlan(page, "View Fictional intercity train");
   await page.getByRole("button", { name: "Save on this device", exact: true }).click();
   await expect(page.getByTestId("saved-plan")).toBeVisible();
   const historical = await page.evaluate((key) => {

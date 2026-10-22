@@ -1,3 +1,4 @@
+import type { ConversationContext } from '../domain/conversation.ts'
 import type { Assistance, PreferencePatch } from '../domain/assistance.ts'
 import type { ConfirmedOption, HotelOption, RecoveryResult, TripRequest } from '../domain/schemas.ts'
 
@@ -11,6 +12,7 @@ export type AgentTools = {
 export type AgentExecutor = (args: {
   request: TripRequest
   refinement: string
+  conversation?: ConversationContext
   tools: AgentTools
   signal: AbortSignal
 }) => Promise<Assistance>

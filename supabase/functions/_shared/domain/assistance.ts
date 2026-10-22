@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { toInstantMillis } from './time.ts'
+import { ClarificationSchema } from './conversation.ts'
 
 export const PreferencePatchSchema = z.strictObject({
   drivingAllowed: z.boolean().optional(),
@@ -19,5 +20,10 @@ export const AssistanceSchema = z.strictObject({
   appliedPreferences: PreferencePatchSchema,
   selectedPlanId: z.string().trim().min(1).max(100).nullable(),
   activity: z.array(AgentActivitySchema).max(32),
+  clarification: ClarificationSchema.optional(),
+}).superRefine((assistance, ctx) => {
+  if (assistance.clarification && (assistance.status !== 'limited' || Object.keys(assistance.appliedPreferences).length > 0 || assistance.selectedPlanId !== null)) {
+    ctx.addIssue({ code: 'custom', path: ['clarification'], message: 'Clarifications require limited status, unchanged preferences and no selection' })
+  }
 })
 export type Assistance = z.infer<typeof AssistanceSchema>

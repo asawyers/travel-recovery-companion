@@ -1,4 +1,4 @@
-import type { RecoveryResult } from "@domain/schemas";
+import type { RecoveryPlan, RecoveryResult } from "@domain/schemas";
 import { toInstantMillis } from "@domain/time";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,6 @@ export function OptionList({
   selectedId,
   now,
   onSelect,
-  onRefine,
   busy,
   stale,
 }: {
@@ -34,89 +33,7 @@ export function OptionList({
   stale: boolean;
 }) {
   const hotelSandbox = result?.request.hotelDataMode === "sandbox";
-  return (
-    <section
-      aria-labelledby="options-heading"
-      className="rounded-lg border bg-white"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
-        <h2 id="options-heading" className="text-lg font-semibold">
-          Recovery options
-        </h2>
-        <Badge variant="outline">No inventory reserved</Badge>
-      </div>
-      <div className="space-y-4 p-5">
-        {!result ? (
-          <p className="text-sm text-muted-foreground">
-            Enter your trip and a confirmed onward option, or choose a fictional
-            example. Your comparison will appear here.
-          </p>
-        ) : (
-          <>
-            {stale && (
-              <p className="rounded-md border border-amber-700/40 bg-amber-50 p-3 text-sm text-amber-950">
-                Previous comparison — stale. These results use your earlier
-                inputs. Compare again before selecting.
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() => onRefine("cheapest")}
-              >
-                Cheapest
-              </Button>
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() => onRefine("no-driving")}
-              >
-                No driving
-              </Button>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Deadline {time(result.request.deadlineAt)} ·{" "}
-              {result.request.budgetCents === null
-                ? "No budget limit"
-                : `${money(result.request.budgetCents)} ${result.request.budgetMode} budget`}{" "}
-              ·{" "}
-              {result.request.drivingAllowed ? "Driving allowed" : "No driving"}
-            </p>
-            <div className="rounded-md bg-slate-100 p-3 text-sm">
-              <p className="font-medium">
-                Original connection{" "}
-                {result.originalConnection.missed
-                  ? `${result.originalConnection.shortfallMinutes} minutes short`
-                  : "fits the supplied allowances"}
-              </p>
-              <p className="mt-1">
-                Gate arrival + {result.request.airportExitMinutes} min airport
-                exit + {result.request.originalAccessMinutes} min terminal
-                access = ready {time(result.originalConnection.readyAt)}.
-                Required ready by{" "}
-                {time(result.originalConnection.requiredReadyAt)} (
-                {result.request.originalBoardingMinutes} min boarding
-                allowance).
-              </p>
-            </div>
-            {!result.plans.length && (
-              <div className="rounded-md border border-amber-700/30 p-4">
-                <h3 className="font-semibold">No feasible plan</h3>
-                <p className="mt-2 text-sm">
-                  Check the deadline, complete prices, hard budget and allowed
-                  transport. Edit the trip or supplied option and compare again.
-                  No limits were relaxed.
-                </p>
-                <a
-                  className="mt-2 inline-block text-sm text-primary underline"
-                  href="#trip-form"
-                >
-                  Edit trip details
-                </a>
-              </div>
-            )}
-            {result.plans.map((p, i) => {
+  function renderPlan(p: RecoveryPlan, i: number) {
               const expired =
                 p.evidenceExpiresAt !== null &&
                 toInstantMillis(p.evidenceExpiresAt) <= toInstantMillis(now);
@@ -130,7 +47,7 @@ export function OptionList({
                     <h3 className="font-semibold">{p.title}</h3>
                     {i === 0 && (
                       <Badge variant="secondary">
-                        First by {result.request.priority.replace("_", " ")}
+                        First by {result!.request.priority.replace("_", " ")}
                       </Badge>
                     )}
                   </div>
@@ -178,16 +95,85 @@ export function OptionList({
                   )}
                   <Button
                     className="mt-4"
-                    aria-label={`Choose ${p.title}`}
+                    aria-label={`View ${p.title}`}
                     disabled={stale || !p.selectable || expired || busy}
                     aria-pressed={selectedId === p.id}
                     onClick={() => onSelect(p.id)}
                   >
-                    Choose this plan
+                    View this plan
                   </Button>
                 </article>
               );
-            })}
+  }
+
+  return (
+    <section
+      aria-labelledby="options-heading"
+      className="rounded-lg border bg-white"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
+        <h2 id="options-heading" className="text-lg font-semibold">
+          Recovery options
+        </h2>
+        <Badge variant="outline">No inventory reserved</Badge>
+      </div>
+      <div className="space-y-4 p-5">
+        {!result ? (
+          <p className="text-sm text-muted-foreground">
+            Enter your trip and a confirmed onward option, or choose a fictional
+            example. Your comparison will appear here.
+          </p>
+        ) : (
+          <>
+            {stale && (
+              <p className="rounded-md border border-amber-700/40 bg-amber-50 p-3 text-sm text-amber-950">
+                Previous comparison — stale. These results use your earlier
+                inputs. Compare again before selecting.
+              </p>
+            )}
+            <p className="text-sm text-muted-foreground">
+              {result.request.deadlineAt ? `Deadline ${time(result.request.deadlineAt)}` : "As soon as possible · search window up to 24 hours"} ·{" "}
+              {result.request.budgetCents === null
+                ? "No budget limit"
+                : `${money(result.request.budgetCents)} ${result.request.budgetMode} budget`}{" "}
+              ·{" "}
+              {result.request.drivingAllowed ? "Driving allowed" : "No driving"}
+            </p>
+            {result.originalConnection && <details className="rounded-md bg-slate-100 p-3 text-sm"><summary className="cursor-pointer font-medium">Original connection assessment</summary>
+              <p className="font-medium">
+                Original connection{" "}
+                {result.originalConnection.missed
+                  ? `${result.originalConnection.shortfallMinutes} minutes short`
+                  : "fits the supplied allowances"}
+              </p>
+              <p className="mt-1">
+                Gate arrival + {result.request.airportExitMinutes} min airport
+                exit + {result.request.originalAccessMinutes} min terminal
+                access = ready {time(result.originalConnection.readyAt)}.
+                Required ready by{" "}
+                {time(result.originalConnection.requiredReadyAt)} (
+                {result.request.originalBoardingMinutes} min boarding
+                allowance).
+              </p>
+            </details>}
+            {!result.plans.length && (
+              <div className="rounded-md border border-amber-700/30 p-4">
+                <h3 className="font-semibold">No feasible plan</h3>
+                <p className="mt-2 text-sm">
+                  Check the deadline, complete prices, hard budget and allowed
+                  transport. Edit the trip or supplied option and compare again.
+                  No limits were relaxed.
+                </p>
+                <a
+                  className="mt-2 inline-block text-sm text-primary underline"
+                  href="#trip-form"
+                >
+                  Edit trip details
+                </a>
+              </div>
+            )}
+            {result.plans[0] && renderPlan(result.plans[0], 0)}
+            {result.plans.length > 1 && <details className="space-y-3"><summary className="cursor-pointer text-sm font-medium">Other options ({Math.min(2, result.plans.length - 1)})</summary><div className="mt-3 space-y-3">{result.plans.slice(1, 3).map((plan, index) => renderPlan(plan, index + 1))}</div></details>}
             {result.rejected.length > 0 && (
               <details open={!result.plans.length} className="border-t pt-3">
                 <summary className="cursor-pointer text-sm font-medium">

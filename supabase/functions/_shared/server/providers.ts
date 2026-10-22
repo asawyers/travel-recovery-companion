@@ -29,7 +29,7 @@ export function createProviderRegistry(adapters: { routes?: RoutesAdapter; hotel
     function blocked(permitSandboxHotels = false): ProviderFacts | undefined {
       if (request.mode === 'synthetic' && !(permitSandboxHotels && hotelSandbox)) return empty('Synthetic investigation uses fictional supplied facts; no live provider was called.')
       if (context.signal.aborted) return empty('Optional provider investigation was cancelled; manual facts were retained.')
-      if (toInstantMillis(request.arrivalAt) >= toInstantMillis(request.deadlineAt)) return empty('The hard destination deadline is already reached at airport arrival; routes and hotel investigation were skipped because no complete journey can qualify.')
+      if (request.deadlineAt !== null && toInstantMillis(request.arrivalAt) >= toInstantMillis(request.deadlineAt)) return empty('The hard destination deadline is already reached at airport arrival; routes and hotel investigation were skipped because no complete journey can qualify.')
       return undefined
     }
     async function findTransport(): Promise<ProviderFacts> {

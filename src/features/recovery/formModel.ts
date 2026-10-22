@@ -131,8 +131,8 @@ export function draftFromRequest(r: TripRequest): Draft {
     ...emptyDraft(),
     hotelSandbox: r.mode === "synthetic" && r.hotelDataMode === "sandbox",
     arrivalAt: localInput(r.arrivalAt),
-    originalDepartureAt: localInput(r.originalDepartureAt),
-    deadlineAt: localInput(r.deadlineAt),
+    originalDepartureAt: r.originalDepartureAt ? localInput(r.originalDepartureAt) : "",
+    deadlineAt: r.deadlineAt ? localInput(r.deadlineAt) : "",
     budget: r.budgetCents === null ? "" : String(r.budgetCents / 100),
     budgetMode: r.budgetMode,
     priority: r.priority,
@@ -242,7 +242,8 @@ export function buildRequest(
   function date(
     key: "arrivalAt" | "originalDepartureAt" | "deadlineAt",
     value: string,
-  ): string | undefined {
+  ): string | null | undefined {
+    if (key !== "arrivalAt" && !value.trim()) return null;
     try {
       if (original && originalDraft && value === originalDraft[key])
         return original[key];
@@ -277,7 +278,7 @@ export function buildRequest(
     d.originalBoardingMinutes,
   );
   let stay = null;
-  if (d.overnightAllowed) {
+  if (d.overnightAllowed && (d.checkin || d.checkout || d.guestNationality)) {
     const r = TripRequestSchema.shape.stay.safeParse({
       checkin: d.checkin,
       checkout: d.checkout,
@@ -527,7 +528,7 @@ export function buildRequest(
   }
   if (!options.length)
     warnings.push(
-      "Add a date-specific confirmed train, bus or car option below. No schedules or prices are fetched automatically.",
+      "No confirmed onward options yet. Available source checks may be incomplete; you can add an option you have checked.",
     );
   return { request: parsed.data, errors, warnings };
 }

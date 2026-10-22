@@ -35,7 +35,8 @@ export type RecoveryAction =
   | { type: "RESET" }
   | { type: "HOTEL_OFFERS_EXPIRED"; expiresAt: string }
   | { type: "INPUT_EDITED"; reason?: string }
-  | { type: "REQUEST_STARTED"; request: TripRequest; sequence: number }
+  | { type: "REQUEST_STARTED"; request: TripRequest; sequence: number; preserveComparison?: boolean }
+  | { type: "CLARIFICATION_RECEIVED"; sequence: number; assistance: Assistance }
   | {
       type: "RESULT_RECEIVED";
       sequence: number;
@@ -101,13 +102,17 @@ export function recoveryReducer(
         ...state,
         status: "planning",
         assistance: null,
-        stale: state.result !== null,
-        selectedPlanId: null,
-        persistence: "unsaved",
+        stale: action.preserveComparison ? state.stale : state.result !== null,
+        selectedPlanId: action.preserveComparison ? state.selectedPlanId : null,
+        persistence: action.preserveComparison ? state.persistence : "unsaved",
         error: null,
         sequence: action.sequence,
         request: action.request,
       };
+    case "CLARIFICATION_RECEIVED":
+      if (action.sequence !== state.sequence || state.status !== "planning") return state;
+      return { ...state, stale: false, assistance: action.assistance, request: state.result?.request ?? state.request,
+        status: !state.result?.plans.length ? "no_feasible_plan" : state.result.plans.some(plan => !plan.priceComplete) ? "partial_results" : "results" };
     case "RESULT_RECEIVED":
       if (action.sequence !== state.sequence || state.status !== "planning")
         return state;
@@ -115,6 +120,8 @@ export function recoveryReducer(
         ...state,
         stale: false,
         result: action.result,
+        selectedPlanId: null,
+        persistence: "unsaved",
         request: action.result.request,
         assistance: action.assistance ?? null,
         hotelOffers: action.hotelOffers ?? [],

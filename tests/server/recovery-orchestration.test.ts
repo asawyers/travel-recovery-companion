@@ -24,7 +24,7 @@ describe('recovery request orchestration',()=>{
   const outputs:ModelResponse['output'][]=[
     [call('find_transport_options')],[call('find_transport_options')],
     [call('assess_recovery_options',{preferencePatch:{drivingAllowed:false,priority:'cheapest'}})],
-    [{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify({assessmentId:'assessment-1',planId:candidate.id,reasonCodes:['no_driving','lowest_complete_price'],unsupportedRequest:false})}]}],
+    [{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify({assessmentId:'assessment-1',planId:candidate.id,reasonCodes:['no_driving','lowest_complete_price'],unsupportedRequest:false,clarification:null})}]}],
   ]
   const model:Model={getResponse:async()=>({usage:new Usage(),output:outputs.shift()!}),async *getStreamedResponse(){throw Error('No streaming')}}
   const agent=createRecoveryAgent({enabled:true,now:()=>now,model})

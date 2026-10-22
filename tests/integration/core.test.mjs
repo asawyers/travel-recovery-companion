@@ -116,3 +116,30 @@ test('REAL HTTP fictional refinement never becomes live model assistance', async
   assert.ok(!body.facts.hotelOffers?.length)
   console.info('HTTP gate: fictional comparison remains deterministic; no live hotel or model claim')
 })
+
+test('REAL HTTP minimal ASAP request preserves unknown connection and echoes bounded conversation identity', async () => {
+  const request = { ...payload().request, originalDepartureAt: null, deadlineAt: null, overnightAllowed: true, stay: null, confirmedOptions: [] }
+  const conversation = { turnId: 'http-minimal', baseRevision: 2, history: [{ role: 'user', content: 'Keep this trip account-free.' }] }
+  const response = await send({ request, investigate: false, conversation })
+  assert.equal(response.status, 200)
+  const body = RecoveryResponseSchema.parse(await response.json())
+  assert.equal(body.result.originalConnection, null)
+  assert.equal(body.result.request.originalDepartureAt, null)
+  assert.equal(body.result.request.deadlineAt, null)
+  assert.equal(body.result.request.stay, null)
+  assert.deepEqual(body.conversation, { turnId: conversation.turnId, baseRevision: conversation.baseRevision })
+  assert.equal(JSON.stringify(body).includes('Keep this trip account-free.'), false)
+  assert.match(body.result.warnings.join(' '), /24-hour search window/)
+  console.info('HTTP gate: minimal nullable trip POST 200; original connection unknown; ASAP search scope distinct; exact turn/revision echo without history')
+})
+
+test('REAL HTTP conversation rejects unsupported roles, oversized history and invalid revision', async () => {
+  const valid = { turnId: 'http-bounds', baseRevision: 0, history: [] }
+  for (const conversation of [
+    { ...valid, history: [{ role: 'system', content: 'Untrusted context' }] },
+    { ...valid, history: Array.from({ length: 13 }, () => ({ role: 'user', content: 'x' })) },
+    { ...valid, history: Array.from({ length: 9 }, () => ({ role: 'user', content: 'x'.repeat(1000) })) },
+    { ...valid, baseRevision: -1 },
+  ]) assert.equal((await send({ ...payload(), conversation })).status, 400)
+  console.info('HTTP gate: unsupported conversation role, >12 messages, >8000 aggregate characters and negative revision return 400')
+})

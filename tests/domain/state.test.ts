@@ -194,3 +194,29 @@ it("accepts canonical preferences and keeps assistance only in the current trans
   expect(recoveryReducer(state, { type: "INPUT_EDITED" }).assistance).toBeNull();
   expect(recoveryReducer(state, { type: "RESET" }).hotelOffers).toEqual([]);
 });
+
+it("clears a previously saved choice on an accepted typed replacement even when the plan ID stays the same", () => {
+  let state = recoveryReducer(initialRecoveryState, { type:"REQUEST_STARTED", request:f.request, sequence:1 });
+  state = recoveryReducer(state, { type:"RESULT_RECEIVED", sequence:1, result });
+  state = recoveryReducer(state, { type:"PLAN_SELECTED", planId:"bus", now:f.now });
+  state = recoveryReducer(state, { type:"PLAN_SAVED", sequence:1, planId:"bus" });
+  state = recoveryReducer(state, { type:"REQUEST_STARTED", sequence:2, request:f.request, preserveComparison:true });
+  expect(state.selectedPlanId).toBe("bus");
+  expect(state.persistence).toBe("saved");
+  const replacement = { ...result, plans:result.plans.map(plan => plan.id === "bus" ? { ...plan, knownCostCents:plan.knownCostCents+1000 } : plan) };
+  state = recoveryReducer(state, { type:"RESULT_RECEIVED", sequence:2, result:replacement });
+  expect(state.result).toBe(replacement);
+  expect(state.selectedPlanId).toBeNull();
+  expect(state.persistence).toBe("unsaved");
+});
+it("keeps the exact saved comparison and choice when the typed response only requests clarification", () => {
+  let state = recoveryReducer(initialRecoveryState, { type:"REQUEST_STARTED", request:f.request, sequence:1 });
+  state = recoveryReducer(state, { type:"RESULT_RECEIVED", sequence:1, result });
+  state = recoveryReducer(state, { type:"PLAN_SELECTED", planId:"bus", now:f.now });
+  state = recoveryReducer(state, { type:"PLAN_SAVED", sequence:1, planId:"bus" });
+  state = recoveryReducer(state, { type:"REQUEST_STARTED", sequence:2, request:f.request, preserveComparison:true });
+  state = recoveryReducer(state, { type:"CLARIFICATION_RECEIVED", sequence:2, assistance:{ status:"limited", summary:"What arrival should I use?", appliedPreferences:{}, selectedPlanId:null, activity:[], clarification:{field:"arrivalAt",reason:"ambiguous"} } });
+  expect(state.result).toBe(result);
+  expect(state.selectedPlanId).toBe("bus");
+  expect(state.persistence).toBe("saved");
+});

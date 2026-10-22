@@ -117,9 +117,9 @@ export const PlanningTripRequestSchema = z.strictObject({
   timeZone: z.literal('America/New_York'), arrivalAt: timestamp,
   arrivalBasis: z.enum(['actual_gate', 'estimated_gate', 'scheduled_gate', 'traveler_confirmed']),
   // Retain metadata from saved itineraries; recovery planning does not look up flights.
-  flight: z.strictObject({ ident: id, departureDate: dateOnly }).nullable(), originalDepartureAt: timestamp,
+  flight: z.strictObject({ ident: id, departureDate: dateOnly }).nullable(), originalDepartureAt: timestamp.nullable(),
   originalAccessMinutes: minutes, originalBoardingMinutes: minutes, airportExitMinutes: minutes,
-  deadlineAt: timestamp, budgetCents: cents.nullable(), budgetMode: z.enum(['hard', 'soft']),
+  deadlineAt: timestamp.nullable(), budgetCents: cents.nullable(), budgetMode: z.enum(['hard', 'soft']),
   drivingAllowed: z.boolean(), overnightAllowed: z.boolean(), priority: z.enum(['earliest', 'cheapest', 'fewest_transfers']),
   confirmedOptions: z.array(ConfirmedOptionSchema).max(12),
   hotelSelection: HotelSelectionSchema.nullable().optional(),
@@ -128,9 +128,9 @@ export const PlanningTripRequestSchema = z.strictObject({
   if (value.hotelDataMode === 'sandbox' && value.mode !== 'synthetic') ctx.addIssue({ code: 'custom', path: ['hotelDataMode'], message: 'Hotel sandbox data requires explicit synthetic demo mode' })
   validateEvidenceMode(value.confirmedOptions, value.mode, ctx, ['confirmedOptions'])
 })
-/** Browser input still requires a deadline after the supplied arrival. */
+/** A supplied hard deadline must follow arrival; null means ASAP. */
 export const TripRequestSchema = PlanningTripRequestSchema.superRefine((value, ctx) => {
-  if (!follows(value.arrivalAt, value.deadlineAt)) ctx.addIssue({ code: 'custom', path: ['deadlineAt'], message: 'Deadline must follow arrival' })
+  if (value.deadlineAt !== null && !follows(value.arrivalAt, value.deadlineAt)) ctx.addIssue({ code: 'custom', path: ['deadlineAt'], message: 'Deadline must follow arrival' })
 })
 export type TripRequest = z.infer<typeof TripRequestSchema>
 
@@ -153,7 +153,7 @@ export type RecoveryPlan = z.infer<typeof RecoveryPlanSchema>
 
 export const RecoveryResultSchema = z.strictObject({
   request: PlanningTripRequestSchema, generatedAt: timestamp,
-  originalConnection: z.strictObject({ readyAt: timestamp, requiredReadyAt: timestamp, marginMinutes: z.number().min(-10_080).max(10_080), shortfallMinutes: z.number().min(0).max(10_080), missed: z.boolean() }),
+  originalConnection: z.strictObject({ readyAt: timestamp, requiredReadyAt: timestamp, marginMinutes: z.number().min(-10_080).max(10_080), shortfallMinutes: z.number().min(0).max(10_080), missed: z.boolean() }).nullable(),
   plans: z.array(RecoveryPlanSchema).max(12), rejected: z.array(RecoveryPlanSchema).max(12), warnings: notes,
   activity: z.array(z.strictObject({ tool: id, message: text, checkedAt: timestamp })).max(64),
 }).superRefine((value, ctx) => {

@@ -5,16 +5,18 @@ import { configuredHotelOrigin } from './handoffs.ts'
 import { AssistanceSchema } from './assistance.ts'
 import type { Assistance } from './assistance.ts'
 import { toInstantMillis } from './time.ts'
+import { ConversationContextSchema, ConversationEchoSchema } from './conversation.ts'
+import type { ConversationContext, ConversationEcho } from './conversation.ts'
 
-export const ADAPTER_REVISION = 'public-recovery-v5'
+export const ADAPTER_REVISION = 'public-recovery-v6'
 export const MAX_FACT_AGE_MS = 5 * 60 * 1000
 const timestamp = z.string().max(40).refine(value => {
   try { toInstantMillis(value); return true } catch { return false }
 }, 'Expected a timestamp with an explicit offset')
 const ArrivalSchema = z.strictObject({ arrivalAt: TripRequestSchema.shape.arrivalAt, arrivalBasis: TripRequestSchema.shape.arrivalBasis })
 
-export type RecoveryInput = { request: TripRequest; investigate: boolean; refinement?: string }
-export const RecoveryInputSchema = z.strictObject({ request: TripRequestSchema, investigate: z.boolean(), refinement: z.string().trim().min(1).max(500).optional() })
+export type RecoveryInput = { request: TripRequest; investigate: boolean; refinement?: string; conversation?: ConversationContext }
+export const RecoveryInputSchema = z.strictObject({ request: TripRequestSchema, investigate: z.boolean(), refinement: z.string().trim().min(1).max(500).optional(), conversation: ConversationContextSchema.optional() })
 export type NormalizedFacts = {
   hotelBookingOrigin?: string
   hotelOffers?: HotelOption[]
@@ -52,8 +54,8 @@ export const NormalizedFactsSchema = z.strictObject({
   }
 })
 
-export type RecoveryResponse = { result: RecoveryResult; facts: NormalizedFacts; assistance?: Assistance }
-export const RecoveryResponseSchema = z.strictObject({ result: RecoveryResultSchema, facts: NormalizedFactsSchema, assistance: AssistanceSchema.optional() }).superRefine((value, ctx) => {
+export type RecoveryResponse = { result: RecoveryResult; facts: NormalizedFacts; assistance?: Assistance; conversation?: ConversationEcho }
+export const RecoveryResponseSchema = z.strictObject({ result: RecoveryResultSchema, facts: NormalizedFactsSchema, assistance: AssistanceSchema.optional(), conversation: ConversationEchoSchema.optional() }).superRefine((value, ctx) => {
   const request = value.result.request
   if (request.arrivalAt !== value.facts.arrival.arrivalAt || request.arrivalBasis !== value.facts.arrival.arrivalBasis ||
       JSON.stringify(request.confirmedOptions) !== JSON.stringify(value.facts.candidates)) {

@@ -133,3 +133,6 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.recovery-select { width: 100%; min-height: 2.75rem; border: 1px solid var(--input); border-radius: var(--radius); padding: .5rem .75rem; background: white; font-size: .875rem; }
+.conversation-turn { max-width: 75ch; overflow-wrap: anywhere; }

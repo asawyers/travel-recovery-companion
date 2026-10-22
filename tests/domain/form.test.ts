@@ -260,3 +260,22 @@ it("binds two explicit hotel transfers to a checkout-date manual service and pre
   expect(invalid.warnings.join()).toMatch(/Hotel journey omitted.*checkout-date/);
   expect(invalid.request?.confirmedOptions).toHaveLength(1);
 });
+
+
+it("starts with just gate arrival, no invented original departure or arrival deadline", () => {
+  const built = buildRequest({ ...emptyDraft(), arrivalAt: "2026-11-18T08:00" }, "real", [], now);
+  expect(built.errors).toEqual({});
+  expect(built.request).toMatchObject({ originalDepartureAt: null, deadlineAt: null, airportExitMinutes: 45, stay: null });
+});
+it("overnight permission alone does not demand hotel dates or nationality", () => {
+  const built = buildRequest({ ...emptyDraft(), arrivalAt: "2026-11-18T08:00", overnightAllowed: true }, "real", [], now);
+  expect(built.errors).toEqual({});
+  expect(built.request?.stay).toBeNull();
+});
+it("restoring an ASAP request preserves its original timestamp instead of replacing it with Now", () => {
+  const request = { ...buildRequest(manual(), "real", [], now).request!, originalDepartureAt: null, deadlineAt: null };
+  const draft = draftFromRequest(request);
+  expect(draft.arrivalAt).toBe("2026-11-18T08:00:30");
+  expect(draft.deadlineAt).toBe("");
+  expect(buildRequest(draft, "real", [], "2026-10-22T19:00:00Z", request).request?.arrivalAt).toBe(request.arrivalAt);
+});

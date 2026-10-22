@@ -1,5 +1,6 @@
 import { RecoveryResponseSchema } from "@domain/api";
 import type { RecoveryResponse } from "@domain/api";
+import type { ConversationContext } from "@domain/conversation";
 import type { TripRequest } from "@domain/schemas";
 
 /** Only these controlled boundary messages may be displayed by the UI. */
@@ -31,6 +32,7 @@ async function requestRecovery(
   investigate: boolean,
   signal: AbortSignal,
   refinement?: string,
+  conversation?: ConversationContext,
 ): Promise<RecoveryResponse> {
   let response: Response;
   try {
@@ -38,7 +40,7 @@ async function requestRecovery(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "omit",
-      body: JSON.stringify({ request, investigate, ...(refinement?.trim() ? { refinement: refinement.trim() } : {}) }),
+      body: JSON.stringify({ request, investigate, ...(refinement?.trim() ? { refinement: refinement.trim() } : {}), ...(conversation ? { conversation } : {}) }),
       signal,
     });
   } catch (error) {
@@ -67,6 +69,7 @@ export async function comparePublic(
   investigate: boolean,
   signal: AbortSignal,
   refinement?: string,
+  conversation?: ConversationContext,
 ): Promise<RecoveryResponse> {
   const controller = new AbortController();
   let timedOut = false;
@@ -94,7 +97,7 @@ export async function comparePublic(
       return await interrupted;
     }
     return await Promise.race([
-      requestRecovery(endpoint, request, investigate, controller.signal, refinement),
+      requestRecovery(endpoint, request, investigate, controller.signal, refinement, conversation),
       interrupted,
     ]);
   } finally {

@@ -1,4 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
+import type { ConversationContext } from "@domain/conversation";
+import { matchesConversation } from "./conversation";
 import { planRecovery } from "@domain/planner";
 import { toInstantMillis } from "@domain/time";
 import { ADAPTER_REVISION } from "@domain/api";
@@ -30,6 +32,7 @@ function deviceStorage<T>(
 export function useRecovery() {
   const [state, dispatch] = useReducer(recoveryReducer, initialRecoveryState);
   const sequence = useRef(0);
+  const revision = useRef(0);
   const pending = useRef<AbortController | null>(null);
   const cache = useRef<TabFactsCache | null>(null);
   const acceptedInput = useRef<TripRequest | null>(null);
@@ -113,6 +116,7 @@ export function useRecovery() {
     );
   }
   function edit(priorityOnly = false) {
+    revision.current++;
     setStorageMessage(null);
     invalidate(priorityOnly);
     dispatch({ type: "INPUT_EDITED" });
@@ -122,15 +126,17 @@ export function useRecovery() {
     now: string,
     investigate = false,
     refinement?: string,
+    conversation?: ConversationContext,
   ) {
     setStorageMessage(null);
     pending.current?.abort();
     const controller = new AbortController();
     pending.current = controller;
     const current = ++sequence.current;
+    const baseRevision = revision.current;
     const isCurrent = () =>
-      current === sequence.current && !controller.signal.aborted;
-    dispatch({ type: "REQUEST_STARTED", request, sequence: current });
+      current === sequence.current && baseRevision === revision.current && !controller.signal.aborted;
+    dispatch({ type: "REQUEST_STARTED", request, sequence: current, preserveComparison: !!refinement?.trim() });
     try {
       const endpoint = recoveryEndpoint(import.meta.env.VITE_RECOVERY_API_URL);
       if (
@@ -159,15 +165,24 @@ export function useRecovery() {
             hotelBookingOrigin: facts.hotelBookingOrigin,
           });
       } else if (endpoint) {
-        cache.current = null;
         const response = await comparePublic(
           endpoint,
           request,
           investigate,
           controller.signal,
           refinement,
+          conversation,
         );
         if (!isCurrent()) return;
+        if (!matchesConversation(conversation, response.conversation, revision.current)) {
+          dispatch({ type: "REQUEST_FAILED", sequence: current, message: "That reply belongs to an earlier trip or message. Your current facts are retained; send the message again." });
+          return;
+        }
+        if (response.assistance?.clarification && !Object.keys(response.assistance.appliedPreferences).length && state.result && !state.stale) {
+          dispatch({ type: "CLARIFICATION_RECEIVED", sequence: current, assistance: response.assistance });
+          return;
+        }
+        if (response.result.request.priority !== request.priority || response.result.request.drivingAllowed !== request.drivingAllowed) revision.current++;
         // Preserve manual/source input identity; provider candidates belong only to normalized facts.
         acceptedInput.current = { ...request, priority: response.result.request.priority, drivingAllowed: response.result.request.drivingAllowed };
         cache.current = {
@@ -207,7 +222,7 @@ export function useRecovery() {
             : "Comparison failed. Your inputs are retained; check the supplied facts and retry.",
       });
     } finally {
-      if (isCurrent()) pending.current = null;
+      if (current === sequence.current && pending.current === controller) pending.current = null;
     }
   }
   function save(now: string) {
@@ -256,6 +271,7 @@ export function useRecovery() {
   }
   return {
     state,
+    getRevision: () => revision.current,
     configured,
     saved: savedRecord.ok ? savedRecord.value : null,
     storageError,
@@ -268,6 +284,7 @@ export function useRecovery() {
       if (state.hotelOffersExpiresAt) dispatch({ type: "HOTEL_OFFERS_EXPIRED", expiresAt: state.hotelOffersExpiresAt });
     },
     reset: () => {
+      revision.current++;
       setStorageMessage(null);
       invalidate();
       dispatch({ type: "RESET" });

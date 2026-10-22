@@ -74,7 +74,7 @@ export function ItineraryPanel({
           </p>
           <p className="mt-2 text-sm">
             Final arrival {time(plan.finalArrivalAt)}. Deadline{" "}
-            {request && time(request.deadlineAt)}.
+            {request?.deadlineAt ? time(request.deadlineAt) : "as soon as possible"}.
           </p>
           {arrivalEvidence.length > 0 && (
             <div className="mt-3 text-sm">

@@ -1,6 +1,21 @@
 # Verification status
 
-The account-free app remains at [travel-recovery-companion.vercel.app](https://travel-recovery-companion.vercel.app). The current backend amendment passes clean CI install/checks, 401 unit tests across 24 files, TypeScript/Vite build and Deno checking. The prior UI baseline covers seven actual loopback HTTP cases, 39 local Brave cases and 39 hosted Brave cases. A focused actual sandbox discovery/journey/save/history/refresh sequence passed after the backend corrections. Independent reviews approved; Vercel and scoped GitHub backend deployments succeeded. Actual Google/OpenAI acceptance was verified separately. Production hotel onboarding remains deferred. Latest evidence is recorded below.
+The compact starter-to-chat source has passed the local gate below. Earlier deployed Google/OpenAI/sandbox evidence remains historical until this revised frontend and v6 backend are published and checked. Production hotel onboarding remains deferred.
+
+## Starter-to-chat local gate — 2026-10-22
+
+The approved redesign starts with gate arrival and an ASAP/explicit goal, then opens one conversation with contextual hard-fact confirmations, quick replies and a primary route card. Budget, driving, overnight and manual options remain available progressively. Null original departure remains unknown; null deadline uses disclosed 24-elapsed-hour search coverage. Sandbox guidance is deterministic and its transfer defaults are explicitly fictional.
+
+| Check | Captured result |
+| --- | --- |
+| Full unit/SDK suite | 444 tests across 27 files passed |
+| TypeScript/Vite production build | Passed; existing chunk-size warning remains (635.36 kB JS, 190.47 kB gzip) |
+| Deno entrypoint check | Passed |
+| Real loopback HTTP | Nine cases passed, including minimal nullable starter, exact conversation echo and bounded history rejection |
+| Full local installed Brave | All 50 cases passed in approximately one minute |
+| Regression preservation | All 39 prior cases retained, plus eleven conversation/guided-hotel workflows; no skips |
+
+Independent domain and backend specification/quality reviews approved. Frontend specification, quality and regression-preservation reviews approved after correcting all findings. Focused regressions exercised invalid explicit deadlines, required stay confirmation, invalid hotel costs/dates, the Enter-submit bypass, same-ID changed-price saved status, typed-result history and both inline deadline/ASAP transitions before their fixes. The final local browser gate includes all corrected flows, stale/late response guards, cache/source boundaries, save/history/storage/expiry/mobile/keyboard behavior. No live provider/model call occurred in these fixture/loopback gates. No credentials were read.
 
 ## Earlier core revisions
 

@@ -12,7 +12,7 @@ const run = (f: ReturnType<typeof day>) => planRecovery({ ...f.request, confirme
 describe('whole-journey recovery', () => {
   it('reproduces daytime facts and returns schema-valid connected journeys', () => {
     const r = run(day())
-    expect(r.originalConnection.shortfallMinutes).toBe(15)
+    expect(r.originalConnection?.shortfallMinutes).toBe(15)
     expect(r.plans.map(p => p.id)).toEqual(['car', 'bus', 'train'])
     expect(r.plans.find(p => p.id === 'train')).toMatchObject({ knownCostCents: 7200, durationMinutes: 290, finalArrivalAt: '2026-11-18T12:50:00-05:00', hotel: null })
     expect(r.plans.find(p => p.id === 'bus')).toMatchObject({ knownCostCents: 4700, durationMinutes: 250 })
@@ -205,8 +205,17 @@ it('rejects even a zero-duration car candidate when gate arrival has already rea
   const car = fixture.request.confirmedOptions.find(candidate => candidate.kind === 'car')
   if (!car || car.kind !== 'car') throw new Error('Fixture car missing')
   const zeroDurationCar = { ...car, access: { ...car.access, minutes: 0 }, pickupMinutes: 0, driveMinutes: 0, returnMinutes: 0, finalTransfer: { ...car.finalTransfer, minutes: 0 } }
-  const request = { ...fixture.request, arrivalAt: fixture.request.deadlineAt, airportExitMinutes: 0, confirmedOptions: [zeroDurationCar] }
+  const request = { ...fixture.request, arrivalAt: fixture.request.deadlineAt!, airportExitMinutes: 0, confirmedOptions: [zeroDurationCar] }
   const result = planRecovery(request, request.confirmedOptions, { now: '2026-10-21T12:00:00Z' })
   expect(result.plans).toEqual([])
   expect(result.rejected[0]?.violations.join(' ')).toMatch(/deadline/i)
+})
+
+
+it('preserves the complete legacy original-connection arithmetic and timestamps', () => {
+  const result = run(day())
+  expect(result.originalConnection).toEqual({ readyAt: '2026-11-18T09:15:00-05:00', requiredReadyAt: '2026-11-18T09:00:00-05:00', marginMinutes: -15, shortfallMinutes: 15, missed: true })
+  expect(result.request.originalDepartureAt).toBe('2026-11-18T09:15:00-05:00')
+  expect(result.request.deadlineAt).toBe('2026-11-18T14:00:00-05:00')
+  expect(result.generatedAt).toBe(day().now)
 })

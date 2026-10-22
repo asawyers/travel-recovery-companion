@@ -8,6 +8,7 @@ import { toInstantMillis, toTripLocalTime } from '../domain/time.ts'
 import { HttpError, corsHeaders, jsonResponse, readJson } from './http.ts'
 import { AssistanceSchema, PreferencePatchSchema } from '../domain/assistance.ts'
 import type { Assistance, PreferencePatch } from '../domain/assistance.ts'
+import { clarificationQuestion } from '../domain/conversation.ts'
 import { configuredHotelOrigin } from '../domain/handoffs.ts'
 import { buildHotelRecovery } from '../domain/hotel-recovery.ts'
 import type { AgentDiscovery, AgentExecutor, Assessment } from './agent-contracts.ts'
@@ -188,10 +189,11 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
         if (request.mode !== 'real' || !deps.agent) assistance = unavailableAssistance()
         else {
           try {
-            assistance = AssistanceSchema.parse(await bounded(deps.agent({ request: structuredClone(request), refinement: parsed.data.refinement, signal: controller.signal, tools: {
+            assistance = AssistanceSchema.parse(await bounded(deps.agent({ request: structuredClone(request), refinement: parsed.data.refinement, ...(parsed.data.conversation ? { conversation: parsed.data.conversation } : {}), signal: controller.signal, tools: {
               findTransport: () => discover('transport'), findHotels: () => discover('hotels'),
               assess: async patch => { active(); return assess(patch) },
             } }), controller.signal))
+            if (assistance.clarification) assistance = { ...assistance, summary: clarificationQuestion(assistance.clarification) }
             if (assistance.status === 'completed') {
               if (!latest || Object.entries(assistance.appliedPreferences).some(([key, value]) => latest!.result.request[key as keyof PreferencePatch] !== value) ||
                 (assistance.selectedPlanId !== null && !latest.result.plans.some(plan => plan.id === assistance!.selectedPlanId))) throw new Error('Unassessed assistance')
@@ -200,7 +202,7 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
         }
       }
       if (assistance?.status !== 'completed') {
-        if (allowedDiscovery && !controller.signal.aborted) await Promise.all([discover('transport'), discover('hotels')]).catch(() => undefined)
+        if (!assistance?.clarification && allowedDiscovery && !controller.signal.aborted) await Promise.all([discover('transport'), discover('hotels')]).catch(() => undefined)
         assess({})
         if (assistance) assistance = { ...assistance, appliedPreferences: {}, selectedPlanId: null }
       } else if (!latest) assess({})
@@ -213,7 +215,7 @@ export function createRecoveryHandler(deps: { now: () => string; providers: Prov
         candidates, arrival: { arrivalAt: result.request.arrivalAt, arrivalBasis: result.request.arrivalBasis }, arrivalEvidence: evidence,
         checkedAt, expiresAt, adapterRevision: ADAPTER_REVISION,
         ...(hotelOffers.length ? { hotelOffers } : {}), ...(hotelBookingOrigin ? { hotelBookingOrigin } : {}),
-      }, ...(assistance ? { assistance } : {}) })
+      }, ...(assistance ? { assistance } : {}), ...(parsed.data.conversation ? { conversation: { turnId: parsed.data.conversation.turnId, baseRevision: parsed.data.conversation.baseRevision } } : {}) })
       return jsonResponse(body, 200, headers)
     } catch (error) {
       return jsonResponse({ error: error instanceof HttpError ? error.message : 'Recovery planning is temporarily unavailable.' }, error instanceof HttpError ? error.status : 500, headers)

@@ -90,6 +90,7 @@ describe('explicit fictional scenario fixtures', () => {
     expect(trip.budgetCents).toBe(15000)
     expect(trip.deadlineAt).toBe('2026-11-18T14:00:00-05:00')
     const ready = addMinutes(trip.arrivalAt, trip.airportExitMinutes + trip.originalAccessMinutes)
+    if (trip.originalDepartureAt === null) throw new Error('Legacy fixture departure is required')
     const required = addMinutes(trip.originalDepartureAt, -trip.originalBoardingMinutes)
     expect(minutesBetween(required, ready)).toBe(15)
     for (const [id, arrival, total, duration] of [['train', '12:50', 7200, 290], ['bus', '12:10', 4700, 250], ['car', '11:45', 14500, 225]] as const) {
@@ -176,5 +177,27 @@ describe('trusted planning request boundary', () => {
     expect(PlanningTripRequestSchema.safeParse(late).success).toBe(true)
     expect(PlanningTripRequestSchema.safeParse({ ...late, unexpected: true }).success).toBe(false)
     expect(PlanningTripRequestSchema.safeParse({ ...late, mode: 'real' }).success).toBe(false)
+  })
+})
+
+
+describe('nullable startup facts', () => {
+  it('preserves explicit unknown timestamps while rejecting missing or malformed fields', () => {
+    const minimal = { ...request(), originalDepartureAt: null, deadlineAt: null, overnightAllowed: true, stay: null }
+    expect(TripRequestSchema.parse(minimal)).toEqual(minimal)
+    expect(PlanningTripRequestSchema.parse(minimal)).toEqual(minimal)
+    for (const patch of [{ originalDepartureAt: undefined }, { deadlineAt: undefined }, { originalDepartureAt: '' }, { deadlineAt: 'soon' }]) {
+      expect(TripRequestSchema.safeParse({ ...minimal, ...patch }).success).toBe(false)
+    }
+    expect(TripRequestSchema.safeParse({ ...minimal, deadlineAt: at }).success).toBe(false)
+    expect(TripRequestSchema.safeParse({ ...minimal, deadlineAt: '2026-11-18T14:00:00-05:00' }).success).toBe(true)
+  })
+
+  it('keeps saved nonnull request and result shapes valid alongside unknown connection results', () => {
+    const originalConnection = { readyAt: at, requiredReadyAt: at, marginMinutes: -15, shortfallMinutes: 15, missed: true }
+    const legacy = { request: request(), generatedAt: at, originalConnection, plans: [], rejected: [], warnings: [], activity: [] }
+    expect(RecoveryResultSchema.parse(JSON.parse(JSON.stringify(legacy)))).toEqual(legacy)
+    const minimal = { ...legacy, request: { ...legacy.request, originalDepartureAt: null, deadlineAt: null }, originalConnection: null }
+    expect(RecoveryResultSchema.parse(JSON.parse(JSON.stringify(minimal)))).toEqual(minimal)
   })
 })

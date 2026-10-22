@@ -140,3 +140,14 @@ it("posts a trimmed refinement separately from the unchanged canonical trip enve
   await comparePublic("https://example.com/recovery", f.request, false, new AbortController().signal, "  avoid driving  ");
   expect(body).toEqual({ request: f.request, investigate: false, refinement: "avoid driving" });
 });
+
+
+it("forwards bounded conversation separately and accepts the exact public echo", async () => {
+  let body: any;
+  const handler = createRecoveryHandler({ now: () => "2026-10-21T12:00:00Z", providers: { gatherPermittedFacts: async () => ({ candidates: [], warnings: [] }) } });
+  vi.stubGlobal("fetch", async (url: string, init: RequestInit) => { body = JSON.parse(String(init.body)); return handler(new Request(url, init)); });
+  const conversation = { turnId:"turn-2", baseRevision:3, history:[{ role:"assistant" as const, content:"Your current comparison is ready." }] };
+  const response = await comparePublic("https://example.com/recovery", f.request, true, new AbortController().signal, "What about tomorrow?", conversation);
+  expect(body).toEqual({ request:f.request, investigate:true, refinement:"What about tomorrow?", conversation });
+  expect(response.conversation).toEqual({turnId:"turn-2",baseRevision:3});
+});

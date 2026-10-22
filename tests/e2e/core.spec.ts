@@ -1,3 +1,4 @@
+import { demonstrate, openPreferences, openManualOptions, compare, echoConversation, reviewPlan } from "./helpers";
 import { test, expect, type Page } from "@playwright/test";
 import { daytimeFixture } from "../../supabase/functions/_shared/domain/fixtures";
 import { planRecovery } from "../../supabase/functions/_shared/domain/planner";
@@ -6,14 +7,9 @@ import {
   RecoveryResponseSchema,
 } from "../../supabase/functions/_shared/domain/api";
 const endpoint = "**/functions/v1/recovery";
-const compare = (page: Page) =>
-  page
-    .getByRole("button", { name: "Compare recovery options", exact: true })
-    .click();
+
 async function daytime(page: Page) {
-  await page
-    .getByRole("button", { name: "Daytime fictional example", exact: true })
-    .click();
+  await demonstrate(page, "Daytime fictional example");
   await expect(page.getByTestId("option-card")).toHaveCount(3);
 }
 test("real public HTTP compares, refines constraints, saves, restores without HTTP and deletes", async ({
@@ -34,7 +30,7 @@ test("real public HTTP compares, refines constraints, saves, restores without HT
   expect(posts[0].headers.authorization).toBeUndefined();
   expect(posts[0].headers.apikey).toBeUndefined();
   expect(posts[0].headers.cookie).toBeUndefined();
-  await page.getByRole("button", { name: "Cheapest", exact: true }).click();
+  await page.getByRole("button", { name: "Cheaper", exact: true }).click();
   await expect(page.getByTestId("option-card").first()).toContainText(
     "intercity bus",
   );
@@ -42,12 +38,7 @@ test("real public HTTP compares, refines constraints, saves, restores without HT
   await page.getByRole("button", { name: "No driving", exact: true }).click();
   await expect(page.getByTestId("option-card")).toHaveCount(2);
   expect(posts).toHaveLength(2);
-  await page
-    .getByRole("button", {
-      name: "Choose Fictional intercity bus",
-      exact: true,
-    })
-    .click();
+  await reviewPlan(page, "View Fictional intercity bus");
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
@@ -67,13 +58,9 @@ test("network failure retains inputs and makes the previous choice stale; explic
 }) => {
   await page.goto("/");
   await daytime(page);
-  await page
-    .getByRole("button", {
-      name: "Choose Fictional intercity bus",
-      exact: true,
-    })
-    .click();
+  await reviewPlan(page, "View Fictional intercity bus");
   await page.route(endpoint, (route) => route.abort("failed"));
+  await openPreferences(page);
   await page.getByLabel("Budget (USD)").fill("133");
   await compare(page);
   await expect(page.getByRole("alert")).toContainText(/connection.*retained/i);
@@ -83,13 +70,12 @@ test("network failure retains inputs and makes the previous choice stale; explic
   ).toBeDisabled();
   await expect(
     page.getByRole("button", {
-      name: "Choose Fictional intercity bus",
+      name: "View Fictional intercity bus",
       exact: true,
     }),
   ).toBeDisabled();
   await page.unroute(endpoint);
-  await page.getByLabel("Investigate available sources").check();
-  await compare(page);
+  await page.getByRole("button", { name: "Recheck available sources", exact: true }).click();
   await expect(page.getByTestId("option-card")).toHaveCount(3);
   await expect(
     page.getByText(/No live.*checked|unavailable|disabled/).first(),
@@ -126,10 +112,9 @@ for (const outcome of ["result", "failure"]) {
       else await route.fulfill({ response });
     });
     await page.goto("/");
-    await page
-      .getByRole("button", { name: "Daytime fictional example", exact: true })
-      .click();
+    await demonstrate(page, "Daytime fictional example");
     await expect.poll(() => count).toBe(1);
+    await openPreferences(page);
     await page.getByLabel("Budget (USD)").fill("1");
     await page.getByLabel("Budget limit").selectOption("hard");
     await compare(page);
@@ -147,7 +132,7 @@ for (const outcome of ["result", "failure"]) {
         ),
     );
     await expect(page.getByTestId("option-card")).toHaveCount(0);
-    await page.getByRole("button", { name: "Cheapest", exact: true }).click();
+    await page.getByRole("button", { name: "Cheaper", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "No feasible plan" }),
     ).toBeVisible();
@@ -212,24 +197,20 @@ test("validated provider-shaped TEST FIXTURE retains traveler arrival and source
     posts++;
     // The injected adapter fixture is collected exactly once at this boundary.
     providerCalls++;
-    await route.fulfill({ json: body });
+    await route.fulfill({ json: echoConversation(route, body) });
   });
   await page.goto("/");
+  await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:05");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
   await page.getByLabel("Final destination deadline").fill("2026-11-18T14:00");
   await compare(page);
   await expect(page.getByTestId("option-card")).toHaveCount(3);
-  await page.getByRole("button", { name: "Cheapest", exact: true }).click();
+  await page.getByRole("button", { name: "Cheaper", exact: true }).click();
   await expect(page.getByTestId("option-card").first()).toContainText(
     "intercity bus",
   );
-  await page
-    .getByRole("button", {
-      name: "Choose Fictional intercity bus",
-      exact: true,
-    })
-    .click();
+  await reviewPlan(page, "View Fictional intercity bus");
   await expect(page.getByTestId("itinerary")).toContainText("8:05");
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
@@ -259,12 +240,7 @@ test("cache expires by real wall clock and reset never reuses facts", async ({
   await page.clock.install();
   await page.goto("/");
   await daytime(page);
-  await page
-    .getByRole("button", {
-      name: "Choose Fictional intercity bus",
-      exact: true,
-    })
-    .click();
+  await reviewPlan(page, "View Fictional intercity bus");
   await page.clock.fastForward(301_000);
   await expect(
     page.getByRole("button", { name: "Save on this device", exact: true }),
@@ -276,12 +252,10 @@ test("cache expires by real wall clock and reset never reuses facts", async ({
   await expect(page.getByRole("alert")).not.toContainText(
     "Device storage unavailable",
   );
-  await page.getByRole("button", { name: "Cheapest", exact: true }).click();
+  await page.getByRole("button", { name: "Cheaper", exact: true }).click();
   await expect.poll(() => posts).toBe(2);
   await expect(page.getByTestId("option-card")).toHaveCount(3);
-  await page
-    .getByRole("button", { name: "Use my own trip", exact: true })
-    .click();
+  await demonstrate(page, "Use my own trip");
   await daytime(page);
   expect(posts).toBe(3);
 });
@@ -299,6 +273,7 @@ test("manual confirmation timestamps survive priority-only input edits without a
   });
   await page.clock.install();
   await page.goto("/");
+  await openManualOptions(page);
   await page.getByLabel("Revised gate arrival").fill("2026-11-18T08:00");
   await page.getByLabel("Original onward departure").fill("2026-11-18T09:15");
   await page.getByLabel("Final destination deadline").fill("2026-11-18T14:00");
@@ -320,10 +295,8 @@ test("manual confirmation timestamps survive priority-only input edits without a
   await compare(page);
   await expect(page.getByTestId("option-card")).toHaveCount(1);
   await page.clock.fastForward(2_000);
-  await page.getByRole("button", { name: "Cheapest", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Choose Manual priority test", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Cheaper", exact: true }).click();
+  await reviewPlan(page, "View Manual priority test");
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
@@ -336,7 +309,7 @@ test("manual confirmation timestamps survive priority-only input edits without a
   expect(posts).toHaveLength(1);
 });
 
-test("investigation is consumed once and a priority form submit reuses the checked facts", async ({
+test("explicit recheck investigates once and a priority quick reply reuses the checked facts", async ({
   page,
 }) => {
   const posts: any[] = [];
@@ -349,32 +322,33 @@ test("investigation is consumed once and a priority form submit reuses the check
   });
   await page.goto("/");
   await daytime(page);
-  await page.getByLabel("Investigate available sources").check();
   const investigationResponse = page.waitForResponse(
     (response) =>
       response.url().includes("/functions/v1/recovery") &&
       response.request().method() === "POST" &&
       response.request().postDataJSON().investigate === true,
   );
-  await compare(page);
+  await page.getByRole("button", { name: "Recheck available sources", exact: true }).click();
   const response = await investigationResponse;
   expect(response.ok()).toBe(true);
   await response.finished();
   // Previous cards remain visible while the new source facts are being checked.
   await expect(
-    page.getByRole("button", { name: "Compare recovery options", exact: true }),
+    page.getByRole("button", { name: "Recheck available sources", exact: true }),
   ).toBeEnabled();
   await expect(page.getByTestId("option-card")).toHaveCount(3);
   expect(posts[1].investigate).toBe(true);
-  await expect(
-    page.getByLabel("Investigate available sources"),
-  ).not.toBeChecked();
-  await page.getByLabel("Priority", { exact: true }).selectOption("cheapest");
-  await compare(page);
+  await expect(page.getByLabel("Investigate available sources")).toHaveCount(0);
+  await page.getByRole("button", { name: "Cheaper", exact: true }).click();
   await expect(page.getByTestId("option-card").first()).toContainText(
     "intercity bus",
   );
   expect(posts).toHaveLength(2);
+  await openPreferences(page);
+  await page.getByLabel("Priority", { exact: true }).selectOption("earliest");
+  await page.getByRole("button", { name: "Update options", exact: true }).click();
+  await expect.poll(() => posts.length).toBe(3);
+  expect(posts[2].investigate).toBe(true);
 });
 test("configured saved-plan refresh explicitly investigates", async ({
   page,
@@ -389,12 +363,7 @@ test("configured saved-plan refresh explicitly investigates", async ({
   });
   await page.goto("/");
   await daytime(page);
-  await page
-    .getByRole("button", {
-      name: "Choose Fictional intercity bus",
-      exact: true,
-    })
-    .click();
+  await reviewPlan(page, "View Fictional intercity bus");
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();
@@ -409,12 +378,7 @@ test("configured saved-plan wording describes public investigation without promi
 }) => {
   await page.goto("/");
   await daytime(page);
-  await page
-    .getByRole("button", {
-      name: "Choose Fictional intercity bus",
-      exact: true,
-    })
-    .click();
+  await reviewPlan(page, "View Fictional intercity bus");
   await page
     .getByRole("button", { name: "Save on this device", exact: true })
     .click();

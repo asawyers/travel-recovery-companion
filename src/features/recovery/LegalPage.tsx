@@ -45,13 +45,13 @@ export function LegalPage({ page }: { page: "terms" | "privacy" }) {
           <>
             <p>
               Your trip inputs are compared locally or sent to the configured
-              public planner when you compare. When you explicitly choose
-              “Investigate available sources,” relevant current inputs may be
+              public planner when you choose “Find my options,” “Update options,”
+              “Recheck available sources,” or send a message. Relevant current inputs may be
               sent to Google Maps: route, travel time and relevant transport
               choices for route estimates and transit schedules. Hotel investigations may send stay dates, occupancy and the nationality you enter to the enabled hotel source. Submitting a selected hotel journey explicitly investigates its availability again. Optional sources can be disabled or unavailable.
             </p>
             <p>
-              Applying a text refinement sends that text and current trip inputs to the public planner and enabled OpenAI assistance. Only accepted priority and driving preferences change the comparison. Refinement text, assistance summaries and activity are not included in device-saved plans.
+              Sending a message sends that text, your current trip inputs and bounded recent conversation from this tab to the public planner and enabled OpenAI assistance. Conversation text is untrusted context; only accepted priority and driving preferences change trip facts. Other factual changes require your structured confirmation. Messages, conversation, assistance summaries and activity are not included in device-saved plans. The labeled sandbox Demo guide uses deterministic guidance and test hotel rates; it makes no OpenAI or live transport calls.
             </p>
             <p>
               Traveler-entered and fictional device snapshots are stored in
